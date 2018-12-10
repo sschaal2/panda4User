@@ -20,12 +20,12 @@
 
 */
 
-R_A1_LINK	R_A2_LINK	1	5	half	orth
-R_A2_LINK 	R_E1_LINK	1	5	orth	orth
-R_E1_LINK	R_A3_LINK	1	5	orth	orth
-R_A3_LINK	R_A4_LINK	1	5	orth	orth
-R_A4_LINK	R_A5_LINK	1	5	orth	orth
-R_A5_LINK	R_A6_LINK	1	5	orth	orth
-R_A6_LINK	R_FLANGE	1	2	orth	half
+BASE		J2_LINK		1	5	half	orth
+J2_LINK 	J3_LINK		1	5	orth	orth
+J3_LINK		J4_LINK		1	5	orth	orth
+J4_LINK		J5_LINK		1	5	orth	orth
+J5_LINK		J7_LINK		1	5	orth	orth
+J7_LINK		FLANGE		1	2	orth	half
+
 
 
