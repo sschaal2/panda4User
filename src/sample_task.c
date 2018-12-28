@@ -23,6 +23,7 @@ Remarks:
 #include "SL_collect_data.h"
 #include "SL_shared_memory.h"
 #include "SL_man.h"
+#include "SL_unix_common.h"
 
 // defines
 
@@ -195,8 +196,8 @@ run_sample_task(void)
 static int 
 change_sample_task(void)
 {
-  int    ivar;
-  double dvar;
+  int    ivar=0;
+  double dvar=0;
 
   get_int("This is how to enter an integer variable",ivar,&ivar);
   get_double("This is how to enter a double variable",dvar,&dvar);

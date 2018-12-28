@@ -58,13 +58,13 @@ set(SRCS_XSIM
 set(BINARIES
 	$ENV{LAB_ROOT}/${NAME}/$ENV{MACHTYPE}/x${NAME}
 	$ENV{LAB_ROOT}/${NAME}/$ENV{MACHTYPE}/xmotor
-	$ENV{LAB_ROOT}/${NAME}/$ENV{MACHTYPE}/xvision
+#	$ENV{LAB_ROOT}/${NAME}/$ENV{MACHTYPE}/xvision
 	$ENV{LAB_ROOT}/${NAME}/$ENV{MACHTYPE}/xpest
 	)
 
 set(RBINARIES
 	$ENV{LAB_ROOT}/${NAME}/$ENV{MACHTYPE}/xr${NAME}
-	$ENV{LAB_ROOT}/${NAME}/$ENV{MACHTYPE}/xprobot
+	$ENV{LAB_ROOT}/${NAME}/$ENV{MACHTYPE}/xrprobot
 	)
 
 # ------------------------------------------------------------------------

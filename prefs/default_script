@@ -14,3 +14,7 @@ sim_default_script                 sim_default.script
 sim_default_sampling_frequency_Hz  1000
 sim_default_sampling_time_sec      5
 
+panda_default_script                 panda_default.script
+panda_default_sampling_frequency_Hz  1000
+panda_default_sampling_time_sec      5
+

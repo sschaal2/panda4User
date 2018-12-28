@@ -11,12 +11,13 @@
 
 // window geometry specifications
 
-task_servo_geometry		90x29-60+640
-motor_servo_geometry		90x12-60+268
-vision_servo_geometry		90x12-60+454
 simulation_servo_geometry	90x8-60+0
-openGL_servo_geometry		90x8-60+134
-ros_servo_geometry		90x8-60+1045
+panda_servo_geometry		90x8-60+0
+openGL_servo_geometry		90x8-60+160
+motor_servo_geometry		90x12-60+297
+task_servo_geometry		90x40-60+486
+
+
 
 main_window_geometry		30%x50%+20+20
 main_window_camera_pos		0.7 2.0 1.
@@ -43,7 +44,7 @@ osc_time_window_vars		5.0
 osc_vars_task_file		task_default.osc
 osc_vars_motor_file		motor_default.osc
 osc_vars_vision_file		vision_default.osc
-osc_window_geometry		600x500+31%+20
+osc_window_geometry		600x500+35%+0
 
 
 // base setting
@@ -55,3 +56,9 @@ init_base_quat			1.0	0.0	0.0	0.0
 // dynamics settings
 
 use_comp_inertia_fordyn		0
+
+// Panda IP address
+
+panda_ip			20.18.9.5
+
+
