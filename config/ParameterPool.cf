@@ -61,4 +61,6 @@ use_comp_inertia_fordyn		0
 
 panda_ip			20.18.9.5
 
+// goto task speed
 
+goto_speed			.3

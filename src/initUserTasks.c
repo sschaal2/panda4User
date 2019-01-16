@@ -46,6 +46,6 @@ initUserTasks(void)
 
   //add_vision_calibration_task();
 
-  sprintf(initial_user_command,"go0");
+  //sprintf(initial_user_command,"go0");
 }
 
