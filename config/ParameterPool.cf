@@ -38,13 +38,13 @@ contact_force_scale             0.1
 // oscilloscope settings
 
 osc_enabled			1
-n_osc_plots			3
+n_osc_plots			4
 osc_periods_ad			2
 osc_time_window_vars		5.0
 osc_vars_task_file		task_default.osc
 osc_vars_motor_file		motor_default.osc
 osc_vars_vision_file		vision_default.osc
-osc_window_geometry		600x500+35%+0
+osc_window_geometry		600x700+35%+0
 
 
 // base setting
