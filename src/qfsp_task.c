@@ -2439,7 +2439,7 @@ compute_target_orient(void)
 
   for (i=1; i<=N_ENDEFFS; ++i){
     /* increase rot_amp gradually */
-    ctarget_rot[i].phi = rot_amp;
+    ctarget_rot[i].phi = rot_amp+PI;
     ctarget_rot[i].r[_A_] = cos(2.*PI*0.25*rot_speed*(task_servo_time-start_time));
     ctarget_rot[i].r[_B_] = sin(2.*PI*0.25*rot_speed*(task_servo_time-start_time));
     ctarget_rot[i].r[_G_] = sin(2.*PI*0.25*rot_speed*(task_servo_time-start_time));
@@ -2452,21 +2452,25 @@ compute_target_orient(void)
     }
 
     // hack
+    /*
     ctarget_rot[i].phi = PI/2.;
     ctarget_rot[i].r[_A_] = 0.0;
     ctarget_rot[i].r[_B_] = 0.0;
     ctarget_rot[i].r[_G_] = 1.0;
+    */
 
     /* target quaternion */
     ctarget_quat[i].q[_Q0_] = cos(ctarget_rot[i].phi/2.0);
     ctarget_quat[i].q[_Q1_] = ctarget_rot[i].r[_A_]*sin(ctarget_rot[i].phi/2.0);
     ctarget_quat[i].q[_Q2_] = ctarget_rot[i].r[_B_]*sin(ctarget_rot[i].phi/2.0);
     ctarget_quat[i].q[_Q3_] = ctarget_rot[i].r[_G_]*sin(ctarget_rot[i].phi/2.0);
-    
+
+    /*
     ctarget_quat[i].q[_Q0_] = 0.;
     ctarget_quat[i].q[_Q1_] = 1.;
     ctarget_quat[i].q[_Q2_] = 0.;
     ctarget_quat[i].q[_Q3_] = 0.;
+    */
     
     if(skip_ticks>=2){
       for (j=1; j<=N_QUAT; ++j){
