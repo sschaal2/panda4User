@@ -385,6 +385,11 @@ init_qfsp_task(void)
     simulate_ball();
   }
 
+  /* some randomness around the figure 8 ?*/
+  get_int("Drifting?",wiggle,&wiggle);
+  if (wiggle!=1 && wiggle !=0) 
+    wiggle = 0;
+
     
   /* go to a save posture */
   bzero((char *)&(target[1]),N_DOFS*sizeof(target[1]));
@@ -429,11 +434,6 @@ init_qfsp_task(void)
   blobs[1].blob.x[_Y_] = setpoint[1][_Y_];
   blobs[1].blob.x[_Z_] = setpoint[1][_Z_];
   
-  /* some randomness around the figure 8 ?*/
-  get_int("Drifting?",wiggle,&wiggle);
-  if (wiggle!=1 && wiggle !=0) 
-    wiggle = 0;
-
   /* ready to go */
   ans = 999;
   while (ans == 999) {
@@ -819,6 +819,7 @@ run_qfsp_task(void)
     if (use_invdyn) 
       SL_InvDyn(joint_state,joint_des_state,endeff,&base_state,&base_orient);
 
+    // need to add the null space term, store in target.uff
     for (i=1; i<=N_DOFS; ++i) {
       joint_des_state[i].uff   += target[i].uff;
     }
