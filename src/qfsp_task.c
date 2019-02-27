@@ -2135,7 +2135,8 @@ Date		: June 1999
    
 Remarks:
 
-        operational space controller of Khatib
+        operational space controller of Khatib, but taking the C+g term
+        into joint space, and no pre-mult of null space term with M
         
 ******************************************************************************
 Paramters:  (i/o = input/output)
@@ -2273,9 +2274,10 @@ inverseKinematicsDynDecoupNoM(SL_DJstate *state, SL_endeff *eff, SL_OJstate *res
 
   /* compute the PD term for the Null space  */
   for (i=1; i<=N_DOFS-N_DOFS_EST_SKIP; ++i) {
+    double fac = 0.5;
     e[i] = 
-      controller_gain_th[i]*(rest[i].th - state[i].th) - 
-      controller_gain_thd[i] *state[i].thd;
+      fac*controller_gain_th[i]*(rest[i].th - state[i].th) - 
+      sqrt(fac)*controller_gain_thd[i] *state[i].thd;
   }
   mat_vec_mult(O,e,en);
 
