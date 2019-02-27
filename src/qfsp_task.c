@@ -1826,7 +1826,7 @@ inverseKinematicsKhatib(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
   static int     firsttime = TRUE;
   static double  last_t;       
   static Vector  e, en;
-  //  double         ridge = 1.e-2;
+  //double         ridge = 1.e-2;
   double         ridge = 1.e-5;
 
   /* initialization of static variables */
@@ -1936,9 +1936,10 @@ inverseKinematicsKhatib(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
 
   /* compute the PD term for the Null space  */
   for (i=1; i<=N_DOFS-N_DOFS_EST_SKIP; ++i) {
+    double fac=0.5;
     e[i] = 
-      controller_gain_th[i]*(rest[i].th - state[i].th) - 
-      controller_gain_thd[i] *state[i].thd;
+      fac*controller_gain_th[i]*(rest[i].th - state[i].th) - 
+      sqrt(fac)*controller_gain_thd[i] *state[i].thd;
   }
   mat_vec_mult(O,e,en);
 
