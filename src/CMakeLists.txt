@@ -43,7 +43,8 @@ include_directories(BEFORE ../src)
 
 set(SRCS_XTASK
 	initUserTasks.c
-	sample_task.c 
+	sample_task.c
+	gravcomp_task.c 
 	sample_task_cpp.cpp
 	qfsp_task.c	
 	)

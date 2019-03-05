@@ -43,7 +43,9 @@ initUserTasks(void)
 
 {
   extern void add_qfsp_task();
+  extern void add_gravcomp_task();
 
+  add_gravcomp_task();
   add_qfsp_task();
 
   //sprintf(initial_user_command,"go0");
