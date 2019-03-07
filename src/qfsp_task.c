@@ -2172,7 +2172,7 @@ inverseKinematicsDynDecoupNoM(SL_DJstate *state, SL_endeff *eff, SL_OJstate *res
   static double  last_t;       
   static Vector  e, en;
   //  double         ridge = 1.e-2;
-  double         ridge = 1.e-5;
+  double         ridge = 1.e-10;
 
   /* initialization of static variables */
   if (firsttime) {
