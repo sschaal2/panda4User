@@ -124,3 +124,14 @@ C_FZ
 C_MX
 C_MY
 C_MZ
+
+HAND_corient_e1
+HAND_corient_e2
+HAND_corient_e3
+
+HAND_cart_ref_x
+HAND_cart_ref_y
+HAND_cart_ref_z
+HAND_cart_ref_a
+HAND_cart_ref_b
+HAND_cart_ref_g

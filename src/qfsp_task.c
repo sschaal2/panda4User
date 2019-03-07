@@ -295,6 +295,21 @@ init_qfsp_task(void)
       addVarToCollect((char *)&(corient_error[(i-1)*3 + _B_]),string,"-", DOUBLE,FALSE);
       sprintf(string,"%s_corient_e3",cart_names[i]);
       addVarToCollect((char *)&(corient_error[(i-1)*3 + _G_]),string,"-", DOUBLE,FALSE);
+
+      sprintf(string,"%s_cart_ref_x",cart_names[i]);
+      addVarToCollect((char *)&(cart[(i-1)*6 + 1]),string,"-", DOUBLE,FALSE);
+      sprintf(string,"%s_cart_ref_y",cart_names[i]);
+      addVarToCollect((char *)&(cart[(i-1)*6 + 2]),string,"-", DOUBLE,FALSE);
+      sprintf(string,"%s_cart_ref_z",cart_names[i]);
+      addVarToCollect((char *)&(cart[(i-1)*6 + 3]),string,"-", DOUBLE,FALSE);
+      sprintf(string,"%s_cart_ref_a",cart_names[i]);
+      addVarToCollect((char *)&(cart[(i-1)*6 + 4]),string,"-", DOUBLE,FALSE);
+      sprintf(string,"%s_cart_ref_b",cart_names[i]);
+      addVarToCollect((char *)&(cart[(i-1)*6 + 5]),string,"-", DOUBLE,FALSE);
+      sprintf(string,"%s_cart_ref_g",cart_names[i]);
+      addVarToCollect((char *)&(cart[(i-1)*6 + 6]),string,"-", DOUBLE,FALSE);
+      
+      
     }
     
     for (i=1; i<=N_AUX; ++i) {
