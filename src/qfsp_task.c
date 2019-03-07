@@ -88,11 +88,6 @@ static int        firsttime = TRUE;
 static int        last_frame_counter;
 static double     setpoint[N_ENDEFFS+1][N_CART+1];
 static double     max_dist=0.2;
-#ifdef VX
-static int        sim_flag = FALSE;
-#else
-static int        sim_flag = TRUE;
-#endif
 static double     start_time     = 0;
 static double     gain           = 10;
 static double     gain_orient    = 10;       /* *new */
@@ -114,7 +109,7 @@ static double     kn = 2;
 static double     vaux[N_AUX+1];
 static int        scd_wait_counter;
 
-SL_VisionBlob local_blobs[MAX_BLOBS+1];
+static SL_Cstate  ball_state;
 
 static double controller_gain_th[N_DOFS+1];
 static double controller_gain_thd[N_DOFS+1];
@@ -336,9 +331,6 @@ init_qfsp_task(void)
   }
   get_int("Which Controller?",INVKIN_MODE,&INVKIN_MODE);
 
-  /* simulation ? */
-  get_int("Simulate target?",sim_flag,&sim_flag);
-
   if (INVKIN_MODE==INVKIN_VEL_COMP_TORQUE || INVKIN_MODE==INVKIN_VEL_INV_DYN){
   /* input the movement gain */
     do{
@@ -360,30 +352,25 @@ init_qfsp_task(void)
   }
 
   /* ball speed */
-  if (sim_flag){
-
-    do{
-      get_double("Simulated ball speed (0.0-5.0)",ball_speed,&ball_speed);
-    } while (ball_speed < 0 || ball_speed > 5);
-    
-    do{
-      get_double("Simulated ball amplitude (0.0-2.0)",ball_amp,&ball_amp);
-    } while (ball_amp < 0 || ball_amp > 2);
-    
-    do{
+  do{
+    get_double("Simulated ball speed (0.0-5.0)",ball_speed,&ball_speed);
+  } while (ball_speed < 0 || ball_speed > 5);
+  
+  do{
+    get_double("Simulated ball amplitude (0.0-2.0)",ball_amp,&ball_amp);
+  } while (ball_amp < 0 || ball_amp > 2);
+  
+  do{
     get_double("Tagret rotation speed (0.0-5.0)",rot_speed,&rot_speed);
-    } while (rot_speed < 0 || rot_speed > 5);
-
-    do{
+  } while (rot_speed < 0 || rot_speed > 5);
+  
+  do{
     get_double("Target rotation amplitude (0.0-2.0)",rot_amp,&rot_amp);
-    } while (rot_amp < 0 || rot_amp > 2);
-  }
+  } while (rot_amp < 0 || rot_amp > 2);
 
   /* simulate the ball once to initialize variables */
-  if (sim_flag) {
-    start_time = task_servo_time;
-    simulate_ball();
-  }
+  start_time = task_servo_time;
+  simulate_ball();
 
   /* some randomness around the figure 8 ?*/
   get_int("Drifting?",wiggle,&wiggle);
@@ -425,14 +412,12 @@ init_qfsp_task(void)
   }
 
   /* compute the desired target orientation */
-  if (sim_flag){
-    compute_target_orient();
-  }
+  compute_target_orient();
 
-  /* initialize the blobs for the simulation */
-  blobs[1].blob.x[_X_] = setpoint[1][_X_];
-  blobs[1].blob.x[_Y_] = setpoint[1][_Y_];
-  blobs[1].blob.x[_Z_] = setpoint[1][_Z_];
+  /* initialize the ball simulator */
+  ball_state.x[_X_] = setpoint[1][_X_];
+  ball_state.x[_Y_] = setpoint[1][_Y_];
+  ball_state.x[_Z_] = setpoint[1][_Z_];
   
   /* ready to go */
   ans = 999;
@@ -488,21 +473,14 @@ run_qfsp_task(void)
   double dist;
   double aux;
 
-  // hack the frame counter
-  frame_counter = (int)(task_servo_calls/8);
-  blobs[1] = local_blobs[1];
-
   /* simulate the ball if needed */
-  if (sim_flag){
-    simulate_ball();
-    compute_target_orient(); /* compute target orientation */
-  }
+  simulate_ball();
+  compute_target_orient(); /* compute target orientation */
 
   if (--wait_ticks > 0) {
     return TRUE;
   } else if (wait_ticks == 0) {
     start_time = task_servo_time;
-    //    scd(); // wait scd
   }
 
   if (scd_wait_counter==0){
@@ -510,109 +488,58 @@ run_qfsp_task(void)
   }
   scd_wait_counter--;
 
-  /* check for new vision targets and update ctarget if needed */ 
-  if (last_frame_counter != frame_counter) {
-    last_frame_counter = frame_counter;
-    count_no_frame = 0;
+  // increase the gain gradually 
+  gain_trans += 0.01*(1-gain_trans);
 
-    if (blobs[1].status) {
+  for (i=1; i<=N_ENDEFFS; ++i) {
 
-      // increase the gain gradually 
-      gain_trans += 0.02*(1-gain_trans);
+    // check distance to target
+    dist = sqrt(sqr(ball_state.x[_X_] - setpoint[i][_X_]) +
+		sqr(ball_state.x[_Y_] - setpoint[i][_Y_]) +
+		sqr(ball_state.x[_Z_] - setpoint[i][_Z_]));
+    
+    if ( dist < max_dist) {
 
-      for (i=1; i<=N_ENDEFFS; ++i) {
-
-	// check distance to target
-	dist = sqrt(sqr(blobs[1].blob.x[_X_] - setpoint[i][_X_]) +
-		    sqr(blobs[1].blob.x[_Y_] - setpoint[i][_Y_]) +
-		    sqr(blobs[1].blob.x[_Z_] - setpoint[i][_Z_]));
-
-	if ( dist < max_dist) {
-
-	  for (j= _X_; j<= _Z_; ++j) {	
-	    ctarget[i].xdd[j] = blobs[1].blob.xdd[j];
-	    ctarget[i].xd[j]  = blobs[1].blob.xd[j];
-	    ctarget[i].x[j]   = blobs[1].blob.x[j];
-	  }
-
-	} else {
-
-	  // project the target onto the workspace sphere
-	  for (j= _X_; j<= _Z_; ++j) {
-	    ctarget[i].xdd[j] = blobs[1].blob.xdd[j];
-	    ctarget[i].xd[j]  = blobs[1].blob.xd[j];
-	    ctarget[i].x[j] = setpoint[i][j] + 
-	      (blobs[1].blob.x[j] - setpoint[i][j])*max_dist/dist;
-	  }	
-
-	  // inner product of normalized (x-setpoint) and xd gives the velocity
-	  // component that is perpendicular to the workspace sphere
-	  aux = 0.0;
-	  for (j= _X_; j<= _Z_; ++j) {
-	    aux += (ctarget[i].x[j] - setpoint[i][j])/max_dist *  ctarget[i].xd[j];
-	  }
-	  // subtract the perpendicular component from velocity with a 
-	  // smoothing factor
-	  for (j= _X_; j<= _Z_; ++j) {
-	    ctarget[i].xd[j] -= (ctarget[i].x[j] - setpoint[i][j])/
-	      max_dist * aux * (1.-max_dist/dist);
-	  }
-	  // the same approache for accelerations
-	  aux = 0.0;
-	  for (j= _X_; j<= _Z_; ++j) {
-	    aux += (ctarget[i].x[j] - setpoint[i][j])/max_dist *  ctarget[i].xdd[j];
-	  }
-	  for (j= _X_; j<= _Z_; ++j) {
-	    ctarget[i].xdd[j] -= (ctarget[i].x[j] - setpoint[i][j])/
-	      max_dist * aux * (1.-max_dist/dist);
-	  }
-	}
+      for (j= _X_; j<= _Z_; ++j) {	
+	ctarget[i].xdd[j] = ball_state.xdd[j];
+	ctarget[i].xd[j]  = ball_state.xd[j];
+	ctarget[i].x[j]   = ball_state.x[j];
       }
-
-    } else { /* status of blob is not TRUE */
-
-      // reset the gain counter
-      gain_trans = START_GAIN;
-      
-      // go for the last visiable location of the blob, and zero
-      // all velocities and accelerations
-      for (i=1; i<=N_ENDEFFS; ++i) {
-	for (j= _X_; j<= _Z_; ++j) {	
-	  blobs[1].blob.xdd[j] = 0.0;
-	  blobs[1].blob.xd[j]  = 0.0;
-	  ctarget[i].xdd[j]    = blobs[1].blob.xdd[j];
-	  ctarget[i].xd[j]     = blobs[1].blob.xd[j];
-	  ctarget[i].x[j]      = blobs[1].blob.x[j];
-	}
-      }
-
-    }
-
-
-  } else {  /* frame counter was not advanced */
-
-    // kill task after a short grace period
-    if (++count_no_frame > task_servo_rate/60*10) {
-
-      freeze();
-      return FALSE;
 
     } else {
-      
-      /* integrate forward ctarget to obtain smooth velocities 
-	 despite 60Hz signals*/
 
-      for (i=1; i<=N_ENDEFFS; ++i) {
-	for (j=1; j<=N_CART; ++j) {
-	  ctarget[i].xd[j] += ctarget[i].xdd[j]*time_step;
-	  ctarget[i].x[j]  += ctarget[i].xd[j]*time_step;
-	}
+      // project the target onto the workspace sphere
+      for (j= _X_; j<= _Z_; ++j) {
+	ctarget[i].xdd[j] = ball_state.xdd[j];
+	ctarget[i].xd[j]  = ball_state.xd[j];
+	ctarget[i].x[j] = setpoint[i][j] + 
+	  (ball_state.x[j] - setpoint[i][j])*max_dist/dist;
+      }	
+
+      // inner product of normalized (x-setpoint) and xd gives the velocity
+      // component that is perpendicular to the workspace sphere
+      aux = 0.0;
+      for (j= _X_; j<= _Z_; ++j) {
+	aux += (ctarget[i].x[j] - setpoint[i][j])/max_dist *  ctarget[i].xd[j];
       }
-
-
+      // subtract the perpendicular component from velocity with a 
+      // smoothing factor
+      for (j= _X_; j<= _Z_; ++j) {
+	ctarget[i].xd[j] -= (ctarget[i].x[j] - setpoint[i][j])/
+	  max_dist * aux * (1.-max_dist/dist);
+      }
+      // the same approache for accelerations
+      aux = 0.0;
+      for (j= _X_; j<= _Z_; ++j) {
+	aux += (ctarget[i].x[j] - setpoint[i][j])/max_dist *  ctarget[i].xdd[j];
+      }
+      for (j= _X_; j<= _Z_; ++j) {
+	ctarget[i].xdd[j] -= (ctarget[i].x[j] - setpoint[i][j])/
+	  max_dist * aux * (1.-max_dist/dist);
+      }
     }
 
-  } // end of frame counter check
+  } 
 
   // the inverse kinematics controller needs the current state as input;
   // the is no notion of a desire joint state, i.e., it is equal to the
@@ -1103,25 +1030,22 @@ change_qfsp_task(void)
 
   }
 
-  //  get_double("Simulated ball speed",ball_speed,&ball_speed);
-    if (sim_flag){
-    do{
+  //  ball simulation parameters
+  do{
     get_double("Simulated ball speed (0.0-5.0)",ball_speed,&ball_speed);
-    } while (ball_speed < 0 || ball_speed > 5);
-
-    do{
+  } while (ball_speed < 0 || ball_speed > 5);
+  
+  do{
     get_double("Simulated ball amplitude (0.0-2.0)",ball_amp,&ball_amp);
-    } while (ball_amp < 0 || ball_amp > 2.0);
-
-    do{
+  } while (ball_amp < 0 || ball_amp > 2.0);
+  
+  do{
     get_double("Taret rotation speed (0.0-5.0)",rot_speed,&rot_speed);
-    } while (rot_speed < 0 || rot_speed > 5);
-
-    do{
+  } while (rot_speed < 0 || rot_speed > 5);
+  
+  do{
     get_double("Target rotation amplitude (0.0-2.0)",rot_amp,&rot_amp);
-    } while (rot_amp < 0 || rot_amp > 2);
-
-  }  
+  } while (rot_amp < 0 || rot_amp > 2);
 
   gain_trans = START_GAIN;
 
@@ -1185,8 +1109,6 @@ static int
 simulate_ball(void)
 {
   int j, i;
-  static int last_frame_counter = -999;
-  static int sendflag = FALSE;
   double w1,w2,w3,w4;
   double dt;
 
@@ -1196,36 +1118,28 @@ simulate_ball(void)
   w4 = 2.*PI*0.145633;
   dt = task_servo_time-start_time;
 
-  local_blobs[BLOB1].status = TRUE;
-
-  local_blobs[BLOB1].blob.x[_Y_] = ball_amp*0.15*sin(w1*dt) + 
+  ball_state.x[_Y_] = ball_amp*0.15*sin(w1*dt) + 
     setpoint[1][_Y_] + ball_amp*wiggle * 0.05*sin(w2*dt);
-  local_blobs[BLOB1].blob.x[_X_] = setpoint[1][_X_] + ball_amp*wiggle * 0.05 * sin(w3*dt);
-  local_blobs[BLOB1].blob.x[_Z_] = ball_amp*0.1*sin(2.*w1*dt) + setpoint[1][_Z_] + ball_amp*wiggle * 0.03*sin(w4*dt);
+  ball_state.x[_X_] = setpoint[1][_X_] + ball_amp*wiggle * 0.05 * sin(w3*dt);
+  ball_state.x[_Z_] = ball_amp*0.1*sin(2.*w1*dt) + setpoint[1][_Z_] + ball_amp*wiggle * 0.03*sin(w4*dt);
 
-  local_blobs[BLOB1].blob.xd[_Y_] = ball_amp*0.15*w1*cos(w1*dt) + ball_amp*wiggle * 0.05*w2*cos(w2*dt);
-  local_blobs[BLOB1].blob.xd[_X_] = ball_amp*wiggle * 0.05 * w3*cos(w3*dt);
-  local_blobs[BLOB1].blob.xd[_Z_] = ball_amp*0.1*2*w1*cos(2.*w1*dt) + ball_amp*wiggle * 0.03*w4*cos(w4*dt);
+  ball_state.xd[_Y_] = ball_amp*0.15*w1*cos(w1*dt) + ball_amp*wiggle * 0.05*w2*cos(w2*dt);
+  ball_state.xd[_X_] = ball_amp*wiggle * 0.05 * w3*cos(w3*dt);
+  ball_state.xd[_Z_] = ball_amp*0.1*2*w1*cos(2.*w1*dt) + ball_amp*wiggle * 0.03*w4*cos(w4*dt);
 
-  local_blobs[BLOB1].blob.xdd[_Y_] = -0.15*ball_amp*sqr(w1)*sin(w1*dt) - ball_amp*wiggle * 0.05*sqr(w2)*sin(w2*dt);
-  local_blobs[BLOB1].blob.xdd[_X_] = -wiggle * ball_amp*0.05 * sqr(w3)*sin(w3*dt);
-  local_blobs[BLOB1].blob.xdd[_Z_] = -0.1*ball_amp*sqr(2*w1)*sin(2.*w1*dt) - ball_amp*wiggle * 0.03*sqr(w4)*sin(w4*dt);
-
-  if (sendflag) {
+  ball_state.xdd[_Y_] = -0.15*ball_amp*sqr(w1)*sin(w1*dt) - ball_amp*wiggle * 0.05*sqr(w2)*sin(w2*dt);
+  ball_state.xdd[_X_] = -wiggle * ball_amp*0.05 * sqr(w3)*sin(w3*dt);
+  ball_state.xdd[_Z_] = -0.1*ball_amp*sqr(2*w1)*sin(2.*w1*dt) - ball_amp*wiggle * 0.03*sqr(w4)*sin(w4*dt);
+  
+  // send ball at lower frequency
+  if (task_servo_calls%8==0) {
     float pos[N_CART+1];
  
-    sendflag = FALSE;
-
-    pos[_X_] =  local_blobs[BLOB1].blob.x[_X_];
-    pos[_Y_] =  local_blobs[BLOB1].blob.x[_Y_];
-    pos[_Z_] =  local_blobs[BLOB1].blob.x[_Z_];
+    pos[_X_] =  ball_state.x[_X_];
+    pos[_Y_] =  ball_state.x[_Y_];
+    pos[_Z_] =  ball_state.x[_Z_];
 
     sendUserGraphics("ball",&(pos[_X_]), N_CART*sizeof(float));
-  }
-
-  if (last_frame_counter != frame_counter) {
-    sendflag = TRUE;
-    last_frame_counter = frame_counter;
   }
 
   return TRUE;
@@ -2172,7 +2086,7 @@ inverseKinematicsDynDecoupNoM(SL_DJstate *state, SL_endeff *eff, SL_OJstate *res
   static double  last_t;       
   static Vector  e, en;
   //  double         ridge = 1.e-2;
-  double         ridge = 1.e-10;
+  double         ridge = 1.e-8;
 
   /* initialization of static variables */
   if (firsttime) {
