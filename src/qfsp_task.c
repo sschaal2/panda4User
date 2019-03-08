@@ -28,6 +28,7 @@ Remarks:
 /* defines */
 #define  START_GAIN 0.0 // START_GAIN 0.0
 enum Controllers {
+  CART_IMPEDANCE_SIMPLE_JT,
   INVKIN_VEL_COMP_TORQUE,
   INVKIN_VEL_INV_DYN,
   HSU,
@@ -40,6 +41,7 @@ enum Controllers {
 };
 
 static char controller_names[][30] = {
+  {"Cart.Impedance with simple J'"},
   {"Vel.Inv.Kin+Computed Torque"},
   {"Vel.Inv.Kin+Inv.Dyn"},
   {"Hsu"},
@@ -50,7 +52,7 @@ static char controller_names[][30] = {
   {"Acc.+Force no M (Simple Hsu)"}
 };
 
-static int INVKIN_MODE = INVKIN_VEL_COMP_TORQUE;
+static int INVKIN_MODE = CART_IMPEDANCE_SIMPLE_JT;
 
 // variables for filtering
 #define FILTER_ORDER 2
@@ -99,6 +101,7 @@ static double     rot_speed      = 0.0;       /* orientation speed *new */
 static int        count_no_frame = 0;
 static int        use_invdyn     = TRUE;
 static int        wiggle         = FALSE;
+static int        use_orient     = TRUE;
 static int        wait_ticks;
 static double     ralpha = 0.05; // ralpha for HSU
 // static double     ralpha = 0.005; 
@@ -138,6 +141,11 @@ inverseKinematicsDynDecoupM(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
 static int
 inverseKinematicsDynDecoupNoM(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
 			Vector cart, iVector status, double dt, double t);
+
+static int
+cartesianImpedanceSimpleJt(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
+			   Vector cart, iVector status, double dt, double t);
+
 
 static int    init_qfsp_task(void);
 static int    run_qfsp_task(void);
@@ -346,24 +354,31 @@ init_qfsp_task(void)
   }
   get_int("Which Controller?",INVKIN_MODE,&INVKIN_MODE);
 
+  get_int("Use Orientation?",use_orient,&use_orient);
+  if (use_orient!=1 && use_orient !=0) 
+    use_orient = 0;
+
+
   if (INVKIN_MODE==INVKIN_VEL_COMP_TORQUE || INVKIN_MODE==INVKIN_VEL_INV_DYN){
   /* input the movement gain */
     do{
       get_double("Tracking Gain? (0-20)",gain,&gain);
     } while (gain > 20 || gain < 0);
 
-    do{
-      get_double("Orientation Gain? (0-100)",gain_orient,&gain_orient);
-    } while  (gain_orient > 100 || gain_orient < 0);
+    if (use_orient) 
+      do{
+	get_double("Orientation Gain? (0-100)",gain_orient,&gain_orient);
+      } while  (gain_orient > 100 || gain_orient < 0);
   }
   else{
     do{
-      get_double("Tracking Gain? (0-60)",gain,&gain);
-    } while (gain > 60 || gain < 0);
+      get_double("Tracking Gain? (0-200)",gain,&gain);
+    } while (gain > 200 || gain < 0);
 
-    do{
-      get_double("Orientation Gain? (0-1000)",gain_orient,&gain_orient);
-    } while  (gain_orient > 1000 || gain_orient < 0);
+    if (use_orient) 
+      do{
+	get_double("Orientation Gain? (0-1000)",gain_orient,&gain_orient);
+      } while  (gain_orient > 1000 || gain_orient < 0);
   }
 
   /* ball speed */
@@ -407,6 +422,7 @@ init_qfsp_task(void)
     return FALSE;
 
   /* initialize the cartesian movement */
+  bzero((char *)&stats,sizeof(stats));
   for (i=1; i<=N_ENDEFFS; ++i) {
     stats[(i-1)*6+ _X_] = 1;
     stats[(i-1)*6+ _Y_] = 1;
@@ -421,9 +437,9 @@ init_qfsp_task(void)
   
   /* initialize the cartesian orientation movement */
   for (i=1; i<=N_ENDEFFS; ++i) {
-    stats[(i-1)*6+ _A_ + N_CART] = 1; /* index 4 */
-    stats[(i-1)*6+ _B_ + N_CART] = 1; /* index 5 */
-    stats[(i-1)*6+ _G_ + N_CART] = 1; /* index 6 */
+    stats[(i-1)*6+ _A_ + N_CART] = use_orient; /* index 4 */
+    stats[(i-1)*6+ _B_ + N_CART] = use_orient; /* index 5 */
+    stats[(i-1)*6+ _G_ + N_CART] = use_orient; /* index 6 */
   }
 
   /* compute the desired target orientation */
@@ -504,7 +520,7 @@ run_qfsp_task(void)
   scd_wait_counter--;
 
   // increase the gain gradually 
-  gain_trans += 0.01*(1-gain_trans);
+  gain_trans += 0.001*(1-gain_trans);
 
   for (i=1; i<=N_ENDEFFS; ++i) {
 
@@ -569,6 +585,55 @@ run_qfsp_task(void)
   quatErrorVector(ctarget_quat[1].q,cart_orient[1].q,corient_error);
   
   switch (INVKIN_MODE) {
+
+  case CART_IMPEDANCE_SIMPLE_JT:
+
+    // prepare the impdance controller, i.e., compute operational
+    // space force command 
+    for (i=1; i<=N_ENDEFFS; ++i) {
+      for (j= _X_; j<= _Z_; ++j) {
+	if (stats[(i-1)*6+j]) {
+	  cart[(i-1)*6+j] = 
+	    ((ctarget[i].xd[j]  - cart_state[i].xd[j]) * 0.5 * 2.*sqrt(gain) +
+	     (ctarget[i].x[j]  - cart_state[i].x[j]) * gain) * gain_trans;
+	}
+      }
+
+      for (j= _A_; j<= _G_ ; ++j) { /* orientation */
+	if (stats[(i-1)*6+ N_CART + j]) {
+	  cart[(i-1)*6 + N_CART + j] = 
+	    ((ctarget_quat[i].ad[j] - cart_orient[i].ad[j])* 2.0 * sqrt(gain_orient) - 
+	    corient_error[(i-1)*3+j] * gain_orient) * gain_trans; 
+	}
+      }
+
+    }
+    
+    // this computes the joint space torque
+    if (!cartesianImpedanceSimpleJt(target,endeff,joint_opt_state,
+				    cart,stats,time_step,task_servo_time)) {
+      freeze();
+      return FALSE;
+    }
+
+    for (i=1; i<=N_DOFS; ++i) {
+      joint_des_state[i].thdd  = 0.0;
+      joint_des_state[i].thd   = joint_state[i].thd;
+      joint_des_state[i].th    = joint_state[i].th;
+      joint_des_state[i].uff   = 0.0;
+    }
+    
+    // well, without inverse dynamics, this controller doesnot work
+    if (use_invdyn) 
+      SL_InvDyn(joint_state,joint_des_state,endeff,&base_state,&base_orient);
+
+    // add feedforward torques from impedance controller
+    for (i=1; i<=N_DOFS; ++i) {
+      joint_des_state[i].uff   += target[i].uff;
+    }
+
+    
+    break;
 
   case DYN_DECOUP_M:
     
@@ -726,7 +791,7 @@ run_qfsp_task(void)
 	if (stats[(i-1)*6+j]) {
 	  cart[(i-1)*6+j] = 
 	    (ctarget[i].xdd[j] + 
-	     (ctarget[i].xd[j]  - cart_state[i].xd[j]) * 0.5 * 2.*sqrt(gain) +
+	     (ctarget[i].xd[j]  - cart_state[i].xd[j]) * 2.0 * 2.0*sqrt(gain) +
 	     (ctarget[i].x[j]  - cart_state[i].x[j]) * gain) * gain_trans;
 	}
       }
@@ -735,7 +800,7 @@ run_qfsp_task(void)
 	if (stats[(i-1)*6+ N_CART + j]) {
 	  cart[(i-1)*6 + N_CART + j] = 
 	    (ctarget_quat[i].add[j] + 
-	     (ctarget_quat[i].ad[j] - cart_orient[i].ad[j])* 2.0 * sqrt(gain_orient) + 
+	     (ctarget_quat[i].ad[j] - cart_orient[i].ad[j])* 2.0 * sqrt(gain_orient) +
 	     - corient_error[(i-1)*3+j] * gain_orient) * gain_trans; 
 	}
       }
@@ -2214,12 +2279,172 @@ inverseKinematicsDynDecoupNoM(SL_DJstate *state, SL_endeff *eff, SL_OJstate *res
 
   /* return this as a PD command in uff */
   for (i=1; i<=N_DOFS-N_DOFS_EST_SKIP; ++i) {
-    state[i].uff = en[i]; 
+    state[i].uff = en[i]*0; 
   }
 
   return TRUE;
 
 }
+
+/*****************************************************************************
+******************************************************************************
+Function Name	: cartesianImpedanceSimpleJt
+Date		: March 2019
+   
+Remarks:
+
+        computes a very simple Jacobian transpose impedance controller without
+        any dynamics model
+        
+******************************************************************************
+Paramters:  (i/o = input/output)
+
+     state   (i/o): the state of the robot (given as a desired state; note
+                    that this desired state coincides with the true state of
+                    the robot, as the joint space PD controller is replaced
+                    by the Cartesian controller)
+     endeff  (i)  : the endeffector parameters
+     rest    (i)  : the optimization posture
+     cart    (i)  : the desired cartesian accelerations (trans & rot)
+     status  (i)  : which rows to use from the Jacobian
+     dt      (i)  : the integration time step     
+     t       (i)  : the current time -- important for safe numerical 
+                    differntiation of the Jacobian
+
+ the function updates the state by adding the appropriate feedforward torques
+
+*****************************************************************************/
+static int
+cartesianImpedanceSimpleJt(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
+			   Vector cart, iVector status, double dt, double t)
+{
+  
+  int            i,j,n,m;
+  int            count;
+  static Matrix  O, P, B;
+  static Matrix  M, invM;
+  static iVector ind;
+  static Vector  dJdtthd;
+  static int     firsttime = TRUE;
+  static double  last_t;       
+  static Vector  e, en;
+  double         ridge = 1.e-8;
+
+  /* initialization of static variables */
+  if (firsttime) {
+    firsttime = FALSE;
+    P      = my_matrix(1,6*N_ENDEFFS,1,6*N_ENDEFFS);
+    B      = my_matrix(1,N_DOFS,1,6*N_ENDEFFS);
+    ind    = my_ivector(1,6*N_ENDEFFS);
+    O      = my_matrix(1,N_DOFS,1,N_DOFS);
+    dJdtthd = my_vector(1,6*N_ENDEFFS);
+    e      = my_vector(1,N_DOFS);
+    en     = my_vector(1,N_DOFS);
+    invM   = my_matrix(1,N_DOFS,1,N_DOFS);
+  }
+
+  /* how many contrained cartesian DOFs do we have? */
+  count = 0;
+  for (i=1; i<=6*N_ENDEFFS; ++i) {
+    if (status[i]) {
+      ++count;
+      ind[count] = i;
+    }
+  }
+
+  /* build the pseudo-inverse according to the status information */
+  mat_zero(P);
+  for (i=1; i<=count; ++i) {
+    for (j=i; j<=count; ++j) {
+      for (n=1; n<=N_DOFS; ++n) {
+	P[i][j] += J[ind[i]][n] * J[ind[j]][n];
+      }
+      if (i==j) 
+	P[i][j] += ridge;
+      P[j][i] = P[i][j];
+    }
+  }
+
+  /* invert the matrix */
+  if (!my_inv_ludcmp(P, count, P)) {
+    return FALSE;
+  }
+
+  /* build the B matrix, i.e., the pseudo-inverse */
+  for (i=1; i<=N_DOFS; ++i) {
+    for (j=1; j<=count; ++j) {
+      B[i][j]=0.0;
+      for (n=1; n<=count; ++n) {
+	B[i][j] += J[ind[n]][i] * P[n][j];
+      }
+    }
+  }
+
+  /* the simple cartesion impedance controller only uses J-trans */
+  for (i=1; i<=N_DOFS; ++i) {
+    state[i].uff = 0;
+    for (j=1; j<=count; ++j) {
+      state[i].uff += J[ind[j]][i] * cart[ind[j]];
+    }
+  }
+
+  /**********************/
+  /* the null space term */
+  /**********************/
+
+  /* compute the NULL space projection matrix; note that it is computationally
+     inefficient to do this, since this is O(d^2), while all we really need is
+     some matrix-vector multiplications, which are much cheaper */
+  for (i=1; i<=N_DOFS; ++i) {
+    for (j=i; j<=N_DOFS; ++j) {
+      if (i==j) 
+	O[i][j] = 1.0;
+      else
+	O[i][j] = 0.0;
+      for (n=1; n<=count; ++n) {
+	O[i][j] -= B[i][n] * J[ind[n]][j];
+      }
+      O[j][i] = O[i][j];
+    }
+  }
+
+  /* compute the PD term for the Null space  */
+  for (i=1; i<=N_DOFS; ++i) {
+    double fac=0.5;
+    e[i] = 
+      fac*controller_gain_th[i]*(rest[i].th - state[i].th) - 
+      sqrt(fac)*controller_gain_thd[i] *state[i].thd;
+    vaux[i] = e[i];
+  }
+  mat_vec_mult(O,e,en);
+
+  /* return this as a PD command in uff */
+  for (i=1; i<=N_DOFS; ++i) {
+    state[i].uff += en[i];
+    vaux[i+7] = en[i];
+  }
+
+  // data visualization only 
+  if (1) {
+    // compute inertia matrix and its inverse
+    M = SL_inertiaMatrix(joint_state, &base_state, &base_orient, endeff);
+    my_inv_ludcmp(M, N_DOFS-N_DOFS_EST_SKIP, invM);
+    mat_vec_mult_size(invM,N_DOFS-N_DOFS_EST_SKIP,N_DOFS-N_DOFS_EST_SKIP,
+		      en,N_DOFS-N_DOFS_EST_SKIP,
+		      en);
+
+    for (i=1; i<=count; ++i) {
+      vaux[i+14] = 0.0;
+      for (j=1; j<=N_DOFS; ++j)
+	vaux[i+14] += J[ind[i]][j]*en[j];
+    }
+
+  }
+
+  return TRUE;
+
+}
+
 
 /*****************************************************************************
 ******************************************************************************
@@ -2289,7 +2514,7 @@ init_filters(void)
 
 {
   
-  int i,j;
+  int i,j,rc;
   FILE *filterfile;
   int count_v=0, count_r=0;
   char string[100];
@@ -2312,12 +2537,12 @@ init_filters(void)
     ++count_r;
     for (j=0; j<= FILTER_ORDER; ++j) {
       ++count_v;
-      fscanf(filterfile,"%f",&(filters_a[i][j]));
+      rc=fscanf(filterfile,"%f",&(filters_a[i][j]));
     }
     
     for (j=0; j<= FILTER_ORDER; ++j) {
       ++count_v;
-      fscanf(filterfile,"%f",&(filters_b[i][j]));
+      rc=fscanf(filterfile,"%f",&(filters_b[i][j]));
     }
   }
   
