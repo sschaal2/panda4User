@@ -28,6 +28,7 @@ Remarks:
 /* defines */
 #define  START_GAIN 0.0 // START_GAIN 0.0
 enum Controllers {
+  CART_IMPEDANCE_SIMPLE_JT,
   INVKIN_VEL_COMP_TORQUE,
   INVKIN_VEL_INV_DYN,
   HSU,
@@ -40,6 +41,7 @@ enum Controllers {
 };
 
 static char controller_names[][30] = {
+  {"Cart.Impedance with simple J'"},
   {"Vel.Inv.Kin+Computed Torque"},
   {"Vel.Inv.Kin+Inv.Dyn"},
   {"Hsu"},
@@ -50,7 +52,7 @@ static char controller_names[][30] = {
   {"Acc.+Force no M (Simple Hsu)"}
 };
 
-static int INVKIN_MODE = INVKIN_VEL_COMP_TORQUE;
+static int INVKIN_MODE = CART_IMPEDANCE_SIMPLE_JT;
 
 // variables for filtering
 #define FILTER_ORDER 2
@@ -88,11 +90,6 @@ static int        firsttime = TRUE;
 static int        last_frame_counter;
 static double     setpoint[N_ENDEFFS+1][N_CART+1];
 static double     max_dist=0.2;
-#ifdef VX
-static int        sim_flag = FALSE;
-#else
-static int        sim_flag = TRUE;
-#endif
 static double     start_time     = 0;
 static double     gain           = 10;
 static double     gain_orient    = 10;       /* *new */
@@ -104,6 +101,7 @@ static double     rot_speed      = 0.0;       /* orientation speed *new */
 static int        count_no_frame = 0;
 static int        use_invdyn     = TRUE;
 static int        wiggle         = FALSE;
+static int        use_orient     = TRUE;
 static int        wait_ticks;
 static double     ralpha = 0.05; // ralpha for HSU
 // static double     ralpha = 0.005; 
@@ -114,7 +112,7 @@ static double     kn = 2;
 static double     vaux[N_AUX+1];
 static int        scd_wait_counter;
 
-SL_VisionBlob local_blobs[MAX_BLOBS+1];
+static SL_Cstate  ball_state;
 
 static double controller_gain_th[N_DOFS+1];
 static double controller_gain_thd[N_DOFS+1];
@@ -143,6 +141,11 @@ inverseKinematicsDynDecoupM(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
 static int
 inverseKinematicsDynDecoupNoM(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
 			Vector cart, iVector status, double dt, double t);
+
+static int
+cartesianImpedanceSimpleJt(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
+			   Vector cart, iVector status, double dt, double t);
+
 
 static int    init_qfsp_task(void);
 static int    run_qfsp_task(void);
@@ -300,6 +303,21 @@ init_qfsp_task(void)
       addVarToCollect((char *)&(corient_error[(i-1)*3 + _B_]),string,"-", DOUBLE,FALSE);
       sprintf(string,"%s_corient_e3",cart_names[i]);
       addVarToCollect((char *)&(corient_error[(i-1)*3 + _G_]),string,"-", DOUBLE,FALSE);
+
+      sprintf(string,"%s_cart_ref_x",cart_names[i]);
+      addVarToCollect((char *)&(cart[(i-1)*6 + 1]),string,"-", DOUBLE,FALSE);
+      sprintf(string,"%s_cart_ref_y",cart_names[i]);
+      addVarToCollect((char *)&(cart[(i-1)*6 + 2]),string,"-", DOUBLE,FALSE);
+      sprintf(string,"%s_cart_ref_z",cart_names[i]);
+      addVarToCollect((char *)&(cart[(i-1)*6 + 3]),string,"-", DOUBLE,FALSE);
+      sprintf(string,"%s_cart_ref_a",cart_names[i]);
+      addVarToCollect((char *)&(cart[(i-1)*6 + 4]),string,"-", DOUBLE,FALSE);
+      sprintf(string,"%s_cart_ref_b",cart_names[i]);
+      addVarToCollect((char *)&(cart[(i-1)*6 + 5]),string,"-", DOUBLE,FALSE);
+      sprintf(string,"%s_cart_ref_g",cart_names[i]);
+      addVarToCollect((char *)&(cart[(i-1)*6 + 6]),string,"-", DOUBLE,FALSE);
+      
+      
     }
     
     for (i=1; i<=N_AUX; ++i) {
@@ -336,8 +354,10 @@ init_qfsp_task(void)
   }
   get_int("Which Controller?",INVKIN_MODE,&INVKIN_MODE);
 
-  /* simulation ? */
-  get_int("Simulate target?",sim_flag,&sim_flag);
+  get_int("Use Orientation?",use_orient,&use_orient);
+  if (use_orient!=1 && use_orient !=0) 
+    use_orient = 0;
+
 
   if (INVKIN_MODE==INVKIN_VEL_COMP_TORQUE || INVKIN_MODE==INVKIN_VEL_INV_DYN){
   /* input the movement gain */
@@ -345,45 +365,42 @@ init_qfsp_task(void)
       get_double("Tracking Gain? (0-20)",gain,&gain);
     } while (gain > 20 || gain < 0);
 
-    do{
-      get_double("Orientation Gain? (0-100)",gain_orient,&gain_orient);
-    } while  (gain_orient > 100 || gain_orient < 0);
+    if (use_orient) 
+      do{
+	get_double("Orientation Gain? (0-100)",gain_orient,&gain_orient);
+      } while  (gain_orient > 100 || gain_orient < 0);
   }
   else{
     do{
-      get_double("Tracking Gain? (0-60)",gain,&gain);
-    } while (gain > 60 || gain < 0);
+      get_double("Tracking Gain? (0-200)",gain,&gain);
+    } while (gain > 200 || gain < 0);
 
-    do{
-      get_double("Orientation Gain? (0-1000)",gain_orient,&gain_orient);
-    } while  (gain_orient > 1000 || gain_orient < 0);
+    if (use_orient) 
+      do{
+	get_double("Orientation Gain? (0-1000)",gain_orient,&gain_orient);
+      } while  (gain_orient > 1000 || gain_orient < 0);
   }
 
   /* ball speed */
-  if (sim_flag){
-
-    do{
-      get_double("Simulated ball speed (0.0-5.0)",ball_speed,&ball_speed);
-    } while (ball_speed < 0 || ball_speed > 5);
-    
-    do{
-      get_double("Simulated ball amplitude (0.0-2.0)",ball_amp,&ball_amp);
-    } while (ball_amp < 0 || ball_amp > 2);
-    
-    do{
+  do{
+    get_double("Simulated ball speed (0.0-5.0)",ball_speed,&ball_speed);
+  } while (ball_speed < 0 || ball_speed > 5);
+  
+  do{
+    get_double("Simulated ball amplitude (0.0-2.0)",ball_amp,&ball_amp);
+  } while (ball_amp < 0 || ball_amp > 2);
+  
+  do{
     get_double("Tagret rotation speed (0.0-5.0)",rot_speed,&rot_speed);
-    } while (rot_speed < 0 || rot_speed > 5);
-
-    do{
+  } while (rot_speed < 0 || rot_speed > 5);
+  
+  do{
     get_double("Target rotation amplitude (0.0-2.0)",rot_amp,&rot_amp);
-    } while (rot_amp < 0 || rot_amp > 2);
-  }
+  } while (rot_amp < 0 || rot_amp > 2);
 
   /* simulate the ball once to initialize variables */
-  if (sim_flag) {
-    start_time = task_servo_time;
-    simulate_ball();
-  }
+  start_time = task_servo_time;
+  simulate_ball();
 
   /* some randomness around the figure 8 ?*/
   get_int("Drifting?",wiggle,&wiggle);
@@ -405,6 +422,7 @@ init_qfsp_task(void)
     return FALSE;
 
   /* initialize the cartesian movement */
+  bzero((char *)&stats,sizeof(stats));
   for (i=1; i<=N_ENDEFFS; ++i) {
     stats[(i-1)*6+ _X_] = 1;
     stats[(i-1)*6+ _Y_] = 1;
@@ -419,20 +437,18 @@ init_qfsp_task(void)
   
   /* initialize the cartesian orientation movement */
   for (i=1; i<=N_ENDEFFS; ++i) {
-    stats[(i-1)*6+ _A_ + N_CART] = 1; /* index 4 */
-    stats[(i-1)*6+ _B_ + N_CART] = 1; /* index 5 */
-    stats[(i-1)*6+ _G_ + N_CART] = 1; /* index 6 */
+    stats[(i-1)*6+ _A_ + N_CART] = use_orient; /* index 4 */
+    stats[(i-1)*6+ _B_ + N_CART] = use_orient; /* index 5 */
+    stats[(i-1)*6+ _G_ + N_CART] = use_orient; /* index 6 */
   }
 
   /* compute the desired target orientation */
-  if (sim_flag){
-    compute_target_orient();
-  }
+  compute_target_orient();
 
-  /* initialize the blobs for the simulation */
-  blobs[1].blob.x[_X_] = setpoint[1][_X_];
-  blobs[1].blob.x[_Y_] = setpoint[1][_Y_];
-  blobs[1].blob.x[_Z_] = setpoint[1][_Z_];
+  /* initialize the ball simulator */
+  ball_state.x[_X_] = setpoint[1][_X_];
+  ball_state.x[_Y_] = setpoint[1][_Y_];
+  ball_state.x[_Z_] = setpoint[1][_Z_];
   
   /* ready to go */
   ans = 999;
@@ -488,21 +504,14 @@ run_qfsp_task(void)
   double dist;
   double aux;
 
-  // hack the frame counter
-  frame_counter = (int)(task_servo_calls/8);
-  blobs[1] = local_blobs[1];
-
   /* simulate the ball if needed */
-  if (sim_flag){
-    simulate_ball();
-    compute_target_orient(); /* compute target orientation */
-  }
+  simulate_ball();
+  compute_target_orient(); /* compute target orientation */
 
   if (--wait_ticks > 0) {
     return TRUE;
   } else if (wait_ticks == 0) {
     start_time = task_servo_time;
-    //    scd(); // wait scd
   }
 
   if (scd_wait_counter==0){
@@ -510,109 +519,58 @@ run_qfsp_task(void)
   }
   scd_wait_counter--;
 
-  /* check for new vision targets and update ctarget if needed */ 
-  if (last_frame_counter != frame_counter) {
-    last_frame_counter = frame_counter;
-    count_no_frame = 0;
+  // increase the gain gradually 
+  gain_trans += 0.001*(1-gain_trans);
 
-    if (blobs[1].status) {
+  for (i=1; i<=N_ENDEFFS; ++i) {
 
-      // increase the gain gradually 
-      gain_trans += 0.02*(1-gain_trans);
+    // check distance to target
+    dist = sqrt(sqr(ball_state.x[_X_] - setpoint[i][_X_]) +
+		sqr(ball_state.x[_Y_] - setpoint[i][_Y_]) +
+		sqr(ball_state.x[_Z_] - setpoint[i][_Z_]));
+    
+    if ( dist < max_dist) {
 
-      for (i=1; i<=N_ENDEFFS; ++i) {
-
-	// check distance to target
-	dist = sqrt(sqr(blobs[1].blob.x[_X_] - setpoint[i][_X_]) +
-		    sqr(blobs[1].blob.x[_Y_] - setpoint[i][_Y_]) +
-		    sqr(blobs[1].blob.x[_Z_] - setpoint[i][_Z_]));
-
-	if ( dist < max_dist) {
-
-	  for (j= _X_; j<= _Z_; ++j) {	
-	    ctarget[i].xdd[j] = blobs[1].blob.xdd[j];
-	    ctarget[i].xd[j]  = blobs[1].blob.xd[j];
-	    ctarget[i].x[j]   = blobs[1].blob.x[j];
-	  }
-
-	} else {
-
-	  // project the target onto the workspace sphere
-	  for (j= _X_; j<= _Z_; ++j) {
-	    ctarget[i].xdd[j] = blobs[1].blob.xdd[j];
-	    ctarget[i].xd[j]  = blobs[1].blob.xd[j];
-	    ctarget[i].x[j] = setpoint[i][j] + 
-	      (blobs[1].blob.x[j] - setpoint[i][j])*max_dist/dist;
-	  }	
-
-	  // inner product of normalized (x-setpoint) and xd gives the velocity
-	  // component that is perpendicular to the workspace sphere
-	  aux = 0.0;
-	  for (j= _X_; j<= _Z_; ++j) {
-	    aux += (ctarget[i].x[j] - setpoint[i][j])/max_dist *  ctarget[i].xd[j];
-	  }
-	  // subtract the perpendicular component from velocity with a 
-	  // smoothing factor
-	  for (j= _X_; j<= _Z_; ++j) {
-	    ctarget[i].xd[j] -= (ctarget[i].x[j] - setpoint[i][j])/
-	      max_dist * aux * (1.-max_dist/dist);
-	  }
-	  // the same approache for accelerations
-	  aux = 0.0;
-	  for (j= _X_; j<= _Z_; ++j) {
-	    aux += (ctarget[i].x[j] - setpoint[i][j])/max_dist *  ctarget[i].xdd[j];
-	  }
-	  for (j= _X_; j<= _Z_; ++j) {
-	    ctarget[i].xdd[j] -= (ctarget[i].x[j] - setpoint[i][j])/
-	      max_dist * aux * (1.-max_dist/dist);
-	  }
-	}
+      for (j= _X_; j<= _Z_; ++j) {	
+	ctarget[i].xdd[j] = ball_state.xdd[j];
+	ctarget[i].xd[j]  = ball_state.xd[j];
+	ctarget[i].x[j]   = ball_state.x[j];
       }
-
-    } else { /* status of blob is not TRUE */
-
-      // reset the gain counter
-      gain_trans = START_GAIN;
-      
-      // go for the last visiable location of the blob, and zero
-      // all velocities and accelerations
-      for (i=1; i<=N_ENDEFFS; ++i) {
-	for (j= _X_; j<= _Z_; ++j) {	
-	  blobs[1].blob.xdd[j] = 0.0;
-	  blobs[1].blob.xd[j]  = 0.0;
-	  ctarget[i].xdd[j]    = blobs[1].blob.xdd[j];
-	  ctarget[i].xd[j]     = blobs[1].blob.xd[j];
-	  ctarget[i].x[j]      = blobs[1].blob.x[j];
-	}
-      }
-
-    }
-
-
-  } else {  /* frame counter was not advanced */
-
-    // kill task after a short grace period
-    if (++count_no_frame > task_servo_rate/60*10) {
-
-      freeze();
-      return FALSE;
 
     } else {
-      
-      /* integrate forward ctarget to obtain smooth velocities 
-	 despite 60Hz signals*/
 
-      for (i=1; i<=N_ENDEFFS; ++i) {
-	for (j=1; j<=N_CART; ++j) {
-	  ctarget[i].xd[j] += ctarget[i].xdd[j]*time_step;
-	  ctarget[i].x[j]  += ctarget[i].xd[j]*time_step;
-	}
+      // project the target onto the workspace sphere
+      for (j= _X_; j<= _Z_; ++j) {
+	ctarget[i].xdd[j] = ball_state.xdd[j];
+	ctarget[i].xd[j]  = ball_state.xd[j];
+	ctarget[i].x[j] = setpoint[i][j] + 
+	  (ball_state.x[j] - setpoint[i][j])*max_dist/dist;
+      }	
+
+      // inner product of normalized (x-setpoint) and xd gives the velocity
+      // component that is perpendicular to the workspace sphere
+      aux = 0.0;
+      for (j= _X_; j<= _Z_; ++j) {
+	aux += (ctarget[i].x[j] - setpoint[i][j])/max_dist *  ctarget[i].xd[j];
       }
-
-
+      // subtract the perpendicular component from velocity with a 
+      // smoothing factor
+      for (j= _X_; j<= _Z_; ++j) {
+	ctarget[i].xd[j] -= (ctarget[i].x[j] - setpoint[i][j])/
+	  max_dist * aux * (1.-max_dist/dist);
+      }
+      // the same approache for accelerations
+      aux = 0.0;
+      for (j= _X_; j<= _Z_; ++j) {
+	aux += (ctarget[i].x[j] - setpoint[i][j])/max_dist *  ctarget[i].xdd[j];
+      }
+      for (j= _X_; j<= _Z_; ++j) {
+	ctarget[i].xdd[j] -= (ctarget[i].x[j] - setpoint[i][j])/
+	  max_dist * aux * (1.-max_dist/dist);
+      }
     }
 
-  } // end of frame counter check
+  } 
 
   // the inverse kinematics controller needs the current state as input;
   // the is no notion of a desire joint state, i.e., it is equal to the
@@ -627,6 +585,55 @@ run_qfsp_task(void)
   quatErrorVector(ctarget_quat[1].q,cart_orient[1].q,corient_error);
   
   switch (INVKIN_MODE) {
+
+  case CART_IMPEDANCE_SIMPLE_JT:
+
+    // prepare the impdance controller, i.e., compute operational
+    // space force command 
+    for (i=1; i<=N_ENDEFFS; ++i) {
+      for (j= _X_; j<= _Z_; ++j) {
+	if (stats[(i-1)*6+j]) {
+	  cart[(i-1)*6+j] = 
+	    ((ctarget[i].xd[j]  - cart_state[i].xd[j]) * 0.5 * 2.*sqrt(gain) +
+	     (ctarget[i].x[j]  - cart_state[i].x[j]) * gain) * gain_trans;
+	}
+      }
+
+      for (j= _A_; j<= _G_ ; ++j) { /* orientation */
+	if (stats[(i-1)*6+ N_CART + j]) {
+	  cart[(i-1)*6 + N_CART + j] = 
+	    ((ctarget_quat[i].ad[j] - cart_orient[i].ad[j])* 2.0 * sqrt(gain_orient) - 
+	    corient_error[(i-1)*3+j] * gain_orient) * gain_trans; 
+	}
+      }
+
+    }
+    
+    // this computes the joint space torque
+    if (!cartesianImpedanceSimpleJt(target,endeff,joint_opt_state,
+				    cart,stats,time_step,task_servo_time)) {
+      freeze();
+      return FALSE;
+    }
+
+    for (i=1; i<=N_DOFS; ++i) {
+      joint_des_state[i].thdd  = 0.0;
+      joint_des_state[i].thd   = joint_state[i].thd;
+      joint_des_state[i].th    = joint_state[i].th;
+      joint_des_state[i].uff   = 0.0;
+    }
+    
+    // well, without inverse dynamics, this controller doesnot work
+    if (use_invdyn) 
+      SL_InvDyn(joint_state,joint_des_state,endeff,&base_state,&base_orient);
+
+    // add feedforward torques from impedance controller
+    for (i=1; i<=N_DOFS; ++i) {
+      joint_des_state[i].uff   += target[i].uff;
+    }
+
+    
+    break;
 
   case DYN_DECOUP_M:
     
@@ -784,7 +791,7 @@ run_qfsp_task(void)
 	if (stats[(i-1)*6+j]) {
 	  cart[(i-1)*6+j] = 
 	    (ctarget[i].xdd[j] + 
-	     (ctarget[i].xd[j]  - cart_state[i].xd[j]) * 0.5 * 2.*sqrt(gain) +
+	     (ctarget[i].xd[j]  - cart_state[i].xd[j]) * 2.0 * 2.0*sqrt(gain) +
 	     (ctarget[i].x[j]  - cart_state[i].x[j]) * gain) * gain_trans;
 	}
       }
@@ -793,7 +800,7 @@ run_qfsp_task(void)
 	if (stats[(i-1)*6+ N_CART + j]) {
 	  cart[(i-1)*6 + N_CART + j] = 
 	    (ctarget_quat[i].add[j] + 
-	     (ctarget_quat[i].ad[j] - cart_orient[i].ad[j])* 2.0 * sqrt(gain_orient) + 
+	     (ctarget_quat[i].ad[j] - cart_orient[i].ad[j])* 2.0 * sqrt(gain_orient) +
 	     - corient_error[(i-1)*3+j] * gain_orient) * gain_trans; 
 	}
       }
@@ -1103,25 +1110,22 @@ change_qfsp_task(void)
 
   }
 
-  //  get_double("Simulated ball speed",ball_speed,&ball_speed);
-    if (sim_flag){
-    do{
+  //  ball simulation parameters
+  do{
     get_double("Simulated ball speed (0.0-5.0)",ball_speed,&ball_speed);
-    } while (ball_speed < 0 || ball_speed > 5);
-
-    do{
+  } while (ball_speed < 0 || ball_speed > 5);
+  
+  do{
     get_double("Simulated ball amplitude (0.0-2.0)",ball_amp,&ball_amp);
-    } while (ball_amp < 0 || ball_amp > 2.0);
-
-    do{
+  } while (ball_amp < 0 || ball_amp > 2.0);
+  
+  do{
     get_double("Taret rotation speed (0.0-5.0)",rot_speed,&rot_speed);
-    } while (rot_speed < 0 || rot_speed > 5);
-
-    do{
+  } while (rot_speed < 0 || rot_speed > 5);
+  
+  do{
     get_double("Target rotation amplitude (0.0-2.0)",rot_amp,&rot_amp);
-    } while (rot_amp < 0 || rot_amp > 2);
-
-  }  
+  } while (rot_amp < 0 || rot_amp > 2);
 
   gain_trans = START_GAIN;
 
@@ -1185,8 +1189,6 @@ static int
 simulate_ball(void)
 {
   int j, i;
-  static int last_frame_counter = -999;
-  static int sendflag = FALSE;
   double w1,w2,w3,w4;
   double dt;
 
@@ -1196,36 +1198,28 @@ simulate_ball(void)
   w4 = 2.*PI*0.145633;
   dt = task_servo_time-start_time;
 
-  local_blobs[BLOB1].status = TRUE;
-
-  local_blobs[BLOB1].blob.x[_Y_] = ball_amp*0.15*sin(w1*dt) + 
+  ball_state.x[_Y_] = ball_amp*0.15*sin(w1*dt) + 
     setpoint[1][_Y_] + ball_amp*wiggle * 0.05*sin(w2*dt);
-  local_blobs[BLOB1].blob.x[_X_] = setpoint[1][_X_] + ball_amp*wiggle * 0.05 * sin(w3*dt);
-  local_blobs[BLOB1].blob.x[_Z_] = ball_amp*0.1*sin(2.*w1*dt) + setpoint[1][_Z_] + ball_amp*wiggle * 0.03*sin(w4*dt);
+  ball_state.x[_X_] = setpoint[1][_X_] + ball_amp*wiggle * 0.05 * sin(w3*dt);
+  ball_state.x[_Z_] = ball_amp*0.1*sin(2.*w1*dt) + setpoint[1][_Z_] + ball_amp*wiggle * 0.03*sin(w4*dt);
 
-  local_blobs[BLOB1].blob.xd[_Y_] = ball_amp*0.15*w1*cos(w1*dt) + ball_amp*wiggle * 0.05*w2*cos(w2*dt);
-  local_blobs[BLOB1].blob.xd[_X_] = ball_amp*wiggle * 0.05 * w3*cos(w3*dt);
-  local_blobs[BLOB1].blob.xd[_Z_] = ball_amp*0.1*2*w1*cos(2.*w1*dt) + ball_amp*wiggle * 0.03*w4*cos(w4*dt);
+  ball_state.xd[_Y_] = ball_amp*0.15*w1*cos(w1*dt) + ball_amp*wiggle * 0.05*w2*cos(w2*dt);
+  ball_state.xd[_X_] = ball_amp*wiggle * 0.05 * w3*cos(w3*dt);
+  ball_state.xd[_Z_] = ball_amp*0.1*2*w1*cos(2.*w1*dt) + ball_amp*wiggle * 0.03*w4*cos(w4*dt);
 
-  local_blobs[BLOB1].blob.xdd[_Y_] = -0.15*ball_amp*sqr(w1)*sin(w1*dt) - ball_amp*wiggle * 0.05*sqr(w2)*sin(w2*dt);
-  local_blobs[BLOB1].blob.xdd[_X_] = -wiggle * ball_amp*0.05 * sqr(w3)*sin(w3*dt);
-  local_blobs[BLOB1].blob.xdd[_Z_] = -0.1*ball_amp*sqr(2*w1)*sin(2.*w1*dt) - ball_amp*wiggle * 0.03*sqr(w4)*sin(w4*dt);
-
-  if (sendflag) {
+  ball_state.xdd[_Y_] = -0.15*ball_amp*sqr(w1)*sin(w1*dt) - ball_amp*wiggle * 0.05*sqr(w2)*sin(w2*dt);
+  ball_state.xdd[_X_] = -wiggle * ball_amp*0.05 * sqr(w3)*sin(w3*dt);
+  ball_state.xdd[_Z_] = -0.1*ball_amp*sqr(2*w1)*sin(2.*w1*dt) - ball_amp*wiggle * 0.03*sqr(w4)*sin(w4*dt);
+  
+  // send ball at lower frequency
+  if (task_servo_calls%8==0) {
     float pos[N_CART+1];
  
-    sendflag = FALSE;
-
-    pos[_X_] =  local_blobs[BLOB1].blob.x[_X_];
-    pos[_Y_] =  local_blobs[BLOB1].blob.x[_Y_];
-    pos[_Z_] =  local_blobs[BLOB1].blob.x[_Z_];
+    pos[_X_] =  ball_state.x[_X_];
+    pos[_Y_] =  ball_state.x[_Y_];
+    pos[_Z_] =  ball_state.x[_Z_];
 
     sendUserGraphics("ball",&(pos[_X_]), N_CART*sizeof(float));
-  }
-
-  if (last_frame_counter != frame_counter) {
-    sendflag = TRUE;
-    last_frame_counter = frame_counter;
   }
 
   return TRUE;
@@ -2172,7 +2166,7 @@ inverseKinematicsDynDecoupNoM(SL_DJstate *state, SL_endeff *eff, SL_OJstate *res
   static double  last_t;       
   static Vector  e, en;
   //  double         ridge = 1.e-2;
-  double         ridge = 1.e-5;
+  double         ridge = 1.e-8;
 
   /* initialization of static variables */
   if (firsttime) {
@@ -2285,12 +2279,172 @@ inverseKinematicsDynDecoupNoM(SL_DJstate *state, SL_endeff *eff, SL_OJstate *res
 
   /* return this as a PD command in uff */
   for (i=1; i<=N_DOFS-N_DOFS_EST_SKIP; ++i) {
-    state[i].uff = en[i]; 
+    state[i].uff = en[i]*0; 
   }
 
   return TRUE;
 
 }
+
+/*****************************************************************************
+******************************************************************************
+Function Name	: cartesianImpedanceSimpleJt
+Date		: March 2019
+   
+Remarks:
+
+        computes a very simple Jacobian transpose impedance controller without
+        any dynamics model
+        
+******************************************************************************
+Paramters:  (i/o = input/output)
+
+     state   (i/o): the state of the robot (given as a desired state; note
+                    that this desired state coincides with the true state of
+                    the robot, as the joint space PD controller is replaced
+                    by the Cartesian controller)
+     endeff  (i)  : the endeffector parameters
+     rest    (i)  : the optimization posture
+     cart    (i)  : the desired cartesian accelerations (trans & rot)
+     status  (i)  : which rows to use from the Jacobian
+     dt      (i)  : the integration time step     
+     t       (i)  : the current time -- important for safe numerical 
+                    differntiation of the Jacobian
+
+ the function updates the state by adding the appropriate feedforward torques
+
+*****************************************************************************/
+static int
+cartesianImpedanceSimpleJt(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
+			   Vector cart, iVector status, double dt, double t)
+{
+  
+  int            i,j,n,m;
+  int            count;
+  static Matrix  O, P, B;
+  static Matrix  M, invM;
+  static iVector ind;
+  static Vector  dJdtthd;
+  static int     firsttime = TRUE;
+  static double  last_t;       
+  static Vector  e, en;
+  double         ridge = 1.e-8;
+
+  /* initialization of static variables */
+  if (firsttime) {
+    firsttime = FALSE;
+    P      = my_matrix(1,6*N_ENDEFFS,1,6*N_ENDEFFS);
+    B      = my_matrix(1,N_DOFS,1,6*N_ENDEFFS);
+    ind    = my_ivector(1,6*N_ENDEFFS);
+    O      = my_matrix(1,N_DOFS,1,N_DOFS);
+    dJdtthd = my_vector(1,6*N_ENDEFFS);
+    e      = my_vector(1,N_DOFS);
+    en     = my_vector(1,N_DOFS);
+    invM   = my_matrix(1,N_DOFS,1,N_DOFS);
+  }
+
+  /* how many contrained cartesian DOFs do we have? */
+  count = 0;
+  for (i=1; i<=6*N_ENDEFFS; ++i) {
+    if (status[i]) {
+      ++count;
+      ind[count] = i;
+    }
+  }
+
+  /* build the pseudo-inverse according to the status information */
+  mat_zero(P);
+  for (i=1; i<=count; ++i) {
+    for (j=i; j<=count; ++j) {
+      for (n=1; n<=N_DOFS; ++n) {
+	P[i][j] += J[ind[i]][n] * J[ind[j]][n];
+      }
+      if (i==j) 
+	P[i][j] += ridge;
+      P[j][i] = P[i][j];
+    }
+  }
+
+  /* invert the matrix */
+  if (!my_inv_ludcmp(P, count, P)) {
+    return FALSE;
+  }
+
+  /* build the B matrix, i.e., the pseudo-inverse */
+  for (i=1; i<=N_DOFS; ++i) {
+    for (j=1; j<=count; ++j) {
+      B[i][j]=0.0;
+      for (n=1; n<=count; ++n) {
+	B[i][j] += J[ind[n]][i] * P[n][j];
+      }
+    }
+  }
+
+  /* the simple cartesion impedance controller only uses J-trans */
+  for (i=1; i<=N_DOFS; ++i) {
+    state[i].uff = 0;
+    for (j=1; j<=count; ++j) {
+      state[i].uff += J[ind[j]][i] * cart[ind[j]];
+    }
+  }
+
+  /**********************/
+  /* the null space term */
+  /**********************/
+
+  /* compute the NULL space projection matrix; note that it is computationally
+     inefficient to do this, since this is O(d^2), while all we really need is
+     some matrix-vector multiplications, which are much cheaper */
+  for (i=1; i<=N_DOFS; ++i) {
+    for (j=i; j<=N_DOFS; ++j) {
+      if (i==j) 
+	O[i][j] = 1.0;
+      else
+	O[i][j] = 0.0;
+      for (n=1; n<=count; ++n) {
+	O[i][j] -= B[i][n] * J[ind[n]][j];
+      }
+      O[j][i] = O[i][j];
+    }
+  }
+
+  /* compute the PD term for the Null space  */
+  for (i=1; i<=N_DOFS; ++i) {
+    double fac=0.5;
+    e[i] = 
+      fac*controller_gain_th[i]*(rest[i].th - state[i].th) - 
+      sqrt(fac)*controller_gain_thd[i] *state[i].thd;
+    vaux[i] = e[i];
+  }
+  mat_vec_mult(O,e,en);
+
+  /* return this as a PD command in uff */
+  for (i=1; i<=N_DOFS; ++i) {
+    state[i].uff += en[i];
+    vaux[i+7] = en[i];
+  }
+
+  // data visualization only 
+  if (1) {
+    // compute inertia matrix and its inverse
+    M = SL_inertiaMatrix(joint_state, &base_state, &base_orient, endeff);
+    my_inv_ludcmp(M, N_DOFS-N_DOFS_EST_SKIP, invM);
+    mat_vec_mult_size(invM,N_DOFS-N_DOFS_EST_SKIP,N_DOFS-N_DOFS_EST_SKIP,
+		      en,N_DOFS-N_DOFS_EST_SKIP,
+		      en);
+
+    for (i=1; i<=count; ++i) {
+      vaux[i+14] = 0.0;
+      for (j=1; j<=N_DOFS; ++j)
+	vaux[i+14] += J[ind[i]][j]*en[j];
+    }
+
+  }
+
+  return TRUE;
+
+}
+
 
 /*****************************************************************************
 ******************************************************************************
@@ -2360,7 +2514,7 @@ init_filters(void)
 
 {
   
-  int i,j;
+  int i,j,rc;
   FILE *filterfile;
   int count_v=0, count_r=0;
   char string[100];
@@ -2383,12 +2537,12 @@ init_filters(void)
     ++count_r;
     for (j=0; j<= FILTER_ORDER; ++j) {
       ++count_v;
-      fscanf(filterfile,"%f",&(filters_a[i][j]));
+      rc=fscanf(filterfile,"%f",&(filters_a[i][j]));
     }
     
     for (j=0; j<= FILTER_ORDER; ++j) {
       ++count_v;
-      fscanf(filterfile,"%f",&(filters_b[i][j]));
+      rc=fscanf(filterfile,"%f",&(filters_b[i][j]));
     }
   }
   
