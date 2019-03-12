@@ -114,6 +114,8 @@ static int        scd_wait_counter;
 
 static SL_Cstate  ball_state;
 
+static double     force = 0;
+
 static double controller_gain_th[N_DOFS+1];
 static double controller_gain_thd[N_DOFS+1];
 static double controller_gain_int[N_DOFS+1];
@@ -372,8 +374,8 @@ init_qfsp_task(void)
   }
   else{
     do{
-      get_double("Tracking Gain? (0-200)",gain,&gain);
-    } while (gain > 200 || gain < 0);
+      get_double("Tracking Gain? (0-1000)",gain,&gain);
+    } while (gain > 1000 || gain < 0);
 
     if (use_orient) 
       do{
@@ -1044,7 +1046,12 @@ run_qfsp_task(void)
       joint_des_state[i].uff  = 0.0;
     }
   }
-    
+
+
+
+  uext_sim[4].f[1] = force;
+  sendUextSim();
+
   return TRUE;
   
 }
@@ -1127,7 +1134,7 @@ change_qfsp_task(void)
     get_double("Target rotation amplitude (0.0-2.0)",rot_amp,&rot_amp);
   } while (rot_amp < 0 || rot_amp > 2);
 
-  gain_trans = START_GAIN;
+  //gain_trans = START_GAIN;
 
   /* free DOFs */
   /*
@@ -1164,6 +1171,8 @@ change_qfsp_task(void)
     ; // don't change
   else
     kn = aux;
+
+  get_double("perturbation force",force,&force);
 
   return TRUE;
 
@@ -2410,13 +2419,16 @@ cartesianImpedanceSimpleJt(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
 
   /* compute the PD term for the Null space  */
   for (i=1; i<=N_DOFS; ++i) {
-    double fac=0.0;
+    double fac=0.1;
+
     e[i] = 
       fac*controller_gain_th[i]*(rest[i].th - state[i].th) - 
       sqrt(fac)*controller_gain_thd[i] *state[i].thd;
     vaux[i] = e[i];
   }
   mat_vec_mult(O,e,en);
+  //print_mat("O",O);
+  //getchar();
 
   /* return this as a PD command in uff */
   for (i=1; i<=N_DOFS; ++i) {
