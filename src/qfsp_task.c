@@ -602,7 +602,7 @@ run_qfsp_task(void)
       for (j= _A_; j<= _G_ ; ++j) { /* orientation */
 	if (stats[(i-1)*6+ N_CART + j]) {
 	  cart[(i-1)*6 + N_CART + j] = 
-	    ((ctarget_quat[i].ad[j] - cart_orient[i].ad[j])* 2.0 * sqrt(gain_orient) - 
+	    ((ctarget_quat[i].ad[j] - cart_orient[i].ad[j]) * 2.0 * sqrt(gain_orient) - 
 	    corient_error[(i-1)*3+j] * gain_orient) * gain_trans; 
 	}
       }
@@ -2410,7 +2410,7 @@ cartesianImpedanceSimpleJt(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
 
   /* compute the PD term for the Null space  */
   for (i=1; i<=N_DOFS; ++i) {
-    double fac=0.5;
+    double fac=0.0;
     e[i] = 
       fac*controller_gain_th[i]*(rest[i].th - state[i].th) - 
       sqrt(fac)*controller_gain_thd[i] *state[i].thd;
