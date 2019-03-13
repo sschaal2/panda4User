@@ -373,6 +373,16 @@ init_qfsp_task(void)
       } while  (gain_orient > 100 || gain_orient < 0);
   }
   else{
+
+    if (INVKIN_MODE == CART_IMPEDANCE_SIMPLE_JT) { // some reasonable gains
+      static int firsttime = TRUE;
+      if (firsttime) {
+	firsttime = FALSE;
+	gain = 250;
+	gain_orient = 40;
+      }
+    }
+    
     do{
       get_double("Tracking Gain? (0-1000)",gain,&gain);
     } while (gain > 1000 || gain < 0);
@@ -596,7 +606,7 @@ run_qfsp_task(void)
       for (j= _X_; j<= _Z_; ++j) {
 	if (stats[(i-1)*6+j]) {
 	  cart[(i-1)*6+j] = 
-	    ((ctarget[i].xd[j]  - cart_state[i].xd[j]) * 0.5 * 2.*sqrt(gain) +
+	    ((ctarget[i].xd[j]  - cart_state[i].xd[j]) * 2.*sqrt(gain) +
 	     (ctarget[i].x[j]  - cart_state[i].x[j]) * gain) * gain_trans;
 	}
       }
@@ -604,7 +614,7 @@ run_qfsp_task(void)
       for (j= _A_; j<= _G_ ; ++j) { /* orientation */
 	if (stats[(i-1)*6+ N_CART + j]) {
 	  cart[(i-1)*6 + N_CART + j] = 
-	    ((ctarget_quat[i].ad[j] - cart_orient[i].ad[j]) * 2.0 * sqrt(gain_orient) - 
+	    ((ctarget_quat[i].ad[j] - cart_orient[i].ad[j]) *0.025 * 2.0 * sqrt(gain_orient) - 
 	    corient_error[(i-1)*3+j] * gain_orient) * gain_trans; 
 	}
       }
