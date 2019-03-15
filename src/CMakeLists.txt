@@ -47,7 +47,8 @@ set(SRCS_XTASK
 	gravcomp_task.c 
 	sample_task_cpp.cpp
 	qfsp_task.c
-	test_task.c		
+	test_task.c
+	impedance_test_task.c	
 	)
 
 set(SRCS_XOPENGL
