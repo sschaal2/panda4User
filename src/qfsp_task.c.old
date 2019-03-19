@@ -28,25 +28,14 @@ Remarks:
 // defines
 enum StateMachineStates
   {
-   INIT_SM_TARGET,			 
+   INIT_MOVE_TO_TARGET,			 
    MOVE_TO_TARGET,
-   FINISH_SM_TARGET,
+   GRASP,
+   GRASP_RELEASE,
    IDLE
   };
 
-enum Controllers
-  {
-   SIMPLE_IMPEDANCE_JT=1,
-   N_CONT
-  };
-
-static int n_controllers = N_CONT-1;
-
-char controller_names[][100]=
-  {
-   {"dummy"},
-   {"SimpleImpedanceJt"}
-  };
+enum 
 
 
 // variables for filtering
@@ -66,31 +55,20 @@ static Filter fthdd[N_DOFS+1];
 
 
 typedef struct StateMachineTarget {
-  char   state_name[100];
   double pose_x[N_CART+1];
-  int    use_orient;
   double pose_q[N_QUAT+1];
   double movement_duration;
   double gripper_width_start;
   double gripper_width_end;
   double gripper_force_start;
   double gripper_force_end;
-  double cart_force_start;
-  double cart_force_end;
-  double cart_moment_start;
-  double cart_moment_end;
-  int    use_default_gains;
-  double cart_gain_x[N_CART+1]; // diagonal of matrix
-  double cart_gain_xd[N_CART+1]; // diagonal of matrix
-  double cart_gain_a[N_CART+1];  // diagonal of matrix
-  double cart_gain_ad[N_CART+1]; // diagonal of matrix
-  char   controller_name[100];
+  double gripper_moment_start;
+  double gripper_moment_end;
+  double impedance_gain_x[6+1];  // upper triangular of symmetric matrix
+  double impedance_gain_xd[6+1]; // upper triangular of symmetric matrix
+  double impedance_gain_a[6+1];  // upper triangular of symmetric matrix
+  double impedance_gain_ad[6+1]; // upper triangular of symmetric matrix
 } StateMachineTarget;
-
-#define MAX_STATES_SM 1000
-static StateMachineTarget targets_sm[MAX_STATES_SM+1];
-static int n_states_sm = 0;
-static int current_state_sm = 1;
 
 
 /* Cartesian orientation representation with a rotation around an axis */
@@ -113,8 +91,8 @@ static SL_DJstate target[N_DOFS+1];
 static SL_DJstate last_target[N_DOFS+1];
 static int        firsttime = TRUE;
 static double     start_time     = 0;
-static double     default_gain   = 250;
-static double     default_gain_orient = 40;
+static double     gain           = 250;
+static double     gain_orient    = 40;
 
 static SL_Cstate  ball_state;
 
@@ -122,7 +100,7 @@ static double controller_gain_th[N_DOFS+1];
 static double controller_gain_thd[N_DOFS+1];
 static double controller_gain_int[N_DOFS+1];
 
-static int    state_machine_state = INIT_SM_TARGET;
+static int    state_machine_state = INIT_MOVE_TO_TARGET;
 
 /* global functions */
 void add_qfsp_task(void);
@@ -142,8 +120,7 @@ static Matrix SL_inertiaMatrix(SL_Jstate *lstate, SL_Cstate *cbase,
 static int    min_jerk_next_step (double x,double xd, double xdd, double t, double td, double tdd,
 				  double t_togo, double dt,
 				  double *x_next, double *xd_next, double *xdd_next);
-static int    read_state_machine(char *fname);
-static void   print_sm_state(void);
+
 
 
 /*****************************************************************************
@@ -169,14 +146,12 @@ add_qfsp_task( void )
   addTask("QFSP Insertion Task", init_qfsp_task, 
 	  run_qfsp_task, change_qfsp_task);
 
-  addToMan("print_sm_state","prints the current state suitable for state machine",print_sm_state); 
-
   /* read the control gains  */
   if (!read_gains(config_files[GAINS],controller_gain_th, 
 		  controller_gain_thd, controller_gain_int))
     return;
-  
-  
+
+
 }    
 
 /*****************************************************************************
@@ -199,13 +174,12 @@ init_qfsp_task(void)
 {
   int    j, i;
   char   string[100];
-  char   fname[100] = "qfsp.sm";
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;
-  
+
   if (firsttime) {
-    
+
     // initialize the filters 
     firsttime = FALSE;
     init_filters();
@@ -226,7 +200,7 @@ init_qfsp_task(void)
       addVarToCollect((char *)&(ctarget[i].x[_Y_]),string,"m", DOUBLE,FALSE);
       sprintf(string,"%s_ct_z",cart_names[i]);
       addVarToCollect((char *)&(ctarget[i].x[_Z_]),string,"m", DOUBLE,FALSE);
-      
+
       sprintf(string,"%s_ct_xd",cart_names[i]);
       addVarToCollect((char *)&(ctarget[i].xd[_X_]),string,"m/s", DOUBLE,FALSE);
       sprintf(string,"%s_ct_yd",cart_names[i]);
@@ -307,36 +281,30 @@ init_qfsp_task(void)
     }
     
     updateDataCollectScript();
-    
-    
+
+
   } else { // not firstime
-    
+
     // zero the filters 
     for (i=1; i<=N_DOFS; ++i) 
       for (j=0; j<=FILTER_ORDER; ++j)
 	fthdd[i].raw[j] = fthdd[i].filt[j] = 0;
-    
+
   }
-  
+
   // check whether any other task is running 
   if (strcmp(current_task_name,NO_TASK) != 0) {
     printf("Task can only be started if no other task is running!\n");
     return FALSE;
   }
-  
-  // read state machine
+
+    // teach target orientation
   ans = FALSE;
-  get_int("Read state machine from file?",ans,&ans);
+  get_int("Teach target pose from current pose?",ans,&ans);
   if (ans) {
-    if (get_string("File name of state machine in prefs/",fname,fname)) {
-      read_state_machine(fname);
-    }
-  }
-  if (n_states_sm <= 0) {
-    printf("No valid state machine found\n");
-    return FALSE;
-  }
-  
+    teach_target_pose();
+  } else {
+
   // go to a save posture 
   bzero((char *)&(target[1]),N_DOFS*sizeof(target[1]));
   bzero((char *)&(last_target[1]),N_DOFS*sizeof(last_target[1]));
@@ -356,7 +324,7 @@ init_qfsp_task(void)
   
   for (j=1; j<=N_CART; ++j) {
     
-    // by default, we assume full pose control
+    // we do full pose control
     stats[j] = 1;
     stats[j + N_CART] = 1;
     
@@ -381,16 +349,14 @@ init_qfsp_task(void)
 
   time_step = 1./(double)task_servo_rate;
   start_time = task_servo_time;
-  state_machine_state = INIT_SM_TARGET;
-  current_state_sm = 0;
-  
+  state_machine_state = INIT_MOVE_TO_TARGET;
   scd();
-  
-  
+
+
   return TRUE;
-  
-  }
-  
+
+}
+
 /*****************************************************************************
 ******************************************************************************
   Function Name	: run_qfsp_task
@@ -419,53 +385,14 @@ run_qfsp_task(void)
 
   switch (state_machine_state) {
 
-  case INIT_SM_TARGET:
-    
-    if (current_state_sm < n_states_sm) {
-      ++current_state_sm;
-    } else {
-      freeze();
-      return TRUE;
-    }
-    
-    // assign relevant variables from state machine state
-    time_to_go = targets_sm[current_state_sm].movement_duration;
-
-    for (i=1; i<=N_CART; ++i)
-      ctarget[HAND].x[i] = targets_sm[current_state_sm].pose_x[i];
-
-    if (targets_sm[current_state_sm].use_orient) {
-
-      for (i=1; i<=N_CART; ++i)
-	stats[N_CART+i] = 1;
-
-      for (i=1; i<=N_QUAT; ++i)
-	ctarget_orient[HAND].q[i] = targets_sm[current_state_sm].pose_q[i];
-
-    } else { // no orientation
-
-      for (i=1; i<=N_CART; ++i)
-	stats[N_CART+i] = 0;
-
-    }
-
-    // check for gripper movement
-    if (targets_sm[current_state_sm].gripper_width_start > misc_sensor[G_WIDTH]) {
-      sendGripperMoveCommand(targets_sm[current_state_sm].gripper_width_start,
-			     0.1);
-    }
-    sendGripperGraspCommand(targets_sm[current_state_sm].gripper_width_start,
-			    0.1,
-			    targets_sm[current_state_sm].gripper_force_start,
-			    0.01,
-			    0.01);
-    
+  case INIT_MOVE_TO_TARGET:
+    time_to_go = 2;
     state_machine_state = MOVE_TO_TARGET;
     // break; // intentionally no break
 
   case MOVE_TO_TARGET:
     
-    // plan the next step of hand with min jerk
+    // plan the next step of hand  with min jerk
     for (i=1; i<=N_CART; ++i) {
       min_jerk_next_step(cdes[HAND].x[i],
 			 cdes[HAND].xd[i],
@@ -482,7 +409,7 @@ run_qfsp_task(void)
     time_to_go -= time_step;
     if (time_to_go < 0) {
       time_to_go = 0;
-      state_machine_state = INIT_SM_TARGET;
+      state_machine_state = IDLE;
     }
 
     break;
@@ -500,44 +427,21 @@ run_qfsp_task(void)
   quatErrorVector(ctarget_orient[1].q,cart_orient[1].q,corient_error);
   
   // prepare the impdance controller, i.e., compute operational
-  // space force command
-
-  if (targets_sm[current_state_sm].use_default_gains) {
-
-    for (j= _X_; j<= _Z_; ++j) {
-      if (stats[j]) {
-	cref[j] =
-	  (cdes[HAND].xd[j]  - cart_state[HAND].xd[j]) * 2.*sqrt(default_gain) +
-	  (cdes[HAND].x[j]  - cart_state[HAND].x[j]) * default_gain;
-      }
+  // space force command 
+  for (j= _X_; j<= _Z_; ++j) {
+    if (stats[j]) {
+      cref[j] =
+	(cdes[HAND].xd[j]  - cart_state[HAND].xd[j]) * 2.*sqrt(gain) +
+	(cdes[HAND].x[j]  - cart_state[HAND].x[j]) * gain;
     }
-    
-    for (j= _A_; j<= _G_ ; ++j) { /* orientation */
-      if (stats[N_CART + j]) {
-	cref[N_CART + j] = 
-	  (ctarget_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) *0.025 * 2.0 * sqrt(default_gain_orient) - 
-	  corient_error[j] * default_gain_orient; 
-      }
-    }
+  }
 
-  } else { // use gains from targets_sm
-
-    for (j= _X_; j<= _Z_; ++j) {
-      if (stats[j]) {
-	cref[j] =
-	  (cdes[HAND].xd[j]  - cart_state[HAND].xd[j]) *  targets_sm[current_state_sm].cart_gain_xd[j] +
-	  (cdes[HAND].x[j]  - cart_state[HAND].x[j]) * targets_sm[current_state_sm].cart_gain_x[j];
-      }
+  for (j= _A_; j<= _G_ ; ++j) { /* orientation */
+    if (stats[N_CART + j]) {
+      cref[N_CART + j] = 
+	(ctarget_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) *0.025 * 2.0 * sqrt(gain_orient) - 
+	corient_error[j] * gain_orient; 
     }
-    
-    for (j= _A_; j<= _G_ ; ++j) { /* orientation */
-      if (stats[N_CART + j]) {
-	cref[N_CART + j] = 
-	  (ctarget_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) * targets_sm[current_state_sm].cart_gain_ad[j] - 
-	  corient_error[j] * targets_sm[current_state_sm].cart_gain_a[j]; 
-      }
-    }
-
   }
 
   // this computes the joint space torque
@@ -1169,178 +1073,3 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
   return TRUE;
 }
 
-/*!*****************************************************************************
- *******************************************************************************
-\note  read_state_machine
-\date  March 2019
-\remarks 
-
- parses the information about a state machine from a simple text file
-
- *******************************************************************************
- Function Parameters: [in]=input,[out]=output
-
- \param[in]     fname : file name of file with state machine information,
-                        by default, assumed in the PREFS director, ending 
-                        in <filename>.sm
-
-   format:
-
-   name_of_state
-   pose_x_X
-   pose_x_Y
-   pose_x_Z
-   use_orient
-   pose_q_Q0
-   pose_q_Q1
-   pose_q_Q2
-   pose_q_Q3
-   movement_duration
-   gripper_width_start
-   gripper_width_end
-   gripper_force_start
-   gripper_force_end
-   cart_force_start
-   cart_force_end
-   cart_moment_start
-   cart_moment_end
-   use_default_gains
-   cart_gain_x_X
-   cart_gain_x_Y
-   cart_gain_x_Z
-   cart_gain_xd_X
-   cart_gain_xd_Y
-   cart_gain_xd_Z
-   cart_gain_a_A
-   cart_gain_a_B
-   cart_gain_a_G
-   cart_gain_ad_A
-   cart_gain_ad_B
-   cart_gain_ad_G
-   controller_name
-
-   some special characters:  
-
-
- ******************************************************************************/
-static int
-read_state_machine(char *fname) {
-
-  int j,i,rc;
-  char   string[200];
-  FILE  *in;
-  int    n_read;
-  int    n_parms = 32; // number of parameters per state
-  StateMachineTarget sm_temp;
-  
-
-  // open the file and strip all comments
-  sprintf(string,"%s%s",PREFS,fname);
-  in = fopen_strip(string);
-  if (in == NULL) {
-    printf("ERROR: Cannot open file >%s<!\n",string);
-    return FALSE;
-  }
-
-
-  // read state-by-state until end-of-file
-  n_states_sm = 0;
-  do {
-    n_read = fscanf(in,"%s  %lf %lf %lf  %d %lf %lf %lf %lf  %lf  %lf %lf %lf %lf  %lf %lf %lf %lf  %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s",
-		    sm_temp.state_name,
-		    &(sm_temp.pose_x[_X_]),
-		    &(sm_temp.pose_x[_Y_]),
-		    &(sm_temp.pose_x[_Z_]),
-		    &(sm_temp.use_orient),
-		    &(sm_temp.pose_q[_Q0_]),
-		    &(sm_temp.pose_q[_Q1_]),
-		    &(sm_temp.pose_q[_Q2_]),
-		    &(sm_temp.pose_q[_Q3_]),
-		    &(sm_temp.movement_duration),
-		    &(sm_temp.gripper_width_start),
-		    &(sm_temp.gripper_width_end),		    
-		    &(sm_temp.gripper_force_start),
-		    &(sm_temp.gripper_force_end),		    
-		    &(sm_temp.cart_force_start),
-		    &(sm_temp.cart_force_end),		    
-		    &(sm_temp.cart_moment_start),
-		    &(sm_temp.cart_moment_end),
-		    &(sm_temp.use_default_gains),		    
-		    &(sm_temp.cart_gain_x[_X_]),
-		    &(sm_temp.cart_gain_x[_Y_]),
-		    &(sm_temp.cart_gain_x[_Z_]),
-		    &(sm_temp.cart_gain_xd[_X_]),
-		    &(sm_temp.cart_gain_xd[_Y_]),
-		    &(sm_temp.cart_gain_xd[_Z_]),
-		    &(sm_temp.cart_gain_a[_A_]),
-		    &(sm_temp.cart_gain_a[_B_]),
-		    &(sm_temp.cart_gain_a[_G_]),
-		    &(sm_temp.cart_gain_ad[_A_]),
-		    &(sm_temp.cart_gain_ad[_B_]),
-		    &(sm_temp.cart_gain_ad[_G_]),
-		    sm_temp.controller_name
-		    );
-    if (n_read == n_parms) {
-      if (n_states_sm < MAX_STATES_SM) {
-	targets_sm[++n_states_sm] = sm_temp;
-      } else {
-	// should be unlikely to happen ever
-	printf("Error: ran out of memory for state machine targets\n");
-      }
-    }
-  } while (n_read == n_parms);
-
-  printf("Read %d states for the state machine\n",n_states_sm);
-  
-  fclose(in);
-
-  return TRUE;
-
-}
-
-/*!*****************************************************************************
- *******************************************************************************
-\note  print_sm_state
-\date  Feb 2019
-   
-\remarks 
-
-       prints the current state such that it can be copied as sm target
-
- *******************************************************************************
- Function Parameters: [in]=input,[out]=output
-
-  none
-
- ******************************************************************************/
-static void 
-print_sm_state(void)
-{
-  int i;
-
-  printf("state_name ");
-
-  for (i=1; i<=N_CART; ++i)
-    printf("%5.3f ",cart_des_state[HAND].x[i]);
-
-  printf("1 "); // use_orient
-
-  for (i=1; i<=N_QUAT; ++i)
-    printf("%5.3f ",cart_des_orient[HAND].q[i]);
-
-  printf("2 "); // movement duration
-
-  printf("%5.3f ",misc_sensor[G_WIDTH]);
-  printf("%5.3f ",misc_sensor[G_WIDTH]);
-
-  printf("0.0 0.0 "); // gripper force start and end
-  printf("0.0 0.0 "); // cart force start and end
-  printf("0.0 0.0 "); // cart moment start and end
-
-  printf("1 "); // use_default_gains
-  printf("0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 "); // gains
-
-  printf("%s",controller_names[SIMPLE_IMPEDANCE_JT]);
-  printf("\n");
-
-}
