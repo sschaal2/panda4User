@@ -124,6 +124,8 @@ static double controller_gain_int[N_DOFS+1];
 
 static int    state_machine_state = INIT_SM_TARGET;
 
+static double s[3+1]; // indicator for min jerk in orientation space
+
 /* global functions */
 void add_qfsp_task(void);
 
@@ -142,6 +144,8 @@ static Matrix SL_inertiaMatrix(SL_Jstate *lstate, SL_Cstate *cbase,
 static int    min_jerk_next_step (double x,double xd, double xdd, double t, double td, double tdd,
 				  double t_togo, double dt,
 				  double *x_next, double *xd_next, double *xdd_next);
+static int    min_jerk_next_step_quat (SL_quat q_current, SL_quat q_target, double *s,
+				       double t_togo, double dt, SL_quat *q_next);
 static int    read_state_machine(char *fname);
 static void   print_sm_state(void);
 
@@ -459,6 +463,10 @@ run_qfsp_task(void)
 			    targets_sm[current_state_sm].gripper_force_start,
 			    0.01,
 			    0.01);
+
+    // prepare min jerk for orientation space: s is an interpolation variable 
+    s[1] = 1.0;
+    s[2] = s[3] = 0;
     
     state_machine_state = MOVE_TO_TARGET;
     // break; // intentionally no break
@@ -479,6 +487,10 @@ run_qfsp_task(void)
 			 &(cdes[HAND].xd[i]),
 			 &(cdes[HAND].xdd[i]));
     }
+
+    min_jerk_next_step_quat(cdes_orient[HAND], ctarget_orient[HAND], s,
+			    time_to_go, time_step, &(cdes_orient[HAND]));
+    
     time_to_go -= time_step;
     if (time_to_go < 0) {
       time_to_go = 0;
@@ -497,7 +509,7 @@ run_qfsp_task(void)
   
 
   // compute orientation error term for quaterion feedback control
-  quatErrorVector(ctarget_orient[1].q,cart_orient[1].q,corient_error);
+  quatErrorVector(cdes_orient[1].q,cart_orient[1].q,corient_error);
   
   // prepare the impdance controller, i.e., compute operational
   // space force command
@@ -1344,3 +1356,75 @@ print_sm_state(void)
   printf("\n");
 
 }
+
+/*!*****************************************************************************
+ *******************************************************************************
+\note  min_jerk_next_step_quat
+\date  March 2019
+   
+\remarks 
+
+ min jerk next step interpolation between two quaternions. Currently, this 
+ assunes zero quaternion velocity/acceleration at the target quaternion.
+ This algorithms is not entirely perfect, but should be reasonable in terms
+ of spherical interpolation. It uses the SLERP algorithm suggested in 1985
+ by Shoemake with the following algorithm:
+
+ q_next = q_start*sin[(1-u)*theta]/sin[theta] + q_end*sin[u*theta]/sin[theta]
+
+ q_start'*q_end = cos(theta)
+
+ If we vary u from 0 to 1 as a min jerk trajectory, the entire orientation
+ trajectory will be smooth as well (although not perfectly min jerk). In matlab,
+ it was tested that even updating theta on every time step works and creates
+ nice smooth unit norm quaternions
+
+ *******************************************************************************
+ Function Parameters: [in]=input,[out]=output
+
+ \param[in]          q_current: the current orientation as quaterion
+ \param[in]          q_target : the target orientation as quaterion
+ \param[in,out]      s        : vector of s,sd,sdd which does min jerk from 1 to zero
+ \param[in]          t_togo   : time to go until target is reached
+ \param[in]          dt       : time increment
+ \param[out]         q_next   : the next state quaternion with all derivatives
+
+ ******************************************************************************/
+static int
+min_jerk_next_step_quat (SL_quat q_current, SL_quat q_target, double *s,
+			 double t_togo, double dt, SL_quat *q_next)
+
+{
+  int    i,j;
+  double theta; // angle between current and target quaternion
+  double aux;
+  double ridge = 1e-10;
+
+  theta = acos( vec_mult_inner_size(q_current.q,q_target.q,N_QUAT) );
+
+  // min jerk for the indicator variable
+  min_jerk_next_step(s[1],s[2],s[3],1.0,0.0,0.0,t_togo,dt,&(s[1]),&(s[2]),&(s[3]));
+
+  // interpolate quaternions based on indicator variable
+
+  // numerical robustness
+  if (fabs(sin(theta)) < ridge)
+    aux = ridge;
+  else
+    aux = sin(theta);
+  
+  for (i=1; i<=N_QUAT; ++i) {
+    q_next->q[i] = sin(theta*(1.0-s[1]))/aux*q_current.q[i] + sin(theta*s[1])/aux*q_target.q[i];
+  }
+
+  // fill in derivatives from numerical differentiation
+  for (j=1; j<=N_QUAT; ++j){
+    q_next->qd[j]  =  (q_next->q[j] - q_current.q[j]) / dt;
+    q_next->qdd[j] =  (q_next->qd[j] - q_current.qd[j]) / dt;
+  }
+
+  return TRUE;
+
+}
+
+
