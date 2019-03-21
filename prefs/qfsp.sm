@@ -1,0 +1,48 @@
+/* This file contains the specification for a state machine and a particular controller.
+   The file format allows C/C++ comments.
+   If a gain is specified as "def", the default is going to be used
+   If the pose includes
+*/
+
+/* format:
+
+   state_name
+   pose_x_X
+   pose_x_Y
+   pose_x_Z
+   use_orient
+   pose_q_Q0
+   pose_q_Q1
+   pose_q_Q2
+   pose_q_Q3
+   movement_duration
+   gripper_width_start
+   gripper_width_end
+   gripper_force_start
+   gripper_force_end
+   cart_force_start
+   cart_force_end
+   cart_moment_start
+   cart_moment_end
+   use_default_gains
+   cart_gain_x_X
+   cart_gain_x_Y
+   cart_gain_x_Z
+   cart_gain_xd_X
+   cart_gain_xd_Y
+   cart_gain_xd_Z
+   cart_gain_a_A
+   cart_gain_a_B
+   cart_gain_a_G
+   cart_gain_ad_A
+   cart_gain_ad_B
+   cart_gain_ad_G
+   controller_name
+*/
+   
+
+state_name 0.574 0.020 0.259 1 -0.040 0.919 0.389 -0.038 2 0.040 0.040 0.0 0.0 0.0 0.0 0.0 0.0 1 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 SimpleImpedanceJt
+state_name 0.583 0.005 0.254 1 0.100 0.844 0.523 -0.070 2 0.006 0.006 0.0 0.0 0.0 0.0 0.0 0.0 1 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 SimpleImpedanceJt
+state_name 0.575 0.013 0.255 1 -0.017 0.923 0.384 -0.020 2 0.006 0.006 0.0 0.0 0.0 0.0 0.0 0.0 1 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 SimpleImpedanceJt
+state_name 0.583 -0.007 0.116 1 -0.021 0.920 0.390 -0.009 2 0.006 0.006 0.0 0.0 0.0 0.0 0.0 0.0 1 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 SimpleImpedanceJt
+state_name 0.572 -0.062 0.498 1 -0.034 0.925 0.378 -0.015 2 0.006 0.006 0.0 0.0 0.0 0.0 0.0 0.0 1 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 SimpleImpedanceJt
