@@ -28,7 +28,8 @@ Remarks:
 // defines
 enum StateMachineStates
   {
-   INIT_SM_TARGET,			 
+   INIT_SM_TARGET,
+   GRIPPER,
    MOVE_TO_TARGET,
    FINISH_SM_TARGET,
    IDLE
@@ -419,6 +420,7 @@ run_qfsp_task(void)
   double dist;
   double aux;
   static double time_to_go;
+  static int    wait_ticks=0;
   float pos[N_CART+1];
 
 
@@ -457,22 +459,35 @@ run_qfsp_task(void)
     // need to memorize the cart orient start for min jerk
     cdesstart_orient[HAND] = cdes_orient[HAND];
 
-    // check for gripper movement
+    // move gripper to desired position
     if (targets_sm[current_state_sm].gripper_width_start > misc_sensor[G_WIDTH]) {
-      sendGripperMoveCommand(targets_sm[current_state_sm].gripper_width_start,
-			     0.1);
+      sendGripperMoveCommand(targets_sm[current_state_sm].gripper_width_start,0.1);
+      wait_ticks = 10;
+    } else {
+      wait_ticks = 0;
     }
-    sendGripperGraspCommand(targets_sm[current_state_sm].gripper_width_start,
-			    0.1,
-			    targets_sm[current_state_sm].gripper_force_start,
-			    0.01,
-			    0.01);
 
     // prepare min jerk for orientation space: s is an interpolation variable 
     s[1] = s[2] = s[3] = 0;
-    
-    state_machine_state = MOVE_TO_TARGET;
-    // break; // intentionally no break
+
+    state_machine_state = GRIPPER;
+    break;
+
+
+  case GRIPPER:
+
+    if (--wait_ticks < 0) {
+
+      sendGripperGraspCommand(targets_sm[current_state_sm].gripper_width_start,
+			      0.1,
+			      targets_sm[current_state_sm].gripper_force_start,
+			      0.01,
+			      0.01);
+
+      state_machine_state = MOVE_TO_TARGET;
+    }
+    break;
+
 
   case MOVE_TO_TARGET:
     
