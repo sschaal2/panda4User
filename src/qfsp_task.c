@@ -115,7 +115,7 @@ static SL_DJstate target[N_DOFS+1];
 static SL_DJstate last_target[N_DOFS+1];
 static int        firsttime = TRUE;
 static double     start_time     = 0;
-static double     default_gain   = 250;
+static double     default_gain   = 450;
 static double     default_gain_orient = 40;
 
 static SL_Cstate  ball_state;
@@ -477,12 +477,13 @@ run_qfsp_task(void)
   case GRIPPER:
 
     if (--wait_ticks < 0) {
-
-      sendGripperGraspCommand(targets_sm[current_state_sm].gripper_width_start,
-			      0.1,
-			      targets_sm[current_state_sm].gripper_force_start,
-			      0.01,
-			      0.01);
+      if (targets_sm[current_state_sm].gripper_force_start > 0) {
+	sendGripperGraspCommand(targets_sm[current_state_sm].gripper_width_start,
+				0.1,
+				targets_sm[current_state_sm].gripper_force_start,
+				0.01,
+				0.01);
+      }
 
       state_machine_state = MOVE_TO_TARGET;
     }
