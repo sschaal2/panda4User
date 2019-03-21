@@ -106,7 +106,8 @@ static SL_Cstate  ctarget[N_ENDEFFS+1];
 static SL_Cstate  cdes[N_ENDEFFS+1];
 static SL_quat    ctarget_orient[N_ENDEFFS+1];
 static My_Crot    ctarget_rot[N_ENDEFFS+1];  
-static SL_quat    cdes_orient[N_ENDEFFS+1]; 
+static SL_quat    cdes_orient[N_ENDEFFS+1];
+static SL_quat    cdesstart_orient[N_ENDEFFS+1]; 
 static double     corient_error[N_ENDEFFS*3+1];
 static int        stats[N_ENDEFFS*6+1];
 static SL_DJstate target[N_DOFS+1];
@@ -431,7 +432,7 @@ run_qfsp_task(void)
       freeze();
       return TRUE;
     }
-    
+
     // assign relevant variables from state machine state
     time_to_go = targets_sm[current_state_sm].movement_duration;
 
@@ -453,6 +454,9 @@ run_qfsp_task(void)
 
     }
 
+    // need to memorize the cart orient start for min jerk
+    cdesstart_orient[HAND] = cdes_orient[HAND];
+
     // check for gripper movement
     if (targets_sm[current_state_sm].gripper_width_start > misc_sensor[G_WIDTH]) {
       sendGripperMoveCommand(targets_sm[current_state_sm].gripper_width_start,
@@ -465,8 +469,7 @@ run_qfsp_task(void)
 			    0.01);
 
     // prepare min jerk for orientation space: s is an interpolation variable 
-    s[1] = 1.0;
-    s[2] = s[3] = 0;
+    s[1] = s[2] = s[3] = 0;
     
     state_machine_state = MOVE_TO_TARGET;
     // break; // intentionally no break
@@ -488,8 +491,10 @@ run_qfsp_task(void)
 			 &(cdes[HAND].xdd[i]));
     }
 
-    min_jerk_next_step_quat(cdes_orient[HAND], ctarget_orient[HAND], s,
-			    time_to_go, time_step, &(cdes_orient[HAND]));
+    if (targets_sm[current_state_sm].use_orient) {
+      min_jerk_next_step_quat(cdesstart_orient[HAND], ctarget_orient[HAND], s,
+			      time_to_go, time_step, &(cdes_orient[HAND]));
+    }
     
     time_to_go -= time_step;
     if (time_to_go < 0) {
@@ -527,7 +532,7 @@ run_qfsp_task(void)
     for (j= _A_; j<= _G_ ; ++j) { /* orientation */
       if (stats[N_CART + j]) {
 	cref[N_CART + j] = 
-	  (ctarget_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) *0.025 * 2.0 * sqrt(default_gain_orient) - 
+	  (cdes_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) *0.025 * 2.0 * sqrt(default_gain_orient) - 
 	  corient_error[j] * default_gain_orient; 
       }
     }
@@ -545,7 +550,7 @@ run_qfsp_task(void)
     for (j= _A_; j<= _G_ ; ++j) { /* orientation */
       if (stats[N_CART + j]) {
 	cref[N_CART + j] = 
-	  (ctarget_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) * targets_sm[current_state_sm].cart_gain_ad[j] - 
+	  (cdes_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) * targets_sm[current_state_sm].cart_gain_ad[j] - 
 	  corient_error[j] * targets_sm[current_state_sm].cart_gain_a[j]; 
       }
     }
@@ -873,7 +878,7 @@ cartesianImpedanceSimpleJt(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
 
   /* compute the PD term for the Null space  */
   for (i=1; i<=N_DOFS; ++i) {
-    double fac=0.2;
+    double fac=0.1;
     e[i] = 
       fac*controller_gain_th[i]*(rest[i].th - state[i].th) - 
       sqrt(fac)*controller_gain_thd[i] *state[i].thd;
@@ -884,7 +889,7 @@ cartesianImpedanceSimpleJt(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
 
   /* return this as a PD command in uff */
   for (i=1; i<=N_DOFS; ++i) {
-    state[i].uff += en[i];
+    state[i].uff -= en[i];
   }
 
   return TRUE;
@@ -1399,6 +1404,10 @@ min_jerk_next_step_quat (SL_quat q_current, SL_quat q_target, double *s,
   double theta; // angle between current and target quaternion
   double aux;
   double ridge = 1e-10;
+  static FILE *fp=NULL;
+
+  if (fp==NULL)
+    fp = fopen("mist.txt","w");
 
   theta = acos( vec_mult_inner_size(q_current.q,q_target.q,N_QUAT) );
 
@@ -1423,6 +1432,8 @@ min_jerk_next_step_quat (SL_quat q_current, SL_quat q_target, double *s,
     q_next->qdd[j] =  (q_next->qd[j] - q_current.qd[j]) / dt;
   }
 
+  //  fprintf(fp,"%f %f %f   %f %f %f %f\n",s[1],s[2],s[3],q_next->q[1],q_next->q[2],q_next->q[3],q_next->q[4]);
+  
   return TRUE;
 
 }
