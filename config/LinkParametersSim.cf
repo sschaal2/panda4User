@@ -4,7 +4,7 @@
 /* format: 
 keyword, mass, cmx, cmy, cmz, i11, i12, i13, i22, i23, i33, vis coul stiff cons */
 
-/* estimate with SDO and cross validated L1-norm penality, but used J1 inertia from normal xpest */
+/* estimate with SDO and cross validated L1-norm penality */
 J1    0.0000         0         0         0    0.0000         0         0    0.0000         0    0.0725    0.0000    0.0000         0         0
 J2    0.3394   -0.0070   -0.0472    0.0000    0.0250   -0.0052    0.0287    0.0637    0.0026    0.0526    0.0000    0.0000         0         0
 J3    3.0992    0.1292    0.0340   -0.1566    0.0202   -0.0022    0.0039    0.0248   -0.0016    0.0074    0.0000    0.0000         0         0
