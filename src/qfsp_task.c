@@ -28,7 +28,9 @@ Remarks:
 // defines
 enum StateMachineStates
   {
-   INIT_SM_TARGET,			 
+   INIT_SM_TARGET,
+   GRIPPER_START,
+   GRIPPER_END,
    MOVE_TO_TARGET,
    FINISH_SM_TARGET,
    IDLE
@@ -107,14 +109,14 @@ static SL_Cstate  cdes[N_ENDEFFS+1];
 static SL_quat    ctarget_orient[N_ENDEFFS+1];
 static My_Crot    ctarget_rot[N_ENDEFFS+1];  
 static SL_quat    cdes_orient[N_ENDEFFS+1];
-static SL_quat    cdesstart_orient[N_ENDEFFS+1]; 
+static SL_quat    cdes_start_orient[N_ENDEFFS+1]; 
 static double     corient_error[N_ENDEFFS*3+1];
 static int        stats[N_ENDEFFS*6+1];
 static SL_DJstate target[N_DOFS+1];
 static SL_DJstate last_target[N_DOFS+1];
 static int        firsttime = TRUE;
 static double     start_time     = 0;
-static double     default_gain   = 250;
+static double     default_gain   = 450;
 static double     default_gain_orient = 40;
 
 static SL_Cstate  ball_state;
@@ -330,7 +332,7 @@ init_qfsp_task(void)
   }
   
   // read state machine
-  ans = FALSE;
+  ans = TRUE;
   get_int("Read state machine from file?",ans,&ans);
   if (ans) {
     if (get_string("File name of state machine in prefs/",fname,fname)) {
@@ -352,8 +354,11 @@ init_qfsp_task(void)
   target[J4].th -= 0.2;
   target[J6].th += 0.2;
 
+  sendGripperMoveCommand(0.05,0.1);
+
   if (!go_target_wait_ID(target))
     return FALSE;
+
 
   // initialize the cartesian control
   bzero((char *)&cdes,sizeof(cdes));
@@ -420,60 +425,90 @@ run_qfsp_task(void)
   double aux;
   static double time_to_go;
   float pos[N_CART+1];
+  double gripper_move_threshold = 1e-8;
+  static int wait_ticks=0;
+  int    no_gripper_motion = FALSE;
 
 
   switch (state_machine_state) {
 
   case INIT_SM_TARGET:
     
+    // check whether to end state machine
     if (current_state_sm < n_states_sm) {
       ++current_state_sm;
     } else {
       freeze();
       return TRUE;
     }
-
-    // assign relevant variables from state machine state
+    
+    // assign relevant variables from state machine state array
     time_to_go = targets_sm[current_state_sm].movement_duration;
-
+    
     for (i=1; i<=N_CART; ++i)
       ctarget[HAND].x[i] = targets_sm[current_state_sm].pose_x[i];
-
+    
     if (targets_sm[current_state_sm].use_orient) {
-
+      
       for (i=1; i<=N_CART; ++i)
 	stats[N_CART+i] = 1;
-
+      
       for (i=1; i<=N_QUAT; ++i)
 	ctarget_orient[HAND].q[i] = targets_sm[current_state_sm].pose_q[i];
-
+      
     } else { // no orientation
-
+      
       for (i=1; i<=N_CART; ++i)
 	stats[N_CART+i] = 0;
-
+      
+    }
+    
+    // need to memorize the cart orient start for min jerk interpolation
+    cdes_start_orient[HAND] = cdes_orient[HAND];
+    
+    // gripper movement: only if gripper states have changed
+    no_gripper_motion = FALSE;
+    if (current_state_sm > 1) {
+      if (targets_sm[current_state_sm].gripper_width_start == targets_sm[current_state_sm-1].gripper_width_end &&
+	  targets_sm[current_state_sm].gripper_force_start == targets_sm[current_state_sm-1].gripper_force_end) {
+	no_gripper_motion=TRUE; 
+      }
     }
 
-    // need to memorize the cart orient start for min jerk
-    cdesstart_orient[HAND] = cdes_orient[HAND];
-
-    // check for gripper movement
-    if (targets_sm[current_state_sm].gripper_width_start > misc_sensor[G_WIDTH]) {
-      sendGripperMoveCommand(targets_sm[current_state_sm].gripper_width_start,
-			     0.1);
+    if (!no_gripper_motion) {
+      // give move command to gripper to desired position if width is larger than current width
+      if (targets_sm[current_state_sm].gripper_width_start > misc_sensor[G_WIDTH]) {
+	sendGripperMoveCommand(targets_sm[current_state_sm].gripper_width_start,0.1);
+      } else { // or close gripper with force control otherwise
+	sendGripperGraspCommand(targets_sm[current_state_sm].gripper_width_start,
+				0.1,
+				targets_sm[current_state_sm].gripper_force_start,
+				0.08,
+				0.08);
+      }
+      wait_ticks = 100; // need to give non-real-time gripper thread a moment to get started
+      state_machine_state = GRIPPER_START;
+    } else {
+      state_machine_state = MOVE_TO_TARGET;
     }
-    sendGripperGraspCommand(targets_sm[current_state_sm].gripper_width_start,
-			    0.1,
-			    targets_sm[current_state_sm].gripper_force_start,
-			    0.01,
-			    0.01);
-
+    
     // prepare min jerk for orientation space: s is an interpolation variable 
     s[1] = s[2] = s[3] = 0;
     
-    state_machine_state = MOVE_TO_TARGET;
-    // break; // intentionally no break
-
+    break;
+    
+    
+  case GRIPPER_START:
+    
+    if (--wait_ticks < 0) {
+      if (misc_sensor[G_MOTION] == 0) {
+	state_machine_state = MOVE_TO_TARGET;
+      }
+    }
+    
+    break;
+    
+    
   case MOVE_TO_TARGET:
     
     // plan the next step of hand with min jerk
@@ -490,16 +525,46 @@ run_qfsp_task(void)
 			 &(cdes[HAND].xd[i]),
 			 &(cdes[HAND].xdd[i]));
     }
-
+    
     if (targets_sm[current_state_sm].use_orient) {
-      min_jerk_next_step_quat(cdesstart_orient[HAND], ctarget_orient[HAND], s,
+      min_jerk_next_step_quat(cdes_start_orient[HAND], ctarget_orient[HAND], s,
 			      time_to_go, time_step, &(cdes_orient[HAND]));
     }
     
     time_to_go -= time_step;
     if (time_to_go < 0) {
       time_to_go = 0;
-      state_machine_state = INIT_SM_TARGET;
+
+      no_gripper_motion = FALSE;
+      if (targets_sm[current_state_sm].gripper_width_end == targets_sm[current_state_sm].gripper_width_start &&
+	  targets_sm[current_state_sm].gripper_force_end == targets_sm[current_state_sm].gripper_force_start) {
+	no_gripper_motion=TRUE; 
+      }
+
+      if (!no_gripper_motion) {
+	if (targets_sm[current_state_sm].gripper_width_end > misc_sensor[G_WIDTH]) {
+	  sendGripperMoveCommand(targets_sm[current_state_sm].gripper_width_end,0.1);
+	} else {
+	  sendGripperGraspCommand(targets_sm[current_state_sm].gripper_width_end,
+				  0.1,
+				  targets_sm[current_state_sm].gripper_force_end,
+				  0.08,
+				  0.08);
+	}
+	wait_ticks = 100; // need to give non-real-time gripper thread a moment to get started
+	state_machine_state = GRIPPER_END;
+      } else {
+	state_machine_state = INIT_SM_TARGET;
+      }
+    }
+
+    break;
+
+  case GRIPPER_END:
+    if (--wait_ticks < 0) {
+      if (misc_sensor[G_MOTION] == 0) {
+	state_machine_state = INIT_SM_TARGET;
+      }
     }
 
     break;
@@ -1404,12 +1469,24 @@ min_jerk_next_step_quat (SL_quat q_current, SL_quat q_target, double *s,
   double theta; // angle between current and target quaternion
   double aux;
   double ridge = 1e-10;
-  static FILE *fp=NULL;
 
-  if (fp==NULL)
-    fp = fopen("mist.txt","w");
+  // make sure numerical issues of quaternion inner product cannot bother us
+  aux = vec_mult_inner_size(q_current.q,q_target.q,N_QUAT);
+  if (aux > 1)
+    aux = 1;
+  else if (aux < -1)
+    aux = -1;
+  theta = acos( aux );
 
-  theta = acos( vec_mult_inner_size(q_current.q,q_target.q,N_QUAT) );
+  // current and target are identical
+  if (theta == 0){
+    for (i=1; i<=N_QUAT; ++i) {
+      q_next->q[i] = q_current.q[i];
+      q_next->qd[i] = 0.0;
+      q_next->qdd[i] = 0.0;
+    }
+    return TRUE;
+  }
 
   // min jerk for the indicator variable
   min_jerk_next_step(s[1],s[2],s[3],1.0,0.0,0.0,t_togo,dt,&(s[1]),&(s[2]),&(s[3]));
