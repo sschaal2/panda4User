@@ -377,6 +377,10 @@ init_qfsp_task(void)
   for (j=1; j<=N_QUAT; ++j) {
     cdes_orient[HAND].q[j] = ctarget_orient[HAND].q[j] = cart_des_orient[HAND].q[j];
   }
+
+  // reclibrate the gripper offsets
+  sendCalibrateFTCommand();
+
   
   // ready to go
   ans = 999;
