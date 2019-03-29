@@ -324,3 +324,6 @@ HAND_cart_ref_z
 HAND_cart_ref_a
 HAND_cart_ref_b
 HAND_cart_ref_g
+HAND_cdes_x
+HAND_cdes_y
+HAND_cdes_z
