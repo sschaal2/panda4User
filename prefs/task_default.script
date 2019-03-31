@@ -164,6 +164,9 @@ HAND_ct_add
 HAND_ct_bdd
 HAND_ct_gdd
 
+HAND_cdes_x
+HAND_cdes_y
+HAND_cdes_z
 
 vaux_1
 vaux_2

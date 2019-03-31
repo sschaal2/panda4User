@@ -92,7 +92,7 @@ typedef struct StateMachineTarget {
 #define MAX_STATES_SM 1000
 static StateMachineTarget targets_sm[MAX_STATES_SM+1];
 static int n_states_sm = 0;
-static int current_state_sm = 1;
+static int current_state_sm = 0;
 
 
 /* Cartesian orientation representation with a rotation around an axis */
@@ -309,6 +309,14 @@ init_qfsp_task(void)
       addVarToCollect((char *)&(cref[(i-1)*6 + 5]),string,"-", DOUBLE,FALSE);
       sprintf(string,"%s_cart_ref_g",cart_names[i]);
       addVarToCollect((char *)&(cref[(i-1)*6 + 6]),string,"-", DOUBLE,FALSE);
+      
+      sprintf(string,"%s_cdes_x",cart_names[i]);
+      addVarToCollect((char *)&(cdes[i].x[_X_]),string,"m", DOUBLE,FALSE);
+      sprintf(string,"%s_cdes_y",cart_names[i]);
+      addVarToCollect((char *)&(cdes[i].x[_Y_]),string,"m", DOUBLE,FALSE);
+      sprintf(string,"%s_cdes_z",cart_names[i]);
+      addVarToCollect((char *)&(cdes[i].x[_Z_]),string,"m", DOUBLE,FALSE);
+      
       
       
     }
@@ -626,6 +634,12 @@ run_qfsp_task(void)
 
   }
 
+  bzero((char *)&target,sizeof(target));
+  for (i=1; i<=N_DOFS; ++i) {
+    target[i].th  = joint_state[i].th;
+    target[i].thd = joint_state[i].thd;    
+  }
+
   // this computes the joint space torque
   if (!cartesianImpedanceSimpleJt(target,endeff,joint_opt_state,
 				  cref,stats,time_step,task_servo_time)) {
@@ -898,7 +912,8 @@ cartesianImpedanceSimpleJt(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
       }
       if (i==j) 
 	P[i][j] += ridge;
-      P[j][i] = P[i][j];
+      else
+	P[j][i] = P[i][j];
     }
   }
 
@@ -934,14 +949,18 @@ cartesianImpedanceSimpleJt(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
      some matrix-vector multiplications, which are much cheaper */
   for (i=1; i<=N_DOFS; ++i) {
     for (j=i; j<=N_DOFS; ++j) {
+
       if (i==j) 
 	O[i][j] = 1.0;
       else
 	O[i][j] = 0.0;
+
       for (n=1; n<=count; ++n) {
 	O[i][j] -= B[i][n] * J[ind[n]][j];
       }
-      O[j][i] = O[i][j];
+
+      if (i!=j)
+	O[j][i] = O[i][j];
     }
   }
 
@@ -956,9 +975,9 @@ cartesianImpedanceSimpleJt(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
   //print_mat("O",O);
   //getchar();
 
-  /* return this as a PD command in uff */
+  /* add this as a PD command to uff */
   for (i=1; i<=N_DOFS; ++i) {
-    state[i].uff -= en[i];
+    state[i].uff += en[i];
   }
 
   return TRUE;
