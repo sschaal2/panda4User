@@ -42,13 +42,13 @@ void
 initUserTasks(void)
 
 {
-  extern void add_qfsp_task();
+  extern void add_sm_task();
   extern void add_gravcomp_task();
   extern void add_test_task();
   extern void add_impedance_test_task();
 
   add_gravcomp_task();
-  add_qfsp_task();
+  add_sm_task();
   add_test_task();
   add_impedance_test_task();
 
