@@ -69,21 +69,24 @@ static Filter fthdd[N_DOFS+1];
 
 typedef struct StateMachineTarget {
   char   state_name[100];
+  double movement_duration;
+  int    pose_x_is_relative;
   double pose_x[N_CART+1];
   int    use_orient;
+  int    pose_q_is_relative;
   double pose_q[N_QUAT+1];
-  double movement_duration;
+  int    gripper_width_start_is_relative;
   double gripper_width_start;
+  int    gripper_width_end_is_relative;  
   double gripper_width_end;
   double gripper_force_start;
   double gripper_force_end;
-  double cart_force_start;
-  double cart_force_end;
-  double cart_moment_start;
-  double cart_moment_end;
-  int    use_default_gains;
+  double ff_wrench[2*N_CART+1];
+  double max_wrench[2*N_CART+1];
+  int    use_default_gain_x;
   double cart_gain_x[N_CART+1]; // diagonal of matrix
   double cart_gain_xd[N_CART+1]; // diagonal of matrix
+  int    use_default_gain_a;
   double cart_gain_a[N_CART+1];  // diagonal of matrix
   double cart_gain_ad[N_CART+1]; // diagonal of matrix
   char   controller_name[100];
@@ -130,14 +133,14 @@ static int    state_machine_state = INIT_SM_TARGET;
 static double s[3+1]; // indicator for min jerk in orientation space
 
 /* global functions */
-void add_qfsp_task(void);
+void add_sm_task(void);
 
 /* local functions */
 static int    cartesianImpedanceSimpleJt(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
 					 Vector cart, iVector status, double dt, double t);
-static int    init_qfsp_task(void);
-static int    run_qfsp_task(void);
-static int    change_qfsp_task(void);
+static int    init_sm_task(void);
+static int    run_sm_task(void);
+static int    change_sm_task(void);
 static int    init_filters(void);
 static double filt(double raw, Filter *fptr);
 static void   quatDerivativesToAngVelAcc(SL_quat *q);
@@ -155,7 +158,7 @@ static void   print_sm_state(void);
 
 /*****************************************************************************
 ******************************************************************************
-Function Name	: add_qfsp_task
+Function Name	: add_sm_task
 Date		: Feb 2019
 Remarks:
 
@@ -168,13 +171,13 @@ none
 
 *****************************************************************************/
 void
-add_qfsp_task( void )
+add_sm_task( void )
 {
   int i, j;
   char string[100];
   
-  addTask("QFSP Insertion Task", init_qfsp_task, 
-	  run_qfsp_task, change_qfsp_task);
+  addTask("State Machine Task", init_sm_task, 
+	  run_sm_task, change_sm_task);
 
   addToMan("print_sm_state","prints the current state suitable for state machine",print_sm_state); 
 
@@ -188,7 +191,7 @@ add_qfsp_task( void )
 
 /*****************************************************************************
 ******************************************************************************
-  Function Name	: init_qfsp_task
+  Function Name	: init_sm_task
   Date		: Dec. 1997
 
   Remarks:
@@ -202,7 +205,7 @@ add_qfsp_task( void )
 
  *****************************************************************************/
 static int 
-init_qfsp_task(void)
+init_sm_task(void)
 {
   int    j, i;
   char   string[100];
@@ -415,7 +418,7 @@ init_qfsp_task(void)
   
 /*****************************************************************************
 ******************************************************************************
-  Function Name	: run_qfsp_task
+  Function Name	: run_sm_task
   Date		: Dec. 1997
 
   Remarks:
@@ -429,7 +432,7 @@ init_qfsp_task(void)
 
  *****************************************************************************/
 static int 
-run_qfsp_task(void)
+run_sm_task(void)
 {
   int j, i;
   double sum=0;
@@ -440,6 +443,7 @@ run_qfsp_task(void)
   double gripper_move_threshold = 1e-8;
   static int wait_ticks=0;
   int    no_gripper_motion = FALSE;
+  char   msg[100];
 
 
   switch (state_machine_state) {
@@ -449,6 +453,8 @@ run_qfsp_task(void)
     // check whether to end state machine
     if (current_state_sm < n_states_sm) {
       ++current_state_sm;
+      sprintf(msg,"%s\n",targets_sm[current_state_sm].state_name);
+      logMsg(msg,0,0,0,0,0,0);
     } else {
       freeze();
       return TRUE;
@@ -596,21 +602,13 @@ run_qfsp_task(void)
   // prepare the impdance controller, i.e., compute operational
   // space force command
 
-  if (targets_sm[current_state_sm].use_default_gains) {
+  if (targets_sm[current_state_sm].use_default_gain_x) {
 
     for (j= _X_; j<= _Z_; ++j) {
       if (stats[j]) {
 	cref[j] =
 	  (cdes[HAND].xd[j]  - cart_state[HAND].xd[j]) * 2.*sqrt(default_gain) +
 	  (cdes[HAND].x[j]  - cart_state[HAND].x[j]) * default_gain;
-      }
-    }
-    
-    for (j= _A_; j<= _G_ ; ++j) { /* orientation */
-      if (stats[N_CART + j]) {
-	cref[N_CART + j] = 
-	  (cdes_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) *0.025 * 2.0 * sqrt(default_gain_orient) - 
-	  corient_error[j] * default_gain_orient; 
       }
     }
 
@@ -624,6 +622,21 @@ run_qfsp_task(void)
       }
     }
     
+  }
+
+
+  if (targets_sm[current_state_sm].use_default_gain_a) {
+    
+    for (j= _A_; j<= _G_ ; ++j) { /* orientation */
+      if (stats[N_CART + j]) {
+	cref[N_CART + j] = 
+	  (cdes_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) *0.025 * 2.0 * sqrt(default_gain_orient) - 
+	  corient_error[j] * default_gain_orient; 
+      }
+    }
+
+  } else { // use gains from targets_sm
+
     for (j= _A_; j<= _G_ ; ++j) { /* orientation */
       if (stats[N_CART + j]) {
 	cref[N_CART + j] = 
@@ -634,9 +647,6 @@ run_qfsp_task(void)
 
   }
 
-  // the inverse kinematics controller needs the current state as input;
-  // the is no notion of a desire joint state, i.e., it is equal to the
-  // current state as only the operational space servo is active
   bzero((char *)&target,sizeof(target));
   for (i=1; i<=N_DOFS; ++i) {
     target[i].th  = joint_state[i].th;
@@ -677,7 +687,7 @@ run_qfsp_task(void)
 
 /*****************************************************************************
 ******************************************************************************
-  Function Name	: change_qfsp_task
+  Function Name	: change_sm_task
   Date		: Dec. 1997
 
   Remarks:
@@ -691,7 +701,7 @@ run_qfsp_task(void)
 
  *****************************************************************************/
 static int 
-change_qfsp_task(void)
+change_sm_task(void)
 {
   int j, i;
   char string[100];
@@ -1292,53 +1302,56 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
                         by default, assumed in the PREFS director, ending 
                         in <filename>.sm
 
-   format:
+  format: every state is in curely brackets, and has keywords before every group of values
 
-   name_of_state
-   pose_x_X
-   pose_x_Y
-   pose_x_Z
-   use_orient
-   pose_q_Q0
-   pose_q_Q1
-   pose_q_Q2
-   pose_q_Q3
-   movement_duration
-   gripper_width_start
-   gripper_width_end
-   gripper_force_start
-   gripper_force_end
-   cart_force_start
-   cart_force_end
-   cart_moment_start
-   cart_moment_end
-   use_default_gains
-   cart_gain_x_X
-   cart_gain_x_Y
-   cart_gain_x_Z
-   cart_gain_xd_X
-   cart_gain_xd_Y
-   cart_gain_xd_Z
-   cart_gain_a_A
-   cart_gain_a_B
-   cart_gain_a_G
-   cart_gain_ad_A
-   cart_gain_ad_B
-   cart_gain_ad_G
-   controller_name
+{
+   "name" state_name
+   "duration" movement_duration
+   "pose_x" ["abs" | "rel"] pose_x_X pose_x_Y pose_x_Z
+   "pose_q" use_orient ["abs" | "rel"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
+   "gripper_start" ["abs" | "rel"] gripper_start_width gripper_start_force
+   "gripper_end" ["abs" | "rel"] gripper_end_width gripper_end_force
+   "cart_gain_x" use_default cart_gain_x_X cart_gain_x_Y cart_gain_x_Z cart_gain_xd_X cart_gain_xd_Y cart_gain_xd_Z
+   "cart_gain_a" use_default cart_gain_a_A cart_gain_a_B cart_gain_a_G cart_gain_ad_A cart_gain_ad_B cart_gain_ad_G
+   "ff_wrench" fx fy fz mx my mz
+   "max_wrench" fx_max fy_max fz_max mx_max my_max mz_max
+   "controller" controller_name
+}
 
  ******************************************************************************/
+static char state_group_names[][100]=
+  {
+   {"dummy"},
+   {"name"},
+   {"duration"},
+   {"pose_x"},
+   {"pose_q"},
+   {"gripper_start"},
+   {"gripper_end"},
+   {"cart_gain_x"},
+   {"cart_gain_a"},
+   {"ff_wrench"},
+   {"max_wrench"},
+   {"controller"}
+  };
+
+static int n_parms[] = {0,1,1,4,6,3,3,7,7,6,6,1};
+#define MAX_BIG_STRING 5000
+
 static int
 read_state_machine(char *fname) {
-
-  int j,i,rc;
-  char   string[200];
+  
+  int    j,i,rc;
+  char   string[MAX_BIG_STRING+1];
   FILE  *in;
   int    n_read;
-  int    n_parms = 32; // number of parameters per state
   StateMachineTarget sm_temp;
-  
-
+  int    found_start = FALSE;
+  int    count = 0;
+  char  *c;
+  char   cr;
+  char   saux[20];
+    
   // open the file and strip all comments
   sprintf(string,"%s%s",PREFS,fname);
   in = fopen_strip(string);
@@ -1347,54 +1360,262 @@ read_state_machine(char *fname) {
     return FALSE;
   }
 
-
-  // read state-by-state until end-of-file
+  // zero the number of states in state machine
   n_states_sm = 0;
-  do {
-    n_read = fscanf(in,"%s  %lf %lf %lf  %d %lf %lf %lf %lf  %lf  %lf %lf %lf %lf  %lf %lf %lf %lf  %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s",
-		    sm_temp.state_name,
-		    &(sm_temp.pose_x[_X_]),
-		    &(sm_temp.pose_x[_Y_]),
-		    &(sm_temp.pose_x[_Z_]),
-		    &(sm_temp.use_orient),
-		    &(sm_temp.pose_q[_Q0_]),
-		    &(sm_temp.pose_q[_Q1_]),
-		    &(sm_temp.pose_q[_Q2_]),
-		    &(sm_temp.pose_q[_Q3_]),
-		    &(sm_temp.movement_duration),
-		    &(sm_temp.gripper_width_start),
-		    &(sm_temp.gripper_width_end),		    
-		    &(sm_temp.gripper_force_start),
-		    &(sm_temp.gripper_force_end),		    
-		    &(sm_temp.cart_force_start),
-		    &(sm_temp.cart_force_end),		    
-		    &(sm_temp.cart_moment_start),
-		    &(sm_temp.cart_moment_end),
-		    &(sm_temp.use_default_gains),		    
-		    &(sm_temp.cart_gain_x[_X_]),
-		    &(sm_temp.cart_gain_x[_Y_]),
-		    &(sm_temp.cart_gain_x[_Z_]),
-		    &(sm_temp.cart_gain_xd[_X_]),
-		    &(sm_temp.cart_gain_xd[_Y_]),
-		    &(sm_temp.cart_gain_xd[_Z_]),
-		    &(sm_temp.cart_gain_a[_A_]),
-		    &(sm_temp.cart_gain_a[_B_]),
-		    &(sm_temp.cart_gain_a[_G_]),
-		    &(sm_temp.cart_gain_ad[_A_]),
-		    &(sm_temp.cart_gain_ad[_B_]),
-		    &(sm_temp.cart_gain_ad[_G_]),
-		    sm_temp.controller_name
-		    );
-    if (n_read == n_parms) {
-      if (n_states_sm < MAX_STATES_SM) {
-	targets_sm[++n_states_sm] = sm_temp;
-      } else {
-	// should be unlikely to happen ever
-	printf("Error: ran out of memory for state machine targets\n");
-      }
-    }
-  } while (n_read == n_parms);
+  
+  // read states into a string, and then parse the string
+  while ((cr=fgetc(in)) != EOF) {
 
+    if ( cr == '{' ) { // found the beginning of a state
+      
+      found_start = TRUE;
+      count = 0;
+      
+    } else if ( cr == '}' && found_start ) { // a complete record was found
+
+      found_start = FALSE;
+
+      if (count < MAX_BIG_STRING) {
+	string[count++] = '\0';
+
+	// now parse the string
+
+	// the name
+	i = 1;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  printf("Could not find group %s\n",state_group_names[i]);
+	  continue;
+	} else {
+	  n_read = sscanf(c,"%s",sm_temp.state_name);
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	}
+
+	// the duration
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  printf("Could not find group %s\n",state_group_names[i]);
+	  continue;
+	} else {
+	  n_read = sscanf(c,"%lf",&sm_temp.movement_duration);
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	}
+
+	// pose_x
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  printf("Could not find group %s\n",state_group_names[i]);
+	  continue;
+	} else {
+	  n_read = sscanf(c,"%s %lf %lf %lf",saux,&(sm_temp.pose_x[_X_]),&(sm_temp.pose_x[_Y_]),&(sm_temp.pose_x[_Z_]));
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	  if (strcmp(saux,"rel")==0)
+	    sm_temp.pose_x_is_relative = TRUE;
+	  else
+	    sm_temp.pose_x_is_relative = FALSE;
+	}
+
+	// pose_q
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  printf("Could not find group %s\n",state_group_names[i]);
+	  continue;
+	} else {
+	  n_read = sscanf(c,"%d %s %lf %lf %lf %lf", &(sm_temp.use_orient),saux,
+			  &(sm_temp.pose_q[_Q0_]),
+			  &(sm_temp.pose_q[_Q1_]),
+			  &(sm_temp.pose_q[_Q2_]),
+			  &(sm_temp.pose_q[_Q3_]));
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	  if (strcmp(saux,"rel")==0)
+	    sm_temp.pose_q_is_relative = TRUE;
+	  else
+	    sm_temp.pose_q_is_relative = FALSE;
+	}
+
+	
+	// gripper_start
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  printf("Could not find group %s\n",state_group_names[i]);
+	  continue;
+	} else {
+	  n_read = sscanf(c,"%s %lf %lf",saux,&(sm_temp.gripper_width_start), &(sm_temp.gripper_force_start));
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	  if (strcmp(saux,"rel")==0)
+	    sm_temp.gripper_width_start_is_relative = TRUE;
+	  else
+	    sm_temp.gripper_width_start_is_relative = FALSE;
+	}
+
+
+	// gripper_end
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  printf("Could not find group %s\n",state_group_names[i]);
+	  continue;
+	} else {
+	  n_read = sscanf(c,"%s %lf %lf",saux,&(sm_temp.gripper_width_end), &(sm_temp.gripper_force_end));
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	  if (strcmp(saux,"rel")==0)
+	    sm_temp.gripper_width_end_is_relative = TRUE;
+	  else
+	    sm_temp.gripper_width_end_is_relative = FALSE;
+	}
+
+
+	// gain_x
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  printf("Could not find group %s\n",state_group_names[i]);
+	  continue;
+	} else {
+	  n_read = sscanf(c,"%d %lf %lf %lf %lf %lf %lf",&(sm_temp.use_default_gain_x),		    
+			  &(sm_temp.cart_gain_x[_X_]),
+			  &(sm_temp.cart_gain_x[_Y_]),
+			  &(sm_temp.cart_gain_x[_Z_]),
+			  &(sm_temp.cart_gain_xd[_X_]),
+			  &(sm_temp.cart_gain_xd[_Y_]),
+			  &(sm_temp.cart_gain_xd[_Z_]));
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	}
+
+
+	// gain_a
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  printf("Could not find group %s\n",state_group_names[i]);
+	  continue;
+	} else {
+	  n_read = sscanf(c,"%d %lf %lf %lf %lf %lf %lf",&(sm_temp.use_default_gain_a),		    
+			  &(sm_temp.cart_gain_a[_X_]),
+			  &(sm_temp.cart_gain_a[_Y_]),
+			  &(sm_temp.cart_gain_a[_Z_]),
+			  &(sm_temp.cart_gain_ad[_X_]),
+			  &(sm_temp.cart_gain_ad[_Y_]),
+			  &(sm_temp.cart_gain_ad[_Z_]));
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	}
+
+
+	// ff_wrench
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  printf("Could not find group %s\n",state_group_names[i]);
+	  continue;
+	} else {
+	  n_read = sscanf(c,"%lf %lf %lf %lf %lf %lf",
+			  &(sm_temp.ff_wrench[_X_]),
+			  &(sm_temp.ff_wrench[_Y_]),
+			  &(sm_temp.ff_wrench[_Z_]),
+			  &(sm_temp.ff_wrench[N_CART+_A_]),
+			  &(sm_temp.ff_wrench[N_CART+_B_]),
+			  &(sm_temp.ff_wrench[N_CART+_G_]));
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	}
+
+
+	// max_wrench
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  printf("Could not find group %s\n",state_group_names[i]);
+	  continue;
+	} else {
+	  n_read = sscanf(c,"%lf %lf %lf %lf %lf %lf",
+			  &(sm_temp.max_wrench[_X_]),
+			  &(sm_temp.max_wrench[_Y_]),
+			  &(sm_temp.max_wrench[_Z_]),
+			  &(sm_temp.max_wrench[N_CART+_A_]),
+			  &(sm_temp.max_wrench[N_CART+_B_]),
+			  &(sm_temp.max_wrench[N_CART+_G_]));
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	}
+
+
+	// the controller
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  printf("Could not find group %s\n",state_group_names[i]);
+	  continue;
+	} else {
+	  n_read = sscanf(c,"%s",sm_temp.controller_name);
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	}
+
+	// finish up
+	if (n_states_sm < MAX_STATES_SM) {
+	  targets_sm[++n_states_sm] = sm_temp;
+	} else {
+	  // should be unlikely to happen ever
+	  printf("Error: ran out of memory for state machine targets\n");
+	  return FALSE;
+	}
+
+
+      } else {  // should not be possible: too many characters witout a closing curly bracket
+
+	found_start = FALSE;
+
+      }
+
+    } else {
+
+      if (found_start && count < MAX_BIG_STRING) {
+	string[count++] = cr;
+      } else {  // should not be possible: too many characters witout a closing curly bracket
+	found_start = FALSE;
+      }
+      
+    }
+
+  }
+      
+
+  // all done parsing
+  
   printf("Read %d states for the state machine\n",n_states_sm);
   
   fclose(in);
