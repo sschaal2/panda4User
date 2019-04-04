@@ -634,6 +634,9 @@ run_qfsp_task(void)
 
   }
 
+  // the inverse kinematics controller needs the current state as input;
+  // the is no notion of a desire joint state, i.e., it is equal to the
+  // current state as only the operational space servo is active
   bzero((char *)&target,sizeof(target));
   for (i=1; i<=N_DOFS; ++i) {
     target[i].th  = joint_state[i].th;
