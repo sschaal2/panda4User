@@ -120,14 +120,16 @@ static SL_DJstate target[N_DOFS+1];
 static SL_DJstate last_target[N_DOFS+1];
 static int        firsttime = TRUE;
 static double     start_time     = 0;
-static double     default_gain   = 450;
-static double     default_gain_orient = 40;
+static double     default_gain   = 450;  // was 450
+static double     default_gain_orient = 40;  // was 40
 
 static SL_Cstate  ball_state;
 
 static double controller_gain_th[N_DOFS+1];
 static double controller_gain_thd[N_DOFS+1];
 static double controller_gain_int[N_DOFS+1];
+
+static double u_delta_switch[N_DOFS+1];
 
 static int    state_machine_state = INIT_SM_TARGET;
 
@@ -210,7 +212,7 @@ init_sm_task(void)
 {
   int    j, i;
   char   string[100];
-  char   fname[100] = "qfsp.sm";
+  static char   fname[100] = "qfsp.sm";
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;
@@ -336,6 +338,10 @@ init_sm_task(void)
 	fthdd[i].raw[j] = fthdd[i].filt[j] = 0;
     
   }
+
+  // zero the delta command from controller switches
+  for (i=1; i<=N_DOFS; ++i)
+    u_delta_switch[i] = 0.0;
   
   // check whether any other task is running 
   if (strcmp(current_task_name,NO_TASK) != 0) {
@@ -357,8 +363,8 @@ init_sm_task(void)
   }
 
   // QFSP specifc hack
-  endeff[HAND].x[_Z_]  = FL+FINGER_OFF+FINGER_LENGTH+0.055;
-  broadcastEndeffector(endeff);
+  //endeff[HAND].x[_Z_]  = FL+FINGER_OFF+FINGER_LENGTH+0.055;
+  //broadcastEndeffector(endeff);
 
   // go to a save posture 
   bzero((char *)&(target[1]),N_DOFS*sizeof(target[1]));
@@ -450,7 +456,7 @@ run_sm_task(void)
   static int wait_ticks=0;
   int    no_gripper_motion = FALSE;
   char   msg[100];
-
+  int    update_u_delta_switch = FALSE;
 
   switch (state_machine_state) {
 
@@ -469,16 +475,28 @@ run_sm_task(void)
     // assign relevant variables from state machine state array
     time_to_go = targets_sm[current_state_sm].movement_duration;
     
-    for (i=1; i<=N_CART; ++i)
-      ctarget[HAND].x[i] = targets_sm[current_state_sm].pose_x[i];
+    for (i=1; i<=N_CART; ++i) {
+      if (targets_sm[current_state_sm].pose_x_is_relative) {
+	ctarget[HAND].x[i] += targets_sm[current_state_sm].pose_x[i];
+      } else {
+	ctarget[HAND].x[i] = targets_sm[current_state_sm].pose_x[i];
+      }
+    }
     
     if (targets_sm[current_state_sm].use_orient) {
       
       for (i=1; i<=N_CART; ++i)
 	stats[N_CART+i] = 1;
       
-      for (i=1; i<=N_QUAT; ++i)
-	ctarget_orient[HAND].q[i] = targets_sm[current_state_sm].pose_q[i];
+      if (targets_sm[current_state_sm].pose_q_is_relative) {	
+	print_vec_size("before",ctarget_orient[HAND].q,4);
+	quatMult(ctarget_orient[HAND].q,targets_sm[current_state_sm].pose_q,ctarget_orient[HAND].q);
+	print_vec_size("after",ctarget_orient[HAND].q,4);
+      } else {
+	for (i=1; i<=N_QUAT; ++i) {
+	  ctarget_orient[HAND].q[i] = targets_sm[current_state_sm].pose_q[i];
+	}
+      }
       
     } else { // no orientation
       
@@ -489,7 +507,7 @@ run_sm_task(void)
     
     // need to memorize the cart orient start for min jerk interpolation
     cdes_start_orient[HAND] = cdes_orient[HAND];
-    
+
     // gripper movement: only if gripper states have changed
     no_gripper_motion = FALSE;
     if (current_state_sm > 1) {
@@ -534,6 +552,10 @@ run_sm_task(void)
     
     
   case MOVE_TO_TARGET:
+
+    if (time_to_go == targets_sm[current_state_sm].movement_duration ) { // first tick in this state
+      update_u_delta_switch = TRUE;
+    }
     
     // plan the next step of hand with min jerk
     for (i=1; i<=N_CART; ++i) {
@@ -667,6 +689,10 @@ run_sm_task(void)
   }
 
   for (i=1; i<=N_DOFS; ++i) {
+    if (update_u_delta_switch) {
+      u_delta_switch[i] = joint_state[i].u - (joint_state[i].uff-joint_des_state[i].uff);
+      //printf("%d.%f\n",i,u_delta_switch[i]);
+    }
     joint_des_state[i].thdd  = 0.0;
     joint_des_state[i].thd   = joint_state[i].thd;
     joint_des_state[i].th    = joint_state[i].th;
@@ -679,7 +705,10 @@ run_sm_task(void)
   // add feedforward torques from impedance controller
   for (i=1; i<=N_DOFS; ++i) {
     joint_des_state[i].uff   += target[i].uff;
+    //joint_des_state[i].uff   += u_delta_switch[i]; // transient to avoid jumps from controller switch
+    u_delta_switch[i] *= 0.999;
   }
+
 
   // visualize the cartesian desired as a ball
   for (i=1; i<=N_CART; ++i)
