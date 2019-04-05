@@ -453,7 +453,7 @@ run_sm_task(void)
     // check whether to end state machine
     if (current_state_sm < n_states_sm) {
       ++current_state_sm;
-      sprintf(msg,"%s\n",targets_sm[current_state_sm].state_name);
+      sprintf(msg,"%d.%s\n",current_state_sm,targets_sm[current_state_sm].state_name);
       logMsg(msg,0,0,0,0,0,0);
     } else {
       freeze();
