@@ -94,6 +94,7 @@ typedef struct StateMachineTarget {
 
 #define MAX_STATES_SM 1000
 static StateMachineTarget targets_sm[MAX_STATES_SM+1];
+static StateMachineTarget current_target_sm;
 static int n_states_sm = 0;
 static int current_state_sm = 0;
 
