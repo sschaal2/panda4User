@@ -94,7 +94,6 @@ typedef struct StateMachineTarget {
 
 #define MAX_STATES_SM 1000
 static StateMachineTarget targets_sm[MAX_STATES_SM+1];
-static StateMachineTarget current_target_sm;
 static int n_states_sm = 0;
 static int current_state_sm = 0;
 
@@ -113,7 +112,8 @@ static SL_Cstate  cdes[N_ENDEFFS+1];
 static SL_quat    ctarget_orient[N_ENDEFFS+1];
 static My_Crot    ctarget_rot[N_ENDEFFS+1];  
 static SL_quat    cdes_orient[N_ENDEFFS+1];
-static SL_quat    cdes_start_orient[N_ENDEFFS+1]; 
+static SL_quat    cdes_start_orient[N_ENDEFFS+1];
+static double     des_gripper_width;
 static double     corient_error[N_ENDEFFS*3+1];
 static int        stats[N_ENDEFFS*6+1];
 static SL_DJstate target[N_DOFS+1];
@@ -355,7 +355,11 @@ init_sm_task(void)
     printf("No valid state machine found\n");
     return FALSE;
   }
-  
+
+  // QFSP specifc hack
+  endeff[HAND].x[_Z_]  = FL+FINGER_OFF+FINGER_LENGTH+0.055;
+  broadcastEndeffector(endeff);
+
   // go to a save posture 
   bzero((char *)&(target[1]),N_DOFS*sizeof(target[1]));
   bzero((char *)&(last_target[1]),N_DOFS*sizeof(last_target[1]));
@@ -366,7 +370,8 @@ init_sm_task(void)
   target[J4].th -= 0.2;
   target[J6].th += 0.2;
 
-  sendGripperMoveCommand(0.05,0.1);
+  des_gripper_width = 0.05;
+  sendGripperMoveCommand(des_gripper_width,0.1);
 
   if (!go_target_wait_ID(target))
     return FALSE;
@@ -393,7 +398,7 @@ init_sm_task(void)
   // reclibrate the gripper offsets
   sendCalibrateFTCommand();
 
-  
+
   // ready to go
   ans = 999;
   while (ans == 999) {
