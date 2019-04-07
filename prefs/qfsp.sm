@@ -28,7 +28,7 @@
 name          move_to_grasp
 duration      1.5
 pose_x        abs 0.603 0.017 0.07
-pose_q        1 abs 0.0 0.924 0.382 0.0
+pose_q        1 abs 0.0 -0.7071 0.7071 0.0
 gripper_start abs 0.05 0
 gripper_end   abs 0.05 0
 cart_gain_x   1 0 0 0 0 0 0
@@ -40,8 +40,8 @@ controller    SimpleImpedanceJt
 {
 name          prepare_grasp
 duration      1
-pose_x        rel 0.0 0.0 -0.047
-pose_q        1 abs 0.0 0.924 0.382 0.0
+pose_x        rel 0.0 0.0 -0.053
+pose_q        1 abs 0.0 -0.7071 0.7071 0.0
 gripper_start abs 0.05 0
 gripper_end   abs 0.0  100
 cart_gain_x   1 0 0 0 0 0 0
@@ -54,7 +54,7 @@ controller    SimpleImpedanceJt
 name          extract_qfsp
 duration      2
 pose_x        rel 0.0 0.0 0.15
-pose_q        1 abs 0.0 0.924 0.382 0.0
+pose_q        1 rel 1 0 0 0
 gripper_start abs 0.0  100
 gripper_end   abs 0.0  100
 cart_gain_x   1 0 0 0 0 0 0
@@ -64,13 +64,13 @@ max_wrench    15 15 15 5 5 5
 controller    SimpleImpedanceJt
 }
 
-/*
+
 // first qfsp socket slot
 {
 name          approach_tilted
 duration      2
-pose_x        abs 0.625 -0.016 0.115
-pose_q        1 abs -0.290 0.935 0.205 -0.012
+pose_x        abs 0.603 0.017 0.07
+pose_q        1 rel  0.9423 0.2634 0.1219 -0.1678
 gripper_start abs 0.0  100
 gripper_end   abs 0.0  100
 cart_gain_x   1 0 0 0 0 0 0
@@ -82,8 +82,8 @@ controller    SimpleImpedanceJt
 {
 name          reorient_in_slot
 duration      2
-pose_x        abs 0.610 0.005 0.125
-pose_q        1 abs -0.007 0.925 0.381 -0.002
+pose_x        rel 0.0 0.0 -.005
+pose_q        1 abs 0.0 -0.7071 0.7071 0.0
 gripper_start abs 0.0  100
 gripper_end   abs 0.0  100
 cart_gain_x   1 0 0 0 0 0 0
@@ -95,8 +95,8 @@ controller    SimpleImpedanceJt
 {
 name          push_down_qfsp
 duration      2
-pose_x        abs 0.605 0.028 0.040
-pose_q        1 abs -0.007 0.925 0.381 -0.002
+pose_x        rel 0.0 0.0 -0.075
+pose_q        1 rel 1 0 0 0
 gripper_start abs 0.0  100
 gripper_end   abs 0.0  100
 cart_gain_x   1 0 0 0 0 0 0
@@ -108,8 +108,8 @@ controller    SimpleImpedanceJt
 {
 name          relax
 duration      1
-pose_x        abs 0.610 0.018 0.085
-pose_q        1 abs -0.007 0.925 0.381 -0.002
+pose_x        rel 0.0 0.0 0.02
+pose_q        1 rel 1 0 0 0
 gripper_start abs 0.0  100
 gripper_end   abs 0.05 0
 cart_gain_x   1 0 0 0 0 0 0
@@ -121,8 +121,8 @@ controller    SimpleImpedanceJt
 {
 name          extract_qfsp
 duration      2
-pose_x        abs 0.610 0.018 0.290
-pose_q        1 abs -0.007 0.925 0.381 -0.002
+pose_x        rel 0.0 0.0 0.15
+pose_q        1 rel 1 0 0 0
 gripper_start abs 0.0  100
 gripper_end   abs 0.0  100
 cart_gain_x   1 0 0 0 0 0 0
@@ -131,6 +131,7 @@ ff_wrench     0 0 0 0 0 0
 max_wrench    15 15 15 5 5 5 
 controller    SimpleImpedanceJt
 }
+/*
 
 // second qfsp socket slot
 {

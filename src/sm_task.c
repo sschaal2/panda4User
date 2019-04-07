@@ -96,7 +96,7 @@ typedef struct StateMachineTarget {
 static StateMachineTarget targets_sm[MAX_STATES_SM+1];
 static int n_states_sm = 0;
 static int current_state_sm = 0;
-
+static double speed_mult = 1.0;
 
 /* Cartesian orientation representation with a rotation around an axis */
 typedef struct { 
@@ -363,8 +363,8 @@ init_sm_task(void)
   }
 
   // QFSP specifc hack
-  //endeff[HAND].x[_Z_]  = FL+FINGER_OFF+FINGER_LENGTH+0.055;
-  //broadcastEndeffector(endeff);
+  endeff[HAND].x[_Z_]  = FL+FINGER_OFF+FINGER_LENGTH+0.06;
+  broadcastEndeffector(endeff);
 
   // go to a save posture 
   bzero((char *)&(target[1]),N_DOFS*sizeof(target[1]));
@@ -403,6 +403,11 @@ init_sm_task(void)
 
   // reclibrate the gripper offsets
   sendCalibrateFTCommand();
+
+  // speed change?
+  get_double("Speed multiplier?",speed_mult,&speed_mult);
+  if (speed_mult <= 0 || speed_mult > 2)
+    speed_mult = 1.0;
 
 
   // ready to go
@@ -473,7 +478,7 @@ run_sm_task(void)
     }
     
     // assign relevant variables from state machine state array
-    time_to_go = targets_sm[current_state_sm].movement_duration;
+    time_to_go = targets_sm[current_state_sm].movement_duration/speed_mult;
     
     for (i=1; i<=N_CART; ++i) {
       if (targets_sm[current_state_sm].pose_x_is_relative) {
