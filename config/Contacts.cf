@@ -28,4 +28,7 @@ J5_LINK		J7_LINK		1	5	orth	orth
 J7_LINK		FLANGE		1	2	orth	half
 
 
-
+FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01   0.0000   0.0000 0.0000  -1.0000
+FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01   0.0000   0.0000 0.0000  -1.0000
+FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01   0.0000   0.0000 0.0000  -1.0000
+FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01   0.0000   0.0000 0.0000  -1.0000

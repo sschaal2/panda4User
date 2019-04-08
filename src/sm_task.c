@@ -39,6 +39,7 @@ enum StateMachineStates
 enum Controllers
   {
    SIMPLE_IMPEDANCE_JT=1,
+   SIMPLE_IMPEDANCE_JT_INT,
    N_CONT
   };
 
@@ -47,7 +48,8 @@ static int n_controllers = N_CONT-1;
 char controller_names[][100]=
   {
    {"dummy"},
-   {"SimpleImpedanceJt"}
+   {"SimpleImpedanceJt"},
+   {"SimpleImpedanceJtInt"}
   };
 
 
@@ -96,7 +98,8 @@ typedef struct StateMachineTarget {
 static StateMachineTarget targets_sm[MAX_STATES_SM+1];
 static int n_states_sm = 0;
 static int current_state_sm = 0;
-
+static double speed_mult = 1.0;
+static int    current_controller = SIMPLE_IMPEDANCE_JT;
 
 /* Cartesian orientation representation with a rotation around an axis */
 typedef struct { 
@@ -107,6 +110,7 @@ typedef struct {
 /* local variables */
 static double     time_step;
 static double     cref[N_ENDEFFS*6+1];
+static double     cref_integral[N_ENDEFFS*6+1];
 static SL_Cstate  ctarget[N_ENDEFFS+1];
 static SL_Cstate  cdes[N_ENDEFFS+1];
 static SL_quat    ctarget_orient[N_ENDEFFS+1];
@@ -120,8 +124,10 @@ static SL_DJstate target[N_DOFS+1];
 static SL_DJstate last_target[N_DOFS+1];
 static int        firsttime = TRUE;
 static double     start_time     = 0;
-static double     default_gain   = 450;  // was 450
+static double     default_gain   = 500;  // was 450
 static double     default_gain_orient = 40;  // was 40
+static double     default_gain_integral = 0.25;
+static double     gain_integral = 0.0;
 
 static SL_Cstate  ball_state;
 
@@ -342,6 +348,9 @@ init_sm_task(void)
   // zero the delta command from controller switches
   for (i=1; i<=N_DOFS; ++i)
     u_delta_switch[i] = 0.0;
+
+  // zero out intergrator
+  bzero((char *)&cref_integral,sizeof(cref_integral));
   
   // check whether any other task is running 
   if (strcmp(current_task_name,NO_TASK) != 0) {
@@ -349,6 +358,11 @@ init_sm_task(void)
     return FALSE;
   }
   
+  // speed change?
+  get_double("Speed multiplier?",speed_mult,&speed_mult);
+  if (speed_mult <= 0 || speed_mult > 2)
+    speed_mult = 1.0;
+
   // read state machine
   ans = TRUE;
   get_int("Read state machine from file?",ans,&ans);
@@ -363,8 +377,8 @@ init_sm_task(void)
   }
 
   // QFSP specifc hack
-  //endeff[HAND].x[_Z_]  = FL+FINGER_OFF+FINGER_LENGTH+0.055;
-  //broadcastEndeffector(endeff);
+  endeff[HAND].x[_Z_]  = FL+FINGER_OFF+FINGER_LENGTH+0.06;
+  broadcastEndeffector(endeff);
 
   // go to a save posture 
   bzero((char *)&(target[1]),N_DOFS*sizeof(target[1]));
@@ -451,10 +465,10 @@ run_sm_task(void)
   double dist;
   double aux;
   static double time_to_go;
-  float pos[N_CART+1];
+  float pos[N_CART+1+1]; // one extra element for radius
   double gripper_move_threshold = 1e-8;
   static int wait_ticks=0;
-  int    no_gripper_motion = FALSE;
+  int    no_gripper_motion = TRUE;
   char   msg[100];
   int    update_u_delta_switch = FALSE;
 
@@ -465,15 +479,17 @@ run_sm_task(void)
     // check whether to end state machine
     if (current_state_sm < n_states_sm) {
       ++current_state_sm;
-      sprintf(msg,"%d.%s\n",current_state_sm,targets_sm[current_state_sm].state_name);
+      sprintf(msg,"    %d.%-30s with %s\n",current_state_sm,targets_sm[current_state_sm].state_name,targets_sm[current_state_sm].controller_name);
       logMsg(msg,0,0,0,0,0,0);
     } else {
+      sprintf(msg,"All done!\n");
+      logMsg(msg,0,0,0,0,0,0);
       freeze();
       return TRUE;
     }
     
     // assign relevant variables from state machine state array
-    time_to_go = targets_sm[current_state_sm].movement_duration;
+    time_to_go = targets_sm[current_state_sm].movement_duration/speed_mult;
     
     for (i=1; i<=N_CART; ++i) {
       if (targets_sm[current_state_sm].pose_x_is_relative) {
@@ -489,9 +505,9 @@ run_sm_task(void)
 	stats[N_CART+i] = 1;
       
       if (targets_sm[current_state_sm].pose_q_is_relative) {	
-	print_vec_size("before",ctarget_orient[HAND].q,4);
+	//print_vec_size("before",ctarget_orient[HAND].q,4);
 	quatMult(ctarget_orient[HAND].q,targets_sm[current_state_sm].pose_q,ctarget_orient[HAND].q);
-	print_vec_size("after",ctarget_orient[HAND].q,4);
+	//print_vec_size("after",ctarget_orient[HAND].q,4);
       } else {
 	for (i=1; i<=N_QUAT; ++i) {
 	  ctarget_orient[HAND].q[i] = targets_sm[current_state_sm].pose_q[i];
@@ -519,7 +535,8 @@ run_sm_task(void)
 
     if (!no_gripper_motion) {
       // give move command to gripper to desired position if width is larger than current width
-      if (targets_sm[current_state_sm].gripper_width_start > misc_sensor[G_WIDTH]) {
+      if (targets_sm[current_state_sm].gripper_width_start > misc_sensor[G_WIDTH] ||
+	  targets_sm[current_state_sm].gripper_force_start == 0) {
 	sendGripperMoveCommand(targets_sm[current_state_sm].gripper_width_start,0.1);
       } else { // or close gripper with force control otherwise
 	sendGripperGraspCommand(targets_sm[current_state_sm].gripper_width_start,
@@ -528,7 +545,7 @@ run_sm_task(void)
 				0.08,
 				0.08);
       }
-      wait_ticks = 100; // need to give non-real-time gripper thread a moment to get started
+      wait_ticks = 50; // need to give non-real-time gripper thread a moment to get started
       state_machine_state = GRIPPER_START;
     } else {
       state_machine_state = MOVE_TO_TARGET;
@@ -536,6 +553,20 @@ run_sm_task(void)
     
     // prepare min jerk for orientation space: s is an interpolation variable 
     s[1] = s[2] = s[3] = 0;
+
+    // which controller?
+    for (i=1; i<=n_controllers; ++i) {
+      if (strcmp(targets_sm[current_state_sm].controller_name,controller_names[i]) == 0) {
+	current_controller = i;
+	update_u_delta_switch = TRUE;
+	break;
+      }
+    }
+    if (i > n_controllers ) { // did not find valid controller
+      printf("State %s has no valid controller --- abort\n",targets_sm[current_state_sm].state_name);
+      freeze();
+      return FALSE;
+    }
     
     break;
     
@@ -553,10 +584,6 @@ run_sm_task(void)
     
   case MOVE_TO_TARGET:
 
-    if (time_to_go == targets_sm[current_state_sm].movement_duration ) { // first tick in this state
-      update_u_delta_switch = TRUE;
-    }
-    
     // plan the next step of hand with min jerk
     for (i=1; i<=N_CART; ++i) {
       min_jerk_next_step(cdes[HAND].x[i],
@@ -588,7 +615,8 @@ run_sm_task(void)
       }
 
       if (!no_gripper_motion) {
-	if (targets_sm[current_state_sm].gripper_width_end > misc_sensor[G_WIDTH]) {
+	if (targets_sm[current_state_sm].gripper_width_end > misc_sensor[G_WIDTH] ||
+	    targets_sm[current_state_sm].gripper_force_end == 0) {
 	  sendGripperMoveCommand(targets_sm[current_state_sm].gripper_width_end,0.1);
 	} else {
 	  sendGripperGraspCommand(targets_sm[current_state_sm].gripper_width_end,
@@ -597,7 +625,7 @@ run_sm_task(void)
 				  0.08,
 				  0.08);
 	}
-	wait_ticks = 100; // need to give non-real-time gripper thread a moment to get started
+	wait_ticks = 50; // need to give non-real-time gripper thread a moment to get started
 	state_machine_state = GRIPPER_END;
       } else {
 	state_machine_state = INIT_SM_TARGET;
@@ -622,7 +650,20 @@ run_sm_task(void)
     break;
 
   }
-  
+
+
+  // adjust controller specific items
+  switch (current_controller) {
+
+  case SIMPLE_IMPEDANCE_JT:
+    gain_integral = 0;
+    bzero((char *)&cref_integral,sizeof(cref_integral));
+    break;
+    
+  case SIMPLE_IMPEDANCE_JT_INT:
+    gain_integral = default_gain_integral;
+    break;
+  }
 
   // compute orientation error term for quaterion feedback control
   quatErrorVector(cdes_orient[1].q,cart_orient[1].q,corient_error);
@@ -634,7 +675,10 @@ run_sm_task(void)
 
     for (j= _X_; j<= _Z_; ++j) {
       if (stats[j]) {
-	cref[j] =
+	
+	cref_integral[j] += gain_integral * (cdes[HAND].x[j]  - cart_state[HAND].x[j]);
+	
+	cref[j] = cref_integral[j] +
 	  (cdes[HAND].xd[j]  - cart_state[HAND].xd[j]) * 2.*sqrt(default_gain) +
 	  (cdes[HAND].x[j]  - cart_state[HAND].x[j]) * default_gain;
       }
@@ -644,7 +688,10 @@ run_sm_task(void)
 
     for (j= _X_; j<= _Z_; ++j) {
       if (stats[j]) {
-	cref[j] =
+
+	cref_integral[j] += gain_integral * (cdes[HAND].x[j]  - cart_state[HAND].x[j]);
+	
+	cref[j] = cref_integral[j] +
 	  (cdes[HAND].xd[j]  - cart_state[HAND].xd[j]) *  targets_sm[current_state_sm].cart_gain_xd[j] +
 	  (cdes[HAND].x[j]  - cart_state[HAND].x[j]) * targets_sm[current_state_sm].cart_gain_x[j];
       }
@@ -657,7 +704,10 @@ run_sm_task(void)
     
     for (j= _A_; j<= _G_ ; ++j) { /* orientation */
       if (stats[N_CART + j]) {
-	cref[N_CART + j] = 
+
+	cref_integral[N_CART + j] +=  - corient_error[j] * gain_integral;
+
+	cref[N_CART + j] = cref_integral[N_CART + j] +
 	  (cdes_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) *0.025 * 2.0 * sqrt(default_gain_orient) - 
 	  corient_error[j] * default_gain_orient; 
       }
@@ -667,7 +717,10 @@ run_sm_task(void)
 
     for (j= _A_; j<= _G_ ; ++j) { /* orientation */
       if (stats[N_CART + j]) {
-	cref[N_CART + j] = 
+
+	cref_integral[N_CART + j] +=  - corient_error[j] * gain_integral;
+
+	cref[N_CART + j] = cref_integral[N_CART + j] +
 	  (cdes_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) * targets_sm[current_state_sm].cart_gain_ad[j] - 
 	  corient_error[j] * targets_sm[current_state_sm].cart_gain_a[j]; 
       }
@@ -688,24 +741,35 @@ run_sm_task(void)
     return FALSE;
   }
 
+
+
   for (i=1; i<=N_DOFS; ++i) {
+
+    // smooth out controller switches: Step 1: remember last uff
     if (update_u_delta_switch) {
-      u_delta_switch[i] = joint_state[i].u - (joint_state[i].uff-joint_des_state[i].uff);
-      //printf("%d.%f\n",i,u_delta_switch[i]);
+      u_delta_switch[i] = joint_des_state[i].uff;
     }
+
     joint_des_state[i].thdd  = 0.0;
     joint_des_state[i].thd   = joint_state[i].thd;
     joint_des_state[i].th    = joint_state[i].th;
     joint_des_state[i].uff   = 0.0;
   }
     
-    // inverse dynamics
+  // inverse dynamics
   SL_InvDyn(joint_state,joint_des_state,endeff,&base_state,&base_orient);
+
 
   // add feedforward torques from impedance controller
   for (i=1; i<=N_DOFS; ++i) {
     joint_des_state[i].uff   += target[i].uff;
-    //joint_des_state[i].uff   += u_delta_switch[i]; // transient to avoid jumps from controller switch
+
+    // smooth out controller switches: Step 2: check the difference in uff
+    if (update_u_delta_switch) {
+      u_delta_switch[i] -= joint_des_state[i].uff;
+    }
+
+    joint_des_state[i].uff   += u_delta_switch[i]; // transient to avoid jumps from controller switch
     u_delta_switch[i] *= 0.999;
   }
 
@@ -713,7 +777,8 @@ run_sm_task(void)
   // visualize the cartesian desired as a ball
   for (i=1; i<=N_CART; ++i)
     pos[i] = cdes[HAND].x[i];
-  sendUserGraphics("ball",&(pos[_X_]), N_CART*sizeof(float));
+  pos[_Z_+1] = 0.005;
+  sendUserGraphics("ballSize",&(pos[_X_]), (N_CART+1)*sizeof(float));
 
 
   return TRUE;
@@ -1386,6 +1451,7 @@ read_state_machine(char *fname) {
   char  *c;
   char   cr;
   char   saux[20];
+  double aux;
     
   // open the file and strip all comments
   sprintf(string,"%s%s",PREFS,fname);
@@ -1481,6 +1547,19 @@ read_state_machine(char *fname) {
 	    sm_temp.pose_q_is_relative = TRUE;
 	  else
 	    sm_temp.pose_q_is_relative = FALSE;
+
+	  //normalize quaternion for safety
+	  aux = 0.0;
+	  for (j=1; j<=N_QUAT; ++j)
+	    aux += sqr(sm_temp.pose_q[j]);
+
+	  if (aux < 0.95) {
+	    printf("Quaternion in group %s not normalized\n",state_group_names[i]);
+	    continue;
+	  }
+
+	  for (j=1; j<=N_QUAT; ++j)
+	    sm_temp.pose_q[j] /= sqrt(aux);
 	}
 
 	
