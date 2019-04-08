@@ -456,7 +456,7 @@ run_sm_task(void)
   double dist;
   double aux;
   static double time_to_go;
-  float pos[N_CART+1];
+  float pos[N_CART+1+1]; // one extra element for radius
   double gripper_move_threshold = 1e-8;
   static int wait_ticks=0;
   int    no_gripper_motion = FALSE;
@@ -718,7 +718,8 @@ run_sm_task(void)
   // visualize the cartesian desired as a ball
   for (i=1; i<=N_CART; ++i)
     pos[i] = cdes[HAND].x[i];
-  sendUserGraphics("ball",&(pos[_X_]), N_CART*sizeof(float));
+  pos[_Z_+1] = 0.005;
+  sendUserGraphics("ballSize",&(pos[_X_]), (N_CART+1)*sizeof(float));
 
 
   return TRUE;
