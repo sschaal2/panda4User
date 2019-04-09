@@ -387,8 +387,13 @@ init_sm_task(void)
     target[i] = joint_default_state[i];
     last_target[i] = joint_default_state[i];
   }
-  target[J4].th -= 0.2;
-  target[J6].th += 0.2;
+  target[J1].th  = -0.023;
+  target[J2].th  =  0.29;
+  target[J3].th  =  0.029;
+  target[J4].th  = -1.964;
+  target[J5].th  = 0.092;
+  target[J6].th  = 2.237;
+  target[J7].th  = -0.867;
 
   des_gripper_width = 0.05;
   sendGripperMoveCommand(des_gripper_width,0.1);
@@ -479,6 +484,9 @@ run_sm_task(void)
     // check whether to end state machine
     if (current_state_sm < n_states_sm) {
       ++current_state_sm;
+      if (current_state_sm == 1) {
+	logMsg("\n",0,0,0,0,0,0);
+      }
       sprintf(msg,"    %d.%-30s with %s\n",current_state_sm,targets_sm[current_state_sm].state_name,targets_sm[current_state_sm].controller_name);
       logMsg(msg,0,0,0,0,0,0);
     } else {
@@ -1840,6 +1848,12 @@ min_jerk_next_step_quat (SL_quat q_current, SL_quat q_target, double *s,
   else if (aux < -1)
     aux = -1;
   theta = acos( aux );
+
+  if (fabs(theta) > 0.5) {
+    printf("theta = %f\n",theta);
+    print_vec_size("q_current.q",q_current.q,N_QUAT);
+    print_vec_size("q_target.q",q_target.q,N_QUAT);    
+  }
 
   // current and target are identical
   if (theta == 0){
