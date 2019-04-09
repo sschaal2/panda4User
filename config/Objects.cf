@@ -56,7 +56,7 @@ qfsp_slot_middle 1 	/* name and ID of object type */
 0.5 0.5 0.5          	/* rgb */
 0.603 0.0 0.02  	/* pos */
 0.0 0.0 0.0  		/* orient */
-0.01 0.014 0.1 	/* scale */
+0.02 0.014 0.1 		/* scale */
 1  			/* contact model */
 10         		/* object parameters */
 1000 50 10 50 0.8 0.8	/* contact parameters */
@@ -65,7 +65,7 @@ qfsp_slot_side_1 1 	/* name and ID of object type */
 0.5 0.5 0.5          	/* rgb */
 0.603 0.037 0.02	/* pos */
 0.0 0.0 0.0  		/* orient */
-0.01 0.02 0.1 		/* scale */
+0.02 0.02 0.1 		/* scale */
 1  			/* contact model */
 10         		/* object parameters */
 1000 50 10 50 0.8 0.8	/* contact parameters */
@@ -74,7 +74,7 @@ qfsp_slot_side_2 1 	/* name and ID of object type */
 0.5 0.5 0.5          	/* rgb */
 0.603 -0.037 0.02	/* pos */
 0.0 0.0 0.0  		/* orient */
-0.01 0.02 0.1 		/* scale */
+0.02 0.02 0.1 		/* scale */
 1  			/* contact model */
 10         		/* object parameters */
 1000 50 10 50 0.8 0.8	/* contact parameters */

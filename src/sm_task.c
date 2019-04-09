@@ -1828,6 +1828,11 @@ min_jerk_next_step_quat (SL_quat q_current, SL_quat q_target, double *s,
   double aux;
   double ridge = 1e-10;
 
+  // adjust the target to be in the same solution space as the current
+  aux = vec_mult_inner_size(q_current.q,q_target.q,N_QUAT);
+  if (aux < 0)
+    vec_mult_scalar_size(q_target.q,N_QUAT,-1.0,q_target.q);
+
   // make sure numerical issues of quaternion inner product cannot bother us
   aux = vec_mult_inner_size(q_current.q,q_target.q,N_QUAT);
   if (aux > 1)
