@@ -1849,12 +1849,6 @@ min_jerk_next_step_quat (SL_quat q_current, SL_quat q_target, double *s,
     aux = -1;
   theta = acos( aux );
 
-  if (fabs(theta) > 0.5) {
-    printf("theta = %f\n",theta);
-    print_vec_size("q_current.q",q_current.q,N_QUAT);
-    print_vec_size("q_target.q",q_target.q,N_QUAT);    
-  }
-
   // current and target are identical
   if (theta == 0){
     for (i=1; i<=N_QUAT; ++i) {
