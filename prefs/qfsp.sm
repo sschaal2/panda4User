@@ -69,14 +69,14 @@ controller    SimpleImpedanceJt
 {
 name          approach_tilted
 duration      2
-pose_x        abs 0.603 0.017 0.07
+pose_x        abs 0.608 0.017 0.07
 pose_q        1 rel  0.9423 0.2634 0.1219 -0.1678
 gripper_start abs 0.0  100
 gripper_end   abs 0.0  100
 cart_gain_x   1 0 0 0 0 0 0
 cart_gain_a   1 0 0 0 0 0 0
 ff_wrench     0 0 0 0 0 0
-max_wrench    5 5 5 5 5 5
+max_wrench    10 10 10 5 5 5
 controller    SimpleImpedanceJtInt
 }
 {
@@ -89,7 +89,7 @@ gripper_end   abs 0.0  100
 cart_gain_x   1 0 0 0 0 0 0
 cart_gain_a   1 0 0 0 0 0 0
 ff_wrench     0 0 0 0 0 0
-max_wrench    10 10 10 5 5 5
+max_wrench    15 15 15 5 5 5
 controller    SimpleImpedanceJt
 }
 {
