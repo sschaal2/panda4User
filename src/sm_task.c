@@ -592,24 +592,45 @@ run_sm_task(void)
     
   case MOVE_TO_TARGET:
 
-    // plan the next step of hand with min jerk
-    for (i=1; i<=N_CART; ++i) {
-      min_jerk_next_step(cdes[HAND].x[i],
-			 cdes[HAND].xd[i],
-			 cdes[HAND].xdd[i],
-			 ctarget[HAND].x[i],
-			 ctarget[HAND].xd[i],
-			 ctarget[HAND].xdd[i],
-			 time_to_go,
-			 time_step,
-			 &(cdes[HAND].x[i]),
-			 &(cdes[HAND].xd[i]),
-			 &(cdes[HAND].xdd[i]));
-    }
-    
-    if (targets_sm[current_state_sm].use_orient) {
-      min_jerk_next_step_quat(cdes_start_orient[HAND], ctarget_orient[HAND], s,
-			      time_to_go, time_step, &(cdes_orient[HAND]));
+    // check for exceeding max force/torque
+    if (fabs(misc_sensor[C_FX]) > targets_sm[current_state_sm].max_wrench[_X_] ||
+	fabs(misc_sensor[C_FY]) > targets_sm[current_state_sm].max_wrench[_Y_] ||
+	fabs(misc_sensor[C_FZ]) > targets_sm[current_state_sm].max_wrench[_Z_] ||
+	fabs(misc_sensor[C_MX]) > targets_sm[current_state_sm].max_wrench[N_CART+_A_] ||
+	fabs(misc_sensor[C_MY]) > targets_sm[current_state_sm].max_wrench[N_CART+_B_] ||
+	fabs(misc_sensor[C_MZ]) > targets_sm[current_state_sm].max_wrench[N_CART+_G_]) {
+
+      for (i=1; i<=N_CART; ++i) {
+	cdes[HAND].xd[i]  = 0.0;
+	cdes[HAND].xdd[i] = 0.0;
+	cdes_orient[HAND].ad[i]  = 0.0;
+	cdes_orient[HAND].add[i]  = 0.0;	
+      }
+
+      logMsg("max force/torque exceeded\n",0,0,0,0,0,0);
+      time_to_go = 0;
+
+    } else {
+
+      // plan the next step of hand with min jerk
+      for (i=1; i<=N_CART; ++i) {
+	min_jerk_next_step(cdes[HAND].x[i],
+			   cdes[HAND].xd[i],
+			   cdes[HAND].xdd[i],
+			   ctarget[HAND].x[i],
+			   ctarget[HAND].xd[i],
+			   ctarget[HAND].xdd[i],
+			   time_to_go,
+			   time_step,
+			   &(cdes[HAND].x[i]),
+			   &(cdes[HAND].xd[i]),
+			   &(cdes[HAND].xdd[i]));
+      }
+      
+      if (targets_sm[current_state_sm].use_orient) {
+	min_jerk_next_step_quat(cdes_start_orient[HAND], ctarget_orient[HAND], s,
+				time_to_go, time_step, &(cdes_orient[HAND]));
+      }
     }
     
     time_to_go -= time_step;
