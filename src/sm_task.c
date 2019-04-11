@@ -43,6 +43,8 @@ enum Controllers
    N_CONT
   };
 
+#define QFSP_LENGTH 0.06
+
 static int n_controllers = N_CONT-1;
 
 char controller_names[][100]=
@@ -59,6 +61,11 @@ enum FTEceptionAction
    LAST
   };
 
+enum RelativeOption {
+  ABS = 0,
+  REL,
+  RELREF
+};
 
 // variables for filtering
 #define FILTER_ORDER 2
@@ -104,6 +111,7 @@ typedef struct StateMachineTarget {
 
 #define MAX_STATES_SM 1000
 static StateMachineTarget targets_sm[MAX_STATES_SM+1];
+static StateMachineTarget reference_state;
 static int n_states_sm = 0;
 static int current_state_sm = 0;
 static double speed_mult = 1.0;
@@ -132,7 +140,7 @@ static SL_DJstate target[N_DOFS+1];
 static SL_DJstate last_target[N_DOFS+1];
 static int        firsttime = TRUE;
 static double     start_time     = 0;
-static double     default_gain   = 500;  // was 450
+static double     default_gain   = 600;  // was 450
 static double     default_gain_orient = 40;  // was 40
 static double     default_gain_integral = 0.25;
 static double     gain_integral = 0.0;
@@ -230,6 +238,7 @@ init_sm_task(void)
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;
+  static int pert = 0;
   
   if (firsttime) {
     
@@ -384,8 +393,45 @@ init_sm_task(void)
     return FALSE;
   }
 
+  // perturb reference?
+  get_int("Perturb reference?",pert,&pert);
+  if (pert == 1) {
+    double dx[N_CART+1];
+    double dq[N_QUAT+1];
+    double std = sqrt(1./3.);
+    double aux = 0;
+    double angle;
+
+    dx[_X_] = uniform(0.0,std*0.001);
+    dx[_Y_] = uniform(0.0,std*0.001);
+    dx[_Z_] = uniform(0.0,std*0.002);
+    dq[_Q1_] = uniform(0.0,std*1.0);
+    dq[_Q2_] = uniform(0.0,std*1.0);
+    dq[_Q3_] = uniform(0.0,std*1.0);
+
+    angle = 5./180*PI;
+    dq[_Q0_] = cos(angle/2.);
+
+    for (i=_Q1_; i<=_Q3_; ++i)
+      aux += sqr(dq[i]);
+    aux = sqrt(aux);
+    for (i=_Q1_; i<=_Q3_; ++i) {
+      dq[i] /= aux;
+      dq[i] *= sin(angle/2.);
+    }
+
+    printf("delta x: %f %f %f\n",dx[1],dx[2],dx[3]);
+    printf("delta q: %f %f %f %f\n",dq[1],dq[2],dq[3],dq[4]);
+
+    for (i=1; i<=N_CART; ++i)
+      reference_state.pose_x[i] += dx[i];
+
+    quatMult(reference_state.pose_q,dq,reference_state.pose_q);
+   
+  }
+
   // QFSP specifc hack
-  endeff[HAND].x[_Z_]  = FL+FINGER_OFF+FINGER_LENGTH+0.06;
+  endeff[HAND].x[_Z_]  = FL+FINGER_OFF+FINGER_LENGTH+QFSP_LENGTH;
   broadcastEndeffector(endeff);
 
   // go to a save posture 
@@ -509,8 +555,10 @@ run_sm_task(void)
     time_to_go = targets_sm[current_state_sm].movement_duration/speed_mult;
     
     for (i=1; i<=N_CART; ++i) {
-      if (targets_sm[current_state_sm].pose_x_is_relative) {
+      if (targets_sm[current_state_sm].pose_x_is_relative == REL) {
 	ctarget[HAND].x[i] += targets_sm[current_state_sm].pose_x[i];
+      } else if (targets_sm[current_state_sm].pose_x_is_relative == RELREF) {
+	ctarget[HAND].x[i] = reference_state.pose_x[i] + targets_sm[current_state_sm].pose_x[i];
       } else {
 	ctarget[HAND].x[i] = targets_sm[current_state_sm].pose_x[i];
       }
@@ -521,9 +569,13 @@ run_sm_task(void)
       for (i=1; i<=N_CART; ++i)
 	stats[N_CART+i] = 1;
       
-      if (targets_sm[current_state_sm].pose_q_is_relative) {	
+      if (targets_sm[current_state_sm].pose_q_is_relative == REL) {	
 	//print_vec_size("before",ctarget_orient[HAND].q,4);
 	quatMult(ctarget_orient[HAND].q,targets_sm[current_state_sm].pose_q,ctarget_orient[HAND].q);
+	//print_vec_size("after",ctarget_orient[HAND].q,4);
+      } else if (targets_sm[current_state_sm].pose_q_is_relative == RELREF) {	
+	//print_vec_size("before",ctarget_orient[HAND].q,4);
+	quatMult(reference_state.pose_q,targets_sm[current_state_sm].pose_q,ctarget_orient[HAND].q);
 	//print_vec_size("after",ctarget_orient[HAND].q,4);
       } else {
 	for (i=1; i<=N_QUAT; ++i) {
@@ -1599,9 +1651,11 @@ read_state_machine(char *fname) {
 	    continue;
 	  }
 	  if (strcmp(saux,"rel")==0)
-	    sm_temp.pose_x_is_relative = TRUE;
+	    sm_temp.pose_x_is_relative = REL;
+	  else if (strcmp(saux,"relref")==0)
+	    sm_temp.pose_x_is_relative = RELREF;
 	  else
-	    sm_temp.pose_x_is_relative = FALSE;
+	    sm_temp.pose_x_is_relative = ABS;
 	}
 
 	// pose_q
@@ -1621,9 +1675,11 @@ read_state_machine(char *fname) {
 	    continue;
 	  }
 	  if (strcmp(saux,"rel")==0)
-	    sm_temp.pose_q_is_relative = TRUE;
+	    sm_temp.pose_q_is_relative = REL;
+	  else if (strcmp(saux,"relref")==0)
+	    sm_temp.pose_q_is_relative = RELREF;
 	  else
-	    sm_temp.pose_q_is_relative = FALSE;
+	    sm_temp.pose_q_is_relative = ABS;
 
 	  //normalize quaternion for safety
 	  aux = 0.0;
@@ -1785,7 +1841,10 @@ read_state_machine(char *fname) {
 	}
 
 	// finish up
-	if (n_states_sm < MAX_STATES_SM) {
+	if (strcmp(sm_temp.state_name,"reference") == 0) {
+	  reference_state = sm_temp;
+	  printf("Found reference state\n");
+	} else if (n_states_sm < MAX_STATES_SM) {
 	  targets_sm[++n_states_sm] = sm_temp;
 	} else {
 	  // should be unlikely to happen ever

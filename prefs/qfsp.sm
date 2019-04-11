@@ -22,6 +22,22 @@
 
 */
 
+// the reference state
+{
+name          reference
+duration      0
+//pose_x        abs 0.603 0.017 0.07
+pose_x        abs 0.603 0.017 0.07
+pose_q        1 abs 0.0 -0.7071 0.7071 0.0
+gripper_start abs 0.05 0
+gripper_end   abs 0.05 0
+cart_gain_x   1 0 0 0 0 0 0
+cart_gain_a   1 0 0 0 0 0 0
+ff_wrench     0 0 0 0 0 0
+max_wrench    abort 10 10 10 5 5 5
+controller    SimpleImpedanceJtInt
+}
+
 // grasp the qfsp connector in first slot
 
 {
@@ -53,8 +69,8 @@ controller    SimpleImpedanceJtInt
 {
 name          extract_qfsp
 duration      2
-pose_x        rel 0.0 0.0 0.15
-pose_q        1 rel 1 0 0 0
+pose_x        relref 0.0 0.0 0.15
+pose_q        1 relref 1 0 0 0
 gripper_start abs 0.0  100
 gripper_end   abs 0.0  100
 cart_gain_x   1 0 0 0 0 0 0
@@ -68,8 +84,8 @@ controller    SimpleImpedanceJt
 // first qfsp socket slot
 {
 name          approach_tilted
-duration      2
-pose_x        abs 0.608 0.017 0.07
+duration      2.5
+pose_x        relref 0.004 0 0 
 pose_q        1 rel  0.9423 0.2634 0.1219 -0.1678
 gripper_start abs 0.0  100
 gripper_end   abs 0.0  100
@@ -82,8 +98,8 @@ controller    SimpleImpedanceJtInt
 {
 name          reorient_in_slot
 duration      2
-pose_x        rel -0.0 0.0 -.005
-pose_q        1 abs 0.0 -0.7071 0.7071 0.0
+pose_x        rel -0.0 0.002 -.008
+pose_q        1 relref 1 0 0 0
 gripper_start abs 0.0  100
 gripper_end   abs 0.0  100
 cart_gain_x   1 0 0 0 0 0 0
@@ -94,35 +110,35 @@ controller    SimpleImpedanceJt
 }
 {
 name          push_down_qfsp
-duration      2
-pose_x        rel 0.005 0.01 -0.085
+duration      1.5
+pose_x        rel 0.00 0.01 -0.075
 pose_q        1 rel .9979 0 .0654 0
 gripper_start abs 0.0  100
 gripper_end   abs 0.0  100
 cart_gain_x   1 50 50 500 45 45 45
 cart_gain_a   1 10  10  10  0.32 0.32 0.32
 ff_wrench     0 0 0 0 0 0
-max_wrench    cont 20 20 70 10 10 10
+max_wrench    cont 30 30 70 10 10 10
 controller    SimpleImpedanceJt
 }
 {
 name          relax
 duration      1
-pose_x        rel 0.0 0.0 0.045
+pose_x        relref 0 0 -0.06
 pose_q        1 rel 1 0 0 0
 gripper_start abs 0.0  100
 gripper_end   abs 0.05 0
 cart_gain_x   1 0 0 0 0 0 0
 cart_gain_a   1 0 0 0 0 0 0
 ff_wrench     0 0 0 0 0 0
-max_wrench    cont 20 20 100 10 10 10
+max_wrench    cont 30 30 100 10 10 10
 controller    SimpleImpedanceJt
 }
 {
 name          extract_qfsp
 duration      1
-pose_x        rel 0.0 0.0 0.15
-pose_q        1 rel 1 0 0 0
+pose_x        relref 0.0 0.0 0.15
+pose_q        1 relref 1 0 0 0
 //gripper_start abs 0.0  100
 //gripper_end   abs 0.0  100
 gripper_start abs 0.05 0
