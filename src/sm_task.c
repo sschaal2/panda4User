@@ -52,6 +52,13 @@ char controller_names[][100]=
    {"SimpleImpedanceJtInt"}
   };
 
+enum FTEceptionAction
+  {
+   CONT=1,
+   ABORT,
+   LAST
+  };
+
 
 // variables for filtering
 #define FILTER_ORDER 2
@@ -84,6 +91,7 @@ typedef struct StateMachineTarget {
   double gripper_force_start;
   double gripper_force_end;
   double ff_wrench[2*N_CART+1];
+  int    ft_exception_action;
   double max_wrench[2*N_CART+1];
   int    use_default_gain_x;
   double cart_gain_x[N_CART+1]; // diagonal of matrix
@@ -476,6 +484,7 @@ run_sm_task(void)
   int    no_gripper_motion = TRUE;
   char   msg[100];
   int    update_u_delta_switch = FALSE;
+  int    ft_exception_flag = FALSE;
 
   switch (state_machine_state) {
 
@@ -593,12 +602,37 @@ run_sm_task(void)
   case MOVE_TO_TARGET:
 
     // check for exceeding max force/torque
-    if (fabs(misc_sensor[C_FX]) > targets_sm[current_state_sm].max_wrench[_X_] ||
-	fabs(misc_sensor[C_FY]) > targets_sm[current_state_sm].max_wrench[_Y_] ||
-	fabs(misc_sensor[C_FZ]) > targets_sm[current_state_sm].max_wrench[_Z_] ||
-	fabs(misc_sensor[C_MX]) > targets_sm[current_state_sm].max_wrench[N_CART+_A_] ||
-	fabs(misc_sensor[C_MY]) > targets_sm[current_state_sm].max_wrench[N_CART+_B_] ||
-	fabs(misc_sensor[C_MZ]) > targets_sm[current_state_sm].max_wrench[N_CART+_G_]) {
+    if (fabs(misc_sensor[C_FX]) > targets_sm[current_state_sm].max_wrench[_X_]) {
+      logMsg("max force X exceeded\n",0,0,0,0,0,0);
+      ft_exception_flag = TRUE;
+    }
+
+    if (fabs(misc_sensor[C_FY]) > targets_sm[current_state_sm].max_wrench[_Y_]) {
+      logMsg("max force Y exceeded\n",0,0,0,0,0,0);
+      ft_exception_flag = TRUE;
+    }
+
+    if (fabs(misc_sensor[C_FZ]) > targets_sm[current_state_sm].max_wrench[_Z_]) {
+      logMsg("max force Z exceeded\n",0,0,0,0,0,0);
+      ft_exception_flag = TRUE;
+    }
+
+    if (fabs(misc_sensor[C_MX]) > targets_sm[current_state_sm].max_wrench[N_CART+_A_]) {
+      logMsg("max torque A exceeded\n",0,0,0,0,0,0);
+      ft_exception_flag = TRUE;
+    }
+
+    if (fabs(misc_sensor[C_MY]) > targets_sm[current_state_sm].max_wrench[N_CART+_B_]) {
+      logMsg("max torque B exceeded\n",0,0,0,0,0,0);
+      ft_exception_flag = TRUE;
+    }
+
+    if (fabs(misc_sensor[C_MZ]) > targets_sm[current_state_sm].max_wrench[N_CART+_G_]) {
+      logMsg("max torque G exceeded\n",0,0,0,0,0,0);
+      ft_exception_flag = TRUE;
+    }
+
+    if (ft_exception_flag) {
 
       for (i=1; i<=N_CART; ++i) {
 	cdes[HAND].xd[i]  = 0.0;
@@ -607,8 +641,22 @@ run_sm_task(void)
 	cdes_orient[HAND].add[i]  = 0.0;	
       }
 
-      logMsg("max force/torque exceeded\n",0,0,0,0,0,0);
       time_to_go = 0;
+
+      switch (targets_sm[current_state_sm].ft_exception_action) {
+
+      case CONT: // not action needed for continue action
+	break;
+
+      case LAST: // switch to last sm state
+	current_state_sm = n_states_sm - 1;
+	break;
+
+      default:
+	freeze();
+	return FALSE;
+	  
+      }
 
     } else {
 
@@ -1443,7 +1491,7 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
    "cart_gain_x" use_default cart_gain_x_X cart_gain_x_Y cart_gain_x_Z cart_gain_xd_X cart_gain_xd_Y cart_gain_xd_Z
    "cart_gain_a" use_default cart_gain_a_A cart_gain_a_B cart_gain_a_G cart_gain_ad_A cart_gain_ad_B cart_gain_ad_G
    "ff_wrench" fx fy fz mx my mz
-   "max_wrench" fx_max fy_max fz_max mx_max my_max mz_max
+   "max_wrench" ["cont" | "abort" | "last"] fx_max fy_max fz_max mx_max my_max mz_max
    "controller" controller_name
 }
 
@@ -1464,7 +1512,7 @@ static char state_group_names[][100]=
    {"controller"}
   };
 
-static int n_parms[] = {0,1,1,4,6,3,3,7,7,6,6,1};
+static int n_parms[] = {0,1,1,4,6,3,3,7,7,6,7,1};
 #define MAX_BIG_STRING 5000
 
 static int
@@ -1700,7 +1748,7 @@ read_state_machine(char *fname) {
 	  printf("Could not find group %s\n",state_group_names[i]);
 	  continue;
 	} else {
-	  n_read = sscanf(c,"%lf %lf %lf %lf %lf %lf",
+	  n_read = sscanf(c,"%s %lf %lf %lf %lf %lf %lf",saux,
 			  &(sm_temp.max_wrench[_X_]),
 			  &(sm_temp.max_wrench[_Y_]),
 			  &(sm_temp.max_wrench[_Z_]),
@@ -1711,6 +1759,14 @@ read_state_machine(char *fname) {
 	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
 	    continue;
 	  }
+
+	  if (strcmp(saux,"cont")==0)
+	    sm_temp.ft_exception_action = CONT;
+	  else if (strcmp(saux,"last")==0)
+	    sm_temp.ft_exception_action = LAST;
+	  else
+	    sm_temp.ft_exception_action = ABORT;
+	  
 	}
 
 

@@ -34,7 +34,7 @@ gripper_end   abs 0.05 0
 cart_gain_x   1 0 0 0 0 0 0
 cart_gain_a   1 0 0 0 0 0 0
 ff_wrench     0 0 0 0 0 0
-max_wrench    10 10 10 5 5 5
+max_wrench    abort 10 10 10 5 5 5
 controller    SimpleImpedanceJtInt
 }
 {
@@ -47,7 +47,7 @@ gripper_end   abs 0.0  100
 cart_gain_x   1 0 0 0 0 0 0
 cart_gain_a   1 0 0 0 0 0 0
 ff_wrench     0 0 0 0 0 0
-max_wrench    10 10 10 5 5 5
+max_wrench    abort 10 10 10 5 5 5
 controller    SimpleImpedanceJtInt
 }
 {
@@ -60,7 +60,7 @@ gripper_end   abs 0.0  100
 cart_gain_x   1 0 0 0 0 0 0
 cart_gain_a   1 0 0 0 0 0 0
 ff_wrench     0 0 0 0 0 0
-max_wrench    15 15 15 5 5 5 
+max_wrench    cont 15 15 15 5 5 5 
 controller    SimpleImpedanceJt
 }
 
@@ -76,7 +76,7 @@ gripper_end   abs 0.0  100
 cart_gain_x   1 0 0 0 0 0 0
 cart_gain_a   1 0 0 0 0 0 0
 ff_wrench     0 0 0 0 0 0
-max_wrench    10 10 10 5 5 5
+max_wrench    cont 10 10 10 5 5 5
 controller    SimpleImpedanceJtInt
 }
 {
@@ -89,7 +89,7 @@ gripper_end   abs 0.0  100
 cart_gain_x   1 0 0 0 0 0 0
 cart_gain_a   1 0 0 0 0 0 0
 ff_wrench     0 0 0 0 0 0
-max_wrench    15 15 15 5 5 5
+max_wrench    last 15 15 15 5 5 5
 controller    SimpleImpedanceJt
 }
 {
@@ -102,7 +102,7 @@ gripper_end   abs 0.0  100
 cart_gain_x   1 50 50 500 45 45 45
 cart_gain_a   1 10  10  10  0.32 0.32 0.32
 ff_wrench     0 0 0 0 0 0
-max_wrench    20 20 70 10 10 10
+max_wrench    cont 20 20 70 10 10 10
 controller    SimpleImpedanceJt
 }
 {
@@ -115,7 +115,7 @@ gripper_end   abs 0.05 0
 cart_gain_x   1 0 0 0 0 0 0
 cart_gain_a   1 0 0 0 0 0 0
 ff_wrench     0 0 0 0 0 0
-max_wrench    20 20 100 10 10 10
+max_wrench    cont 20 20 100 10 10 10
 controller    SimpleImpedanceJt
 }
 {
@@ -130,7 +130,7 @@ gripper_end   abs 0.05 0
 cart_gain_x   1 0 0 0 0 0 0
 cart_gain_a   1 0 0 0 0 0 0
 ff_wrench     0 0 0 0 0 0
-max_wrench    15 15 15 5 5 5 
+max_wrench    cont 15 15 15 5 5 5 
 controller    SimpleImpedanceJt
 }
 /*
