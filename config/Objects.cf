@@ -41,7 +41,7 @@ qfsp_wall_1 1 		/* name and ID of object type */
 0.02 0.2 0.1 		/* scale */
 1  			/* contact model */
 10         		/* object parameters */
-1000 50 10 50 0.8 0.8	/* contact parameters */
+1000 35 10 50 0.8 0.8	/* contact parameters */
 
 qfsp_wall_2 1 		/* name and ID of object type */
 0.5 0.5 0.5          	/* rgb */
@@ -50,7 +50,7 @@ qfsp_wall_2 1 		/* name and ID of object type */
 0.02 0.2 0.1 		/* scale */
 1  			/* contact model */
 10         		/* object parameters */
-1000 50 10 50 0.8 0.8	/* contact parameters */
+1000 35 10 50 0.8 0.8	/* contact parameters */
 
 qfsp_slot_middle 1 	/* name and ID of object type */
 0.5 0.5 0.5          	/* rgb */
@@ -59,7 +59,7 @@ qfsp_slot_middle 1 	/* name and ID of object type */
 0.02 0.014 0.1 		/* scale */
 1  			/* contact model */
 10         		/* object parameters */
-1000 50 10 50 0.8 0.8	/* contact parameters */
+1000 35 10 50 0.8 0.8	/* contact parameters */
 
 qfsp_slot_side_1 1 	/* name and ID of object type */
 0.5 0.5 0.5          	/* rgb */
@@ -68,7 +68,7 @@ qfsp_slot_side_1 1 	/* name and ID of object type */
 0.02 0.02 0.1 		/* scale */
 1  			/* contact model */
 10         		/* object parameters */
-1000 50 10 50 0.8 0.8	/* contact parameters */
+1000 35 10 50 0.8 0.8	/* contact parameters */
 
 qfsp_slot_side_2 1 	/* name and ID of object type */
 0.5 0.5 0.5          	/* rgb */
@@ -77,7 +77,7 @@ qfsp_slot_side_2 1 	/* name and ID of object type */
 0.02 0.02 0.1 		/* scale */
 1  			/* contact model */
 10         		/* object parameters */
-1000 50 10 50 0.8 0.8	/* contact parameters */
+1000 35 10 50 0.8 0.8	/* contact parameters */
 
 
 /*

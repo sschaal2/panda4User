@@ -42,3 +42,18 @@ FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0200   
 FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0200   0.0000 0.0000  -1.0000
 FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0200   0.0000 0.0000  -1.0000
 FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0200   0.0000 0.0000  -1.0000
+
+FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0400   0.0000 0.0000  -1.0000
+FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0400   0.0000 0.0000  -1.0000
+FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0400   0.0000 0.0000  -1.0000
+FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0400   0.0000 0.0000  -1.0000
+
+FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0600   0.0000 0.0000  -1.0000
+FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0600   0.0000 0.0000  -1.0000
+FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0600   0.0000 0.0000  -1.0000
+FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0600   0.0000 0.0000  -1.0000
+
+FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.015  -0.0600   0.0000 0.0000  -1.0000
+FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.015  -0.0600   0.0000 0.0000  -1.0000
+FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.015  -0.0600   0.0000 0.0000  -1.0000
+FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.015  -0.0600   0.0000 0.0000  -1.0000
