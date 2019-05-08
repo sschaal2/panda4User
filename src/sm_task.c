@@ -1,12 +1,12 @@
 /*============================================================================
 ==============================================================================
                       
-                              qfsp_task.c
+                              sm_task.c
  
 ==============================================================================
 Remarks:
 
-      a first shot at a qfsp inertion taks
+      a general state machine task with scripted state machine
 
 ============================================================================*/
 
@@ -42,8 +42,6 @@ enum Controllers
    SIMPLE_IMPEDANCE_JT_INT,
    N_CONT
   };
-
-#define QFSP_LENGTH 0.06
 
 static int n_controllers = N_CONT-1;
 
@@ -142,7 +140,7 @@ static int        firsttime = TRUE;
 static double     start_time     = 0;
 static double     default_gain   = 600;  // was 450
 static double     default_gain_orient = 40;  // was 40
-static double     default_gain_integral = 0.25;
+static double     default_gain_integral = 0.025;
 static double     gain_integral = 0.0;
 
 static SL_Cstate  ball_state;
@@ -234,7 +232,7 @@ init_sm_task(void)
 {
   int    j, i;
   char   string[100];
-  static char   fname[100] = "qfsp.sm";
+  static char   fname[100] = "qsfp.sm";
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;
@@ -430,10 +428,6 @@ init_sm_task(void)
    
   }
 
-  // QFSP specifc hack
-  endeff[HAND].x[_Z_]  = FL+FINGER_OFF+FINGER_LENGTH+QFSP_LENGTH;
-  broadcastEndeffector(endeff);
-
   // go to a save posture 
   bzero((char *)&(target[1]),N_DOFS*sizeof(target[1]));
   bzero((char *)&(last_target[1]),N_DOFS*sizeof(last_target[1]));
@@ -606,13 +600,17 @@ run_sm_task(void)
       // give move command to gripper to desired position if width is larger than current width
       if (targets_sm[current_state_sm].gripper_width_start > misc_sensor[G_WIDTH] ||
 	  targets_sm[current_state_sm].gripper_force_start == 0) {
+	
 	sendGripperMoveCommand(targets_sm[current_state_sm].gripper_width_start,0.1);
+	
       } else { // or close gripper with force control otherwise
+	
 	sendGripperGraspCommand(targets_sm[current_state_sm].gripper_width_start,
 				0.1,
 				targets_sm[current_state_sm].gripper_force_start,
 				0.08,
 				0.08);
+	
       }
       wait_ticks = 50; // need to give non-real-time gripper thread a moment to get started
       state_machine_state = GRIPPER_START;
@@ -1590,7 +1588,27 @@ read_state_machine(char *fname) {
     return FALSE;
   }
 
-  // zero the number of states in state machine
+  // look for a possible endefector specification
+  if (find_keyword(in,"endeffector")) {
+    double m, mcm[N_CART+1],x[N_CART+1],a[N_CART+1];
+    
+    rc=fscanf(in,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+	      &m,&mcm[_X_],&mcm[_Y_],&mcm[_Z_],&x[_X_],&x[_Y_],&x[_Z_],&a[_A_],&a[_B_],&a[_G_]);
+
+    if (rc == 10) { // assigne the endeffector structure
+      endeff[HAND].m = m;
+      for (i=1; i<=N_CART; ++i) {
+	endeff[HAND].mcm[i] = mcm[i];
+	endeff[HAND].x[i]   = x[i];
+	endeff[HAND].a[i]   = a[i];
+      }
+      broadcastEndeffector(endeff);
+    }
+  }
+  rewind(in);
+  
+    
+    // zero the number of states in state machine
   n_states_sm = 0;
   
   // read states into a string, and then parse the string
