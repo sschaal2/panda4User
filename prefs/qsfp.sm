@@ -127,7 +127,7 @@ controller    SimpleImpedanceJt
 {
 name          relax
 duration      1
-pose_x        relref 0 0 -0.06
+pose_x        relref 0 0 -0.05
 pose_q        1 rel 1 0 0 0
 gripper_start abs 0.0  100
 gripper_end   abs 0.05 0

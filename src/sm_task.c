@@ -140,7 +140,7 @@ static int        firsttime = TRUE;
 static double     start_time     = 0;
 static double     default_gain   = 600;  // was 450
 static double     default_gain_orient = 40;  // was 40
-static double     default_gain_integral = 0.025;
+static double     default_gain_integral = 0.25;
 static double     gain_integral = 0.0;
 
 static SL_Cstate  ball_state;
