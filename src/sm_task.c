@@ -39,6 +39,7 @@ enum StateMachineStates
 enum Controllers
   {
    SIMPLE_IMPEDANCE_JT=1,
+   MODEL_IMPEDANCE_JT,
    N_CONT
   };
 
@@ -48,6 +49,7 @@ char controller_names[][100]=
   {
    {"dummy"},
    {"SimpleImpedanceJt"},
+   {"ModelImpedanceJt"},
   };
 
 enum FTEceptionAction
@@ -136,6 +138,13 @@ static double s[3+1]; // indicator for min jerk in orientation space
 void add_sm_task(void);
 extern void init_sm_controllers(void);
 extern int  cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
+			   SL_OJstate *rest, iVector status,
+			   double  gain_integral,
+			   double *gain_x_scale,
+			   double *gain_xd_scale,
+			   double *gain_a_scale,
+			   double *gain_ad_scale);
+extern int  cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
 			   SL_OJstate *rest, iVector status,
 			   double  gain_integral,
 			   double *gain_x_scale,
@@ -773,6 +782,17 @@ run_sm_task(void)
 			       targets_sm[current_state_sm].cart_gain_a_scale,
 			       targets_sm[current_state_sm].cart_gain_ad_scale);
 
+    break;
+    
+  case MODEL_IMPEDANCE_JT:
+
+    cartesianImpedanceModelJt(cdes, cdes_orient, joint_des_state, joint_opt_state, stats,
+			      targets_sm[current_state_sm].cart_gain_integral,
+			      targets_sm[current_state_sm].cart_gain_x_scale,
+			      targets_sm[current_state_sm].cart_gain_xd_scale,
+			      targets_sm[current_state_sm].cart_gain_a_scale,
+			      targets_sm[current_state_sm].cart_gain_ad_scale);
+    
     break;
     
   }
