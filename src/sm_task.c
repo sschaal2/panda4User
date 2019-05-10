@@ -39,7 +39,6 @@ enum StateMachineStates
 enum Controllers
   {
    SIMPLE_IMPEDANCE_JT=1,
-   SIMPLE_IMPEDANCE_JT_INT,
    N_CONT
   };
 
@@ -49,7 +48,6 @@ char controller_names[][100]=
   {
    {"dummy"},
    {"SimpleImpedanceJt"},
-   {"SimpleImpedanceJtInt"}
   };
 
 enum FTEceptionAction
@@ -64,21 +62,6 @@ enum RelativeOption {
   REL,
   RELREF
 };
-
-// variables for filtering
-#define FILTER_ORDER 2
-#define N_FILTERS    50
-
-static float filters_a[N_FILTERS+1][FILTER_ORDER+1];
-static float filters_b[N_FILTERS+1][FILTER_ORDER+1];
-
-typedef struct Filter {
-  int cutoff;
-  double raw[3];
-  double filt[3];
-} Filter;
-
-static Filter fthdd[N_DOFS+1];
 
 
 typedef struct StateMachineTarget {
@@ -98,12 +81,11 @@ typedef struct StateMachineTarget {
   double ff_wrench[2*N_CART+1];
   int    ft_exception_action;
   double max_wrench[2*N_CART+1];
-  int    use_default_gain_x;
-  double cart_gain_x[N_CART+1]; // diagonal of matrix
-  double cart_gain_xd[N_CART+1]; // diagonal of matrix
-  int    use_default_gain_a;
-  double cart_gain_a[N_CART+1];  // diagonal of matrix
-  double cart_gain_ad[N_CART+1]; // diagonal of matrix
+  double cart_gain_x_scale[N_CART+1]; // diagonal of matrix
+  double cart_gain_xd_scale[N_CART+1]; // diagonal of matrix
+  double cart_gain_a_scale[N_CART+1];  // diagonal of matrix
+  double cart_gain_ad_scale[N_CART+1]; // diagonal of matrix
+  double cart_gain_integral;
   char   controller_name[100];
 } StateMachineTarget;
 
@@ -124,7 +106,6 @@ typedef struct {
 /* local variables */
 static double     time_step;
 static double     cref[N_ENDEFFS*6+1];
-static double     cref_integral[N_ENDEFFS*6+1];
 static SL_Cstate  ctarget[N_ENDEFFS+1];
 static SL_Cstate  cdes[N_ENDEFFS+1];
 static SL_quat    ctarget_orient[N_ENDEFFS+1];
@@ -145,10 +126,6 @@ static double     gain_integral = 0.0;
 
 static SL_Cstate  ball_state;
 
-static double controller_gain_th[N_DOFS+1];
-static double controller_gain_thd[N_DOFS+1];
-static double controller_gain_int[N_DOFS+1];
-
 static double u_delta_switch[N_DOFS+1];
 
 static int    state_machine_state = INIT_SM_TARGET;
@@ -157,19 +134,21 @@ static double s[3+1]; // indicator for min jerk in orientation space
 
 /* global functions */
 void add_sm_task(void);
+extern void init_sm_controllers(void);
+extern int  cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
+			   SL_OJstate *rest, iVector status,
+			   double  gain_integral,
+			   double *gain_x_scale,
+			   double *gain_xd_scale,
+			   double *gain_a_scale,
+			   double *gain_ad_scale);
+
 
 /* local functions */
-static int    cartesianImpedanceSimpleJt(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
-					 Vector cart, iVector status, double dt, double t);
 static int    init_sm_task(void);
 static int    run_sm_task(void);
 static int    change_sm_task(void);
-static int    init_filters(void);
-static double filt(double raw, Filter *fptr);
-static void   quatDerivativesToAngVelAcc(SL_quat *q);
 static int    teach_target_pose(void);
-static Matrix SL_inertiaMatrix(SL_Jstate *lstate, SL_Cstate *cbase, 
-			       SL_quat *obase, SL_endeff *leff);
 static int    min_jerk_next_step (double x,double xd, double xdd, double t, double td, double tdd,
 				  double t_togo, double dt,
 				  double *x_next, double *xd_next, double *xdd_next);
@@ -204,11 +183,6 @@ add_sm_task( void )
 
   addToMan("print_sm_state","prints the current state suitable for state machine",print_sm_state); 
 
-  /* read the control gains  */
-  if (!read_gains(config_files[GAINS],controller_gain_th, 
-		  controller_gain_thd, controller_gain_int))
-    return;
-  
   
 }    
 
@@ -239,12 +213,6 @@ init_sm_task(void)
   static int pert = 0;
   
   if (firsttime) {
-    
-    // initialize the filters 
-    firsttime = FALSE;
-    init_filters();
-    for (i=1; i<=N_DOFS; ++i) 
-      fthdd[i].cutoff = 5;
 
     // zero out variables
     bzero((char *)&cref,sizeof(cref));
@@ -353,19 +321,17 @@ init_sm_task(void)
     
   } else { // not firstime
     
-    // zero the filters 
-    for (i=1; i<=N_DOFS; ++i) 
-      for (j=0; j<=FILTER_ORDER; ++j)
-	fthdd[i].raw[j] = fthdd[i].filt[j] = 0;
-    
+    ;
+
   }
+
+  // the sm_controllers
+  init_sm_controllers();
 
   // zero the delta command from controller switches
   for (i=1; i<=N_DOFS; ++i)
     u_delta_switch[i] = 0.0;
 
-  // zero out intergrator
-  bzero((char *)&cref_integral,sizeof(cref_integral));
   
   // check whether any other task is running 
   if (strcmp(current_task_name,NO_TASK) != 0) {
@@ -536,7 +502,12 @@ run_sm_task(void)
       if (current_state_sm == 1) {
 	logMsg("\n",0,0,0,0,0,0);
       }
-      sprintf(msg,"    %d.%-30s with %s\n",current_state_sm,targets_sm[current_state_sm].state_name,targets_sm[current_state_sm].controller_name);
+      if (targets_sm[current_state_sm].cart_gain_integral != 0) 
+	sprintf(msg,"    %d.%-30s with %sInt\n",
+		current_state_sm,targets_sm[current_state_sm].state_name,targets_sm[current_state_sm].controller_name);
+      else
+	sprintf(msg,"    %d.%-30s with %s\n",
+		current_state_sm,targets_sm[current_state_sm].state_name,targets_sm[current_state_sm].controller_name);
       logMsg(msg,0,0,0,0,0,0);
     } else {
       sprintf(msg,"All done!\n");
@@ -779,117 +750,34 @@ run_sm_task(void)
   }
 
 
-  // adjust controller specific items
-  switch (current_controller) {
+  // switch controllers
 
-  case SIMPLE_IMPEDANCE_JT:
-    gain_integral = 0;
-    bzero((char *)&cref_integral,sizeof(cref_integral));
-    break;
-    
-  case SIMPLE_IMPEDANCE_JT_INT:
-    gain_integral = default_gain_integral;
-    break;
-  }
-
-  // compute orientation error term for quaterion feedback control
-  quatErrorVector(cdes_orient[1].q,cart_orient[1].q,corient_error);
-  
-  // prepare the impdance controller, i.e., compute operational
-  // space force command
-
-  if (targets_sm[current_state_sm].use_default_gain_x) {
-
-    for (j= _X_; j<= _Z_; ++j) {
-      if (stats[j]) {
-	
-	cref_integral[j] += gain_integral * (cdes[HAND].x[j]  - cart_state[HAND].x[j]);
-	
-	cref[j] = cref_integral[j] +
-	  (cdes[HAND].xd[j]  - cart_state[HAND].xd[j]) * 2.*sqrt(default_gain) +
-	  (cdes[HAND].x[j]  - cart_state[HAND].x[j]) * default_gain;
-      }
-    }
-
-  } else { // use gains from targets_sm
-
-    for (j= _X_; j<= _Z_; ++j) {
-      if (stats[j]) {
-
-	cref_integral[j] += gain_integral * (cdes[HAND].x[j]  - cart_state[HAND].x[j]);
-	
-	cref[j] = cref_integral[j] +
-	  (cdes[HAND].xd[j]  - cart_state[HAND].xd[j]) *  targets_sm[current_state_sm].cart_gain_xd[j] +
-	  (cdes[HAND].x[j]  - cart_state[HAND].x[j]) * targets_sm[current_state_sm].cart_gain_x[j];
-      }
-    }
-    
-  }
-
-
-  if (targets_sm[current_state_sm].use_default_gain_a) {
-    
-    for (j= _A_; j<= _G_ ; ++j) { /* orientation */
-      if (stats[N_CART + j]) {
-
-	cref_integral[N_CART + j] +=  - corient_error[j] * gain_integral;
-
-	cref[N_CART + j] = cref_integral[N_CART + j] +
-	  (cdes_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) *0.025 * 2.0 * sqrt(default_gain_orient) - 
-	  corient_error[j] * default_gain_orient; 
-      }
-    }
-
-  } else { // use gains from targets_sm
-
-    for (j= _A_; j<= _G_ ; ++j) { /* orientation */
-      if (stats[N_CART + j]) {
-
-	cref_integral[N_CART + j] +=  - corient_error[j] * gain_integral;
-
-	cref[N_CART + j] = cref_integral[N_CART + j] +
-	  (cdes_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) * targets_sm[current_state_sm].cart_gain_ad[j] - 
-	  corient_error[j] * targets_sm[current_state_sm].cart_gain_a[j]; 
-      }
-    }
-
-  }
-
-  bzero((char *)&target,sizeof(target));
-  for (i=1; i<=N_DOFS; ++i) {
-    target[i].th  = joint_state[i].th;
-    target[i].thd = joint_state[i].thd;    
-  }
-
-  // this computes the joint space torque
-  if (!cartesianImpedanceSimpleJt(target,endeff,joint_opt_state,
-				  cref,stats,time_step,task_servo_time)) {
-    freeze();
-    return FALSE;
-  }
-
-
-
+  // smooth controller switsches
   for (i=1; i<=N_DOFS; ++i) {
 
     // smooth out controller switches: Step 1: remember last uff
     if (update_u_delta_switch) {
       u_delta_switch[i] = joint_des_state[i].uff;
     }
-
-    joint_des_state[i].thdd  = 0.0;
-    joint_des_state[i].thd   = joint_state[i].thd;
-    joint_des_state[i].th    = joint_state[i].th;
-    joint_des_state[i].uff   = 0.0;
   }
+
+  
+  switch (current_controller) {
+
+  case SIMPLE_IMPEDANCE_JT:
+
+    cartesianImpedanceSimpleJt(cdes, cdes_orient, joint_des_state, joint_opt_state, stats,
+			       targets_sm[current_state_sm].cart_gain_integral,
+			       targets_sm[current_state_sm].cart_gain_x_scale,
+			       targets_sm[current_state_sm].cart_gain_xd_scale,
+			       targets_sm[current_state_sm].cart_gain_a_scale,
+			       targets_sm[current_state_sm].cart_gain_ad_scale);
+
+    break;
     
-  // inverse dynamics
-  SL_InvDyn(joint_state,joint_des_state,endeff,&base_state,&base_orient);
+  }
 
-
-  // add feedforward torques from impedance controller
   for (i=1; i<=N_DOFS; ++i) {
-    joint_des_state[i].uff   += target[i].uff;
 
     // smooth out controller switches: Step 2: check the difference in uff
     if (update_u_delta_switch) {
@@ -1077,370 +965,6 @@ teach_target_pose(void)
 
 }
 
-/*****************************************************************************
-******************************************************************************
-Function Name	: cartesianImpedanceSimpleJt
-Date		: March 2019
-   
-Remarks:
-
-        computes a very simple Jacobian transpose impedance controller without
-        any dynamics model
-        
-******************************************************************************
-Paramters:  (i/o = input/output)
-
-     state   (i/o): the state of the robot (given as a desired state; note
-                    that this desired state coincides with the true state of
-                    the robot, as the joint space PD controller is replaced
-                    by the Cartesian controller)
-     endeff  (i)  : the endeffector parameters
-     rest    (i)  : the optimization posture
-     cart    (i)  : the desired cartesian accelerations (trans & rot)
-     status  (i)  : which rows to use from the Jacobian
-     dt      (i)  : the integration time step     
-     t       (i)  : the current time -- important for safe numerical 
-                    differntiation of the Jacobian
-
- the function updates the state by adding the appropriate feedforward torques
-
-*****************************************************************************/
-static int
-cartesianImpedanceSimpleJt(SL_DJstate *state, SL_endeff *eff, SL_OJstate *rest,
-			   Vector cart, iVector status, double dt, double t)
-{
-  
-  int            i,j,n,m;
-  int            count;
-  static Matrix  O, P, B;
-  static Matrix  M, invM;
-  static iVector ind;
-  static Vector  dJdtthd;
-  static int     firsttime = TRUE;
-  static double  last_t;       
-  static Vector  e, en;
-  double         ridge = 1.e-8;
-
-  /* initialization of static variables */
-  if (firsttime) {
-    firsttime = FALSE;
-    P      = my_matrix(1,6*N_ENDEFFS,1,6*N_ENDEFFS);
-    B      = my_matrix(1,N_DOFS,1,6*N_ENDEFFS);
-    ind    = my_ivector(1,6*N_ENDEFFS);
-    O      = my_matrix(1,N_DOFS,1,N_DOFS);
-    dJdtthd = my_vector(1,6*N_ENDEFFS);
-    e      = my_vector(1,N_DOFS);
-    en     = my_vector(1,N_DOFS);
-    invM   = my_matrix(1,N_DOFS,1,N_DOFS);
-  }
-
-  /* how many contrained cartesian DOFs do we have? */
-  count = 0;
-  for (i=1; i<=6*N_ENDEFFS; ++i) {
-    if (status[i]) {
-      ++count;
-      ind[count] = i;
-    }
-  }
-
-  /* build the pseudo-inverse according to the status information */
-  mat_zero(P);
-  for (i=1; i<=count; ++i) {
-    for (j=i; j<=count; ++j) {
-      for (n=1; n<=N_DOFS; ++n) {
-	P[i][j] += J[ind[i]][n] * J[ind[j]][n];
-      }
-      if (i==j) 
-	P[i][j] += ridge;
-      else
-	P[j][i] = P[i][j];
-    }
-  }
-
-  /* invert the matrix */
-  if (!my_inv_ludcmp(P, count, P)) {
-    return FALSE;
-  }
-
-  /* build the B matrix, i.e., the pseudo-inverse */
-  for (i=1; i<=N_DOFS; ++i) {
-    for (j=1; j<=count; ++j) {
-      B[i][j]=0.0;
-      for (n=1; n<=count; ++n) {
-	B[i][j] += J[ind[n]][i] * P[n][j];
-      }
-    }
-  }
-
-  /* the simple cartesion impedance controller only uses J-trans */
-  for (i=1; i<=N_DOFS; ++i) {
-    state[i].uff = 0;
-    for (j=1; j<=count; ++j) {
-      state[i].uff += J[ind[j]][i] * cref[ind[j]];
-    }
-  }
-
-  /**********************/
-  /* the null space term */
-  /**********************/
-
-  /* compute the NULL space projection matrix; note that it is computationally
-     inefficient to do this, since this is O(d^2), while all we really need is
-     some matrix-vector multiplications, which are much cheaper */
-  for (i=1; i<=N_DOFS; ++i) {
-    for (j=i; j<=N_DOFS; ++j) {
-
-      if (i==j) 
-	O[i][j] = 1.0;
-      else
-	O[i][j] = 0.0;
-
-      for (n=1; n<=count; ++n) {
-	O[i][j] -= B[i][n] * J[ind[n]][j];
-      }
-
-      if (i!=j)
-	O[j][i] = O[i][j];
-    }
-  }
-
-  /* compute the PD term for the Null space  */
-  for (i=1; i<=N_DOFS; ++i) {
-    double fac=0.1*10;
-    e[i] = 
-      fac*controller_gain_th[i]*(rest[i].th - state[i].th) - 
-      sqrt(fac)*controller_gain_thd[i] *state[i].thd;
-  }
-  mat_vec_mult(O,e,en);
-  //print_mat("O",O);
-  //getchar();
-
-  /* add this as a PD command to uff */
-  for (i=1; i<=N_DOFS; ++i) {
-    state[i].uff += en[i];
-  }
-
-  return TRUE;
-
-}
-
-
-/*****************************************************************************
-******************************************************************************
-Function Name	: filt
-Date		: Feb 1999
-   
-Remarks:
-
-    applies a 2nd order butteworth filter
-
-******************************************************************************
-Paramters:  (i/o = input/output)
-
-     raw (i): the raw data
-     fptr(i): pointer to the filter data structure 
-
-     returns the filtered value
-
-*****************************************************************************/
-static double
-filt(double raw, Filter *fptr)
-
-{
-
-  int i,j;
-
-  if (fptr->cutoff == 100) {
-    return raw;
-  }
-
-  fptr->raw[0] = raw;
-
-  fptr->filt[0] = 
-    filters_b[fptr->cutoff][0] * fptr->raw[0] +
-    filters_b[fptr->cutoff][1] * fptr->raw[1] + 
-    filters_b[fptr->cutoff][2] * fptr->raw[2] -
-    filters_a[fptr->cutoff][1] * fptr->filt[1] -
-    filters_a[fptr->cutoff][2] * fptr->filt[2];
-
-  fptr->raw[2]  = fptr->raw[1];
-  fptr->raw[1]  = fptr->raw[0];
-  fptr->filt[2] = fptr->filt[1];
-  fptr->filt[1] = fptr->filt[0];
-
-  return fptr->filt[0];
-
-}
-
-/*****************************************************************************
-******************************************************************************
-Function Name	: init_filters
-Date		: Dec 1997
-   
-Remarks:
-
-        reads the filter coefficients and initializes the appropriate
-	variables
-
-******************************************************************************
-Paramters:  (i/o = input/output)
-
-     none
-
-*****************************************************************************/
-static int
-init_filters(void)
-
-{
-  
-  int i,j,rc;
-  FILE *filterfile;
-  int count_v=0, count_r=0;
-  char string[100];
-  
-  /* read in the filter file */
-  
-  sprintf(string,"%sbutterworth_table_order_2",CONFIG);
-  filterfile = fopen(string,"r");
-  
-  if (filterfile == NULL) {
-    
-    printf("Cannot find filter file >%s<\n",string);
-    beep(1); 
-    
-    return FALSE;
-    
-  }
-  
-  for (i=1; i<=N_FILTERS; ++i) {
-    ++count_r;
-    for (j=0; j<= FILTER_ORDER; ++j) {
-      ++count_v;
-      rc=fscanf(filterfile,"%f",&(filters_a[i][j]));
-    }
-    
-    for (j=0; j<= FILTER_ORDER; ++j) {
-      ++count_v;
-      rc=fscanf(filterfile,"%f",&(filters_b[i][j]));
-    }
-  }
-  
-  fclose (filterfile);
-  
-  printf("\nRead file of butterworth filter coefficients: #rows=%d  #val=%d\n",
-	 count_r,count_v);
-  
-  return TRUE;
-  
-}
-
-/*****************************************************************************
-******************************************************************************
-Function Name   : quatDerivativesToAngVelAcc
-Date            : Jun 2006
-Remarks:
-
- computes the angular velocity from the quaternian derivatives and 
- quaternion
-
-******************************************************************************
-Paramters:  (i/o = input/output)
-
-q   (i): structure containing the quaternion, angular velocity and acceleration
-q   (o): structure containing the quaternion, angular velocity and acceleration
-
-*****************************************************************************/
-static void
-quatDerivativesToAngVelAcc(SL_quat *q)
-{
-  int i,j;
-  double  Q[N_CART+1][N_QUAT+1]; 
-  double Qd[N_CART+1][N_QUAT+1]; 
-
-  /* initialize Q and Qd */
-  for (i=0;i<=N_CART;i++){
-    for (j=0;j<=N_QUAT;j++){
-      Q[i][j] = 0.0;
-      Qd[i][j] = 0.0;
-    }
-  }
-
-  /* global conversion */
-  Q[1][1] = -q->q[_Q1_];
-  Q[2][1] = -q->q[_Q2_];
-  Q[3][1] = -q->q[_Q3_];
-
-  Q[1][2] =  q->q[_Q0_];
-  Q[2][2] =  q->q[_Q3_];
-  Q[3][3] = -q->q[_Q2_];
-
-  Q[1][3] = -q->q[_Q3_];
-  Q[2][3] =  q->q[_Q0_];
-  Q[3][3] =  q->q[_Q1_];
-
-  Q[1][4] =  q->q[_Q2_];
-  Q[2][4] = -q->q[_Q1_];
-  Q[3][4] =  q->q[_Q0_];
-
-  /* omega = 2*Q*quat_dot */
-  for (i=1; i<=N_CART; ++i) {
-    q->ad[i] = 0.0;
-    for (j=1; j<=N_QUAT; ++j)
-      q->ad[i] += 2.0*Q[i][j]*q->qd[j];
-  }
-
-  /* global conversion */
-  Qd[1][1] = -q->qd[_Q1_];
-  Qd[2][1] = -q->qd[_Q2_];
-  Qd[3][1] = -q->qd[_Q3_];
-
-  Qd[1][2] =  q->qd[_Q0_];
-  Qd[2][2] =  q->qd[_Q3_];
-  Qd[3][3] = -q->qd[_Q2_];
-
-  Qd[1][3] = -q->qd[_Q3_];
-  Qd[2][3] =  q->qd[_Q0_];
-  Qd[3][3] =  q->qd[_Q1_];
-
-  Qd[1][4] =  q->qd[_Q2_];
-  Qd[2][4] = -q->qd[_Q1_];
-  Qd[3][4] =  q->qd[_Q0_];
-
-  /* omega_dot = 2*Q*quat_ddot + 2*Qd*quat_dot */
-  for (i=1; i<=N_CART; ++i) {
-    q->add[i] = 0.0;
-    for (j=1; j<=N_QUAT; ++j)
-      q->add[i] += (2.0*Qd[i][j]*q->qd[j] + 2.0*Q[i][j]*q->qdd[j]);
-  }
-
-}
-
-
-
-
-static Matrix 
-SL_inertiaMatrix(SL_Jstate *lstate, SL_Cstate *cbase, SL_quat *obase, SL_endeff *leff) 
-
-{
-  static int firsttime = TRUE;
-  static Matrix rbdM;
-  static Vector rbdCG;
-  SL_uext ux[N_DOFS+1];
-
-  if (firsttime) {
-    firsttime = FALSE;
-    
-    rbdM  = my_matrix(1,N_DOFS+2*N_CART,1,N_DOFS+2*N_CART);
-    rbdCG = my_vector(1,N_DOFS+2*N_CART);
-
-  }
-  
-  SL_ForDynComp(lstate,cbase,obase,ux,leff,rbdM,rbdCG);
-
-  return rbdM;
-
-}
-
 /*!*****************************************************************************
  *******************************************************************************
 \note  min_jerk_next_step
@@ -1534,12 +1058,13 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
 {
    "name" state_name
    "duration" movement_duration
-   "pose_x" ["abs" | "rel"] pose_x_X pose_x_Y pose_x_Z
-   "pose_q" use_orient ["abs" | "rel"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
+   "pose_x" ["abs" | "rel" | "refref"] pose_x_X pose_x_Y pose_x_Z
+   "pose_q" use_orient ["abs" | "rel | relref"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
    "gripper_start" ["abs" | "rel"] gripper_start_width gripper_start_force
    "gripper_end" ["abs" | "rel"] gripper_end_width gripper_end_force
-   "cart_gain_x" use_default cart_gain_x_X cart_gain_x_Y cart_gain_x_Z cart_gain_xd_X cart_gain_xd_Y cart_gain_xd_Z
-   "cart_gain_a" use_default cart_gain_a_A cart_gain_a_B cart_gain_a_G cart_gain_ad_A cart_gain_ad_B cart_gain_ad_G
+   "cart_gain_x_scale" cart_gain_x_X cart_gain_x_Y cart_gain_x_Z cart_gain_xd_X cart_gain_xd_Y cart_gain_xd_Z
+   "cart_gain_a_scale" cart_gain_a_A cart_gain_a_B cart_gain_a_G cart_gain_ad_A cart_gain_ad_B cart_gain_ad_G
+   "cart_gain_integral" cart_gain_integral
    "ff_wrench" fx fy fz mx my mz
    "max_wrench" ["cont" | "abort" | "last"] fx_max fy_max fz_max mx_max my_max mz_max
    "controller" controller_name
@@ -1555,14 +1080,15 @@ static char state_group_names[][100]=
    {"pose_q"},
    {"gripper_start"},
    {"gripper_end"},
-   {"cart_gain_x"},
-   {"cart_gain_a"},
+   {"cart_gain_x_scale"},
+   {"cart_gain_a_scale"},
+   {"cart_gain_integral"},
    {"ff_wrench"},
    {"max_wrench"},
    {"controller"}
   };
 
-static int n_parms[] = {0,1,1,4,6,3,3,7,7,6,7,1};
+static int n_parms[] = {0,1,1,4,6,3,3,6,6,1,6,7,1};
 #define MAX_BIG_STRING 5000
 
 static int
@@ -1608,7 +1134,7 @@ read_state_machine(char *fname) {
   rewind(in);
   
     
-    // zero the number of states in state machine
+  // zero the number of states in state machine
   n_states_sm = 0;
   
   // read states into a string, and then parse the string
@@ -1759,13 +1285,13 @@ read_state_machine(char *fname) {
 	  printf("Could not find group %s\n",state_group_names[i]);
 	  continue;
 	} else {
-	  n_read = sscanf(c,"%d %lf %lf %lf %lf %lf %lf",&(sm_temp.use_default_gain_x),		    
-			  &(sm_temp.cart_gain_x[_X_]),
-			  &(sm_temp.cart_gain_x[_Y_]),
-			  &(sm_temp.cart_gain_x[_Z_]),
-			  &(sm_temp.cart_gain_xd[_X_]),
-			  &(sm_temp.cart_gain_xd[_Y_]),
-			  &(sm_temp.cart_gain_xd[_Z_]));
+	  n_read = sscanf(c,"%lf %lf %lf %lf %lf %lf",
+			  &(sm_temp.cart_gain_x_scale[_X_]),
+			  &(sm_temp.cart_gain_x_scale[_Y_]),
+			  &(sm_temp.cart_gain_x_scale[_Z_]),
+			  &(sm_temp.cart_gain_xd_scale[_X_]),
+			  &(sm_temp.cart_gain_xd_scale[_Y_]),
+			  &(sm_temp.cart_gain_xd_scale[_Z_]));
 	  if (n_read != n_parms[i]) {
 	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
 	    continue;
@@ -1780,19 +1306,33 @@ read_state_machine(char *fname) {
 	  printf("Could not find group %s\n",state_group_names[i]);
 	  continue;
 	} else {
-	  n_read = sscanf(c,"%d %lf %lf %lf %lf %lf %lf",&(sm_temp.use_default_gain_a),		    
-			  &(sm_temp.cart_gain_a[_X_]),
-			  &(sm_temp.cart_gain_a[_Y_]),
-			  &(sm_temp.cart_gain_a[_Z_]),
-			  &(sm_temp.cart_gain_ad[_X_]),
-			  &(sm_temp.cart_gain_ad[_Y_]),
-			  &(sm_temp.cart_gain_ad[_Z_]));
+	  n_read = sscanf(c,"%lf %lf %lf %lf %lf %lf",
+			  &(sm_temp.cart_gain_a_scale[_X_]),
+			  &(sm_temp.cart_gain_a_scale[_Y_]),
+			  &(sm_temp.cart_gain_a_scale[_Z_]),
+			  &(sm_temp.cart_gain_ad_scale[_X_]),
+			  &(sm_temp.cart_gain_ad_scale[_Y_]),
+			  &(sm_temp.cart_gain_ad_scale[_Z_]));
 	  if (n_read != n_parms[i]) {
 	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
 	    continue;
 	  }
 	}
 
+
+	// the integral gains
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  printf("Could not find group %s\n",state_group_names[i]);
+	  continue;
+	} else {
+	  n_read = sscanf(c,"%lf",&sm_temp.cart_gain_integral);
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	}
 
 	// ff_wrench
 	++i;

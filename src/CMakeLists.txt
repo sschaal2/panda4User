@@ -47,6 +47,7 @@ set(SRCS_XTASK
 	gravcomp_task.c 
 	sample_task_cpp.cpp
 	sm_task.c
+	sm_controllers.c	
 	test_task.c
 	impedance_test_task.c	
 	)
