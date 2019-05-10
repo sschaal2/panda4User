@@ -64,9 +64,19 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
 			   double *gain_a_scale,
 			   double *gain_ad_scale);
 
+int
+cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
+			   SL_OJstate *rest, iVector status,
+			   double  gain_integral,
+			   double *gain_x_scale,
+			   double *gain_xd_scale,
+			   double *gain_a_scale,
+			   double *gain_ad_scale);
+
 // local functions 
 static int computePseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix Jhash, Matrix Nproj);
 static int init_filters(void);
+static int computeInertiaWeightedPseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix Jhash, Matrix Nproj);
 
 
 
@@ -234,6 +244,148 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
 
   // get the properly sized Jacobian + pseudoInverse + Nullspace Projector
   computePseudoInverseAndNullSpace(status, Jprop, &nr, Jhash, Nproj);
+  
+  // the simple cartesion impedance controller only uses J-trans 
+  for (i=1; i<=N_DOFS; ++i) {
+    for (j=1; j<=nr; ++j) {
+      state[i].uff += Jprop[j][i] * cref[j];
+    }
+  }
+
+  // compute the PD term for the Null space  */
+  for (i=1; i<=N_DOFS; ++i) {
+    double fac=0.1*10;
+    e[i] = 
+      fac*controller_gain_th[i]*(rest[i].th - state[i].th) - 
+      sqrt(fac)*controller_gain_thd[i] *state[i].thd;
+  }
+  mat_vec_mult(Nproj,e,en);
+
+  /* add this as a PD command to uff */
+  for (i=1; i<=N_DOFS; ++i) {
+    state[i].uff += en[i];
+  }
+
+  return TRUE;
+
+}
+
+/*****************************************************************************
+******************************************************************************
+Function Name	: cartesianImpedanceModelJt
+Date		: March 2019
+   
+Remarks:
+
+        computes a Jacobian transpose impedance controller with
+        dynamics model, but without inertial shaping
+        
+******************************************************************************
+Paramters:  (i/o = input/output)
+
+     \param[in]      cdes    : the desired cartesian trajectory
+     \param[in]      cdes_orient : the desired orientation cartesian trajectory
+     \param[in,out]  state   : the state of the robot (given as a desired state; note
+                               that this desired state coincides with the true state of
+                               the robot, as the joint space PD controller is replaced
+                               by the Cartesian controller)
+     \param[in]      rest    : the optimization posture
+     \param[in]      status  : which rows to use from the Jacobian
+     \param[in]      gain_integral: integral gain: set to zero if not used
+     \param[in]      gain_x_scale : scales the default pos gains up-or-down (1=no scale)
+     \param[in]      gain_xd_scale: scales the default vel gains up-or-down (1=no scale)
+     \param[in]      gain_a_scale : scales the default orient gains up-or-down (1=no scale)
+     \param[in]      gain_ad_scale: scales the default orient vel gains up-or-down (1=no scale)
+
+ the function updates the state by adding the appropriate feedforward torques
+
+*****************************************************************************/
+int
+cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
+			  SL_OJstate *rest, iVector status,
+			  double  gain_integral,
+			  double *gain_x_scale,
+			  double *gain_xd_scale,
+			  double *gain_a_scale,
+			  double *gain_ad_scale)
+
+{
+  double         default_gain   = 600;  // was 450
+  double         default_gain_orient = 40;  // was 40
+  double         default_gain_integral = 0.025;
+  
+  double         corient_error[N_CART+1];
+  double         cref[N_ENDEFFS*6+1];
+  static double  cref_integral[N_ENDEFFS*6+1];
+
+  int            i,j,n,m;
+  int            nr = 0;
+  int            count = 0;
+  static Matrix  Jprop, Jhash, Nproj;
+  static int     firsttime = TRUE;
+  static Vector  e, en;
+  
+
+  /* initialization of static variables */
+  if (firsttime) {
+    firsttime = FALSE;
+    e      = my_vector(1,N_DOFS);
+    en     = my_vector(1,N_DOFS);
+    Jhash  = my_matrix(1,N_DOFS,1,6*N_ENDEFFS);
+    Nproj  = my_matrix(1,N_DOFS,1,N_DOFS);
+    Jprop  = my_matrix(1,6*N_ENDEFFS,1,N_DOFS);
+  }
+
+  // if no intergral controller, zero intergrator state
+  if (gain_integral == 0)
+    bzero((char *)&cref_integral,sizeof(cref_integral));
+
+  // compute orientation error term for quaterion feedback control
+  quatErrorVector(cdes_orient[HAND].q,cart_orient[HAND].q,corient_error);
+  
+  // prepare the impdance controller, i.e., compute operational
+  // space force command
+  
+  for (j= _X_; j<= _Z_; ++j) {
+    
+    if (status[j]) {
+      ++count;
+      
+      cref_integral[count] += gain_integral * (cdes[HAND].x[j]  - cart_state[HAND].x[j]);
+      
+      cref[count] = cref_integral[count] +
+	(cdes[HAND].xd[j]  - cart_state[HAND].xd[j]) * 2.*sqrt(default_gain) * gain_xd_scale[j] +
+	(cdes[HAND].x[j]  - cart_state[HAND].x[j]) * default_gain * gain_x_scale[j];
+    }
+  }
+  
+
+  for (j= _A_; j<= _G_ ; ++j) { /* orientation */
+    if (status[N_CART + j]) {
+      ++count;
+      
+      cref_integral[count] +=  - corient_error[j] * gain_integral;
+      
+      cref[count] = cref_integral[count] +
+	(cdes_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) *0.025 * 2.0 * sqrt(default_gain_orient) * gain_ad_scale[j] - 
+	corient_error[j] * default_gain_orient * gain_a_scale[j]; 
+    }
+  }
+  
+
+    // build the desired state and uff
+  for (i=1; i<=N_DOFS; ++i) {
+    state[i].th   = joint_state[i].th;  // zeros out P control on motor_servo
+    state[i].thd  = joint_state[i].thd; // zeros out D control on motor_servo
+    state[i].thdd = 0.0;
+    state[i].uff  = 0.0;
+  }
+
+  // inverse dynamics: feedback linerization of C+G term (note thdd=0)
+  SL_InvDyn(joint_state,state,endeff,&base_state,&base_orient);
+
+  // get the properly sized Jacobian + pseudoInverse + Nullspace Projector
+  computeInertiaWeightedPseudoInverseAndNullSpace(status, Jprop, &nr, Jhash, Nproj);
   
   // the simple cartesion impedance controller only uses J-trans 
   for (i=1; i<=N_DOFS; ++i) {
@@ -512,6 +664,140 @@ computePseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix J
     }
   }
 
+
+  // provide points to result matrices
+  mat_equal_size(Jred,count,N_DOFS,Jprop);
+  mat_equal_size(B,N_DOFS,count,Jhash);
+  mat_equal_size(O,N_DOFS,N_DOFS,Nproj);
+  *nr    = count;
+
+  return TRUE;
+
+}
+
+/*****************************************************************************
+******************************************************************************
+Function Name	: computeInertiaWeightedPseudoInverseAndNullSpace
+Date		: March 2019
+   
+Remarks:
+
+        computes the pseudo-inverse and null space projector with the
+        invertia weighting, i.e., as needed in proper operational space
+        control
+        
+******************************************************************************
+Paramters:  (i/o = input/output)
+
+     \param[in]  status  : which rows to use from the Jacobian
+     \param[out] Jprop   : Jacobian with only relevant rows
+     \param[out] nr      : number of rowns in Jprop
+     \param[out] Jhash   : pseudo inverse
+     \param[out] Nproj   : null space projection matrix
+ 
+
+*****************************************************************************/
+static int
+computeInertiaWeightedPseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix Jhash, Matrix Nproj)
+{
+  
+  int            i,j,n,m;
+  int            count;
+  static Matrix  O, P, B, Jred, M, invM, JinvM;
+  static iVector ind;
+  static int     firsttime = TRUE;
+  double         ridge = 1.e-8;
+
+  // initialization of static variables with max possible size
+  if (firsttime) {
+    firsttime = FALSE;
+    P      = my_matrix(1,6*N_ENDEFFS,1,6*N_ENDEFFS);
+    B      = my_matrix(1,N_DOFS,1,6*N_ENDEFFS);
+    ind    = my_ivector(1,6*N_ENDEFFS);
+    O      = my_matrix(1,N_DOFS,1,N_DOFS);
+    Jred   = my_matrix(1,6*N_ENDEFFS,1,N_DOFS);
+    invM   = my_matrix(1,N_DOFS,1,N_DOFS);
+    JinvM  = my_matrix(1,6*N_ENDEFFS,1,N_DOFS);
+  }
+
+  // compute inertia matrix and its inverse
+  M = SL_inertiaMatrix(joint_state, &base_state, &base_orient, endeff);
+  for (i=1; i<=N_DOFS-N_DOFS_EST_SKIP; ++i)
+    M[i][i] += ridge;
+  my_inv_ludcmp(M, N_DOFS-N_DOFS_EST_SKIP, invM);
+
+  // how many contrained cartesian DOFs do we have?
+  count = 0;
+  for (i=1; i<=6*N_ENDEFFS; ++i) {
+    if (status[i]) {
+      ++count;
+      ind[count] = i;
+    }
+  }
+
+  // the reduced Jacobian
+  mat_zero(Jred);
+  for (i=1; i<=count; ++i) {
+    for (n=1; n<=N_DOFS; ++n) {
+      Jred[i][n] = J[ind[i]][n];
+    }
+  }
+
+  // compute J*inv(M) 
+  for (i=1; i<=count; ++i) {
+    for (j=1; j<=N_DOFS-N_DOFS_EST_SKIP; ++j) {
+      JinvM[ind[i]][j] = 0.0;
+      for (n=1; n<=N_DOFS-N_DOFS_EST_SKIP; ++n) 
+	JinvM[ind[i]][j] += J[ind[i]][n]*invM[n][j];
+    }
+  }
+
+  /* build the inertia weighted pseudo-inverse according to the status
+     information */
+  mat_zero(P);
+  for (i=1; i<=count; ++i) {
+    for (j=1; j<=count; ++j) {
+      for (n=1; n<=N_DOFS-N_DOFS_EST_SKIP; ++n) {
+	P[i][j] += J[ind[i]][n] * JinvM[ind[j]][n];
+      }
+      if (i==j) 
+	P[i][j] += ridge;
+    }
+  }
+
+  /* invert the matrix */
+  if (!my_inv_ludcmp(P, count, P)) {
+    return FALSE;
+  }
+
+  /* build the B matrix, i.e., the inertia weighted pseudo-inverse */
+  for (i=1; i<=N_DOFS-N_DOFS_EST_SKIP; ++i) {
+    for (j=1; j<=count; ++j) {
+      B[i][j]=0.0;
+      for (n=1; n<=count; ++n) {
+	B[i][j] += JinvM[ind[n]][i] * P[n][j];
+      }
+    }
+  }
+
+  /**********************/
+  /* the null space term */
+  /**********************/
+
+  /* compute the NULL space projection matrix; note that it is computationally
+     inefficient to do this, since this is O(d^2), while all we really need is
+     some matrix-vector multiplications, which are much cheaper */
+  for (i=1; i<=N_DOFS-N_DOFS_EST_SKIP; ++i) {
+    for (j=1; j<=N_DOFS-N_DOFS_EST_SKIP; ++j) {
+      if (i==j) 
+	O[i][j] = 1.0;
+      else
+	O[i][j] = 0.0;
+      for (n=1; n<=count; ++n) {
+	O[i][j] -= J[ind[n]][i] * B[j][n];
+      }
+    }
+  }
 
   // provide points to result matrices
   mat_equal_size(Jred,count,N_DOFS,Jprop);
