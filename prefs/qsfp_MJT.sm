@@ -47,7 +47,7 @@ endeffector   0  0 0 0  0 0 0.2704  0 0 2.356
 
 {
 name               move_to_grasp
-duration      	   1.5
+duration      	   2.5
 pose_x        	   abs 0.603 0.017 0.07
 pose_q        	   1 abs 0.0 -0.7071 0.7071 0.0
 gripper_start 	   abs 0.05 0
@@ -135,7 +135,7 @@ controller    	   ModelImpedanceJt
 {
 name		   relax
 duration      	   1
-pose_x        	   relref 0 0 -0.06
+pose_x        	   relref 0 0 -0.05
 pose_q        	   1 rel 1 0 0 0
 gripper_start 	   abs 0.0  100
 gripper_end   	   abs 0.05 0
