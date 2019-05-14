@@ -76,7 +76,7 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
 // local functions 
 static int computePseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix Jhash, Matrix Nproj);
 static int init_filters(void);
-static int computeInertiaWeightedPseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix Jhash, Matrix Nproj);
+static int computeInertiaWeightedPseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix Jhash, Matrix Nproj, Matrix JTJbar);
 
 
 
@@ -170,7 +170,6 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
 {
   double         default_gain   = 600;  // was 450
   double         default_gain_orient = 40;  // was 40
-  double         default_gain_integral = 0.025;
   
   double         corient_error[N_CART+1];
   double         cref[N_ENDEFFS*6+1];
@@ -254,16 +253,17 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
 
   // compute the PD term for the Null space  */
   for (i=1; i<=N_DOFS; ++i) {
-    double fac=0.1*10;
-    e[i] = 
+    double fac=1.0;
+    e[i] = rest[i].w*(
       fac*controller_gain_th[i]*(rest[i].th - state[i].th) - 
-      sqrt(fac)*controller_gain_thd[i] *state[i].thd;
+      sqrt(fac)*controller_gain_thd[i] *state[i].thd);
   }
   mat_vec_mult(Nproj,e,en);
 
   /* add this as a PD command to uff */
   for (i=1; i<=N_DOFS; ++i) {
     state[i].uff += en[i];
+    //printf("%d.%f\n",i,en[i]);    
   }
 
   return TRUE;
@@ -312,7 +312,6 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
 {
   double         default_gain   = 600;  // was 450
   double         default_gain_orient = 40;  // was 40
-  double         default_gain_integral = 0.025;
   
   double         corient_error[N_CART+1];
   double         cref[N_ENDEFFS*6+1];
@@ -321,7 +320,7 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
   int            i,j,n,m;
   int            nr = 0;
   int            count = 0;
-  static Matrix  Jprop, Jhash, Nproj;
+  static Matrix  Jprop, Jhash, Nproj, JTJbar;
   static int     firsttime = TRUE;
   static Vector  e, en;
   
@@ -334,6 +333,7 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
     Jhash  = my_matrix(1,N_DOFS,1,6*N_ENDEFFS);
     Nproj  = my_matrix(1,N_DOFS,1,N_DOFS);
     Jprop  = my_matrix(1,6*N_ENDEFFS,1,N_DOFS);
+    JTJbar = my_matrix(1,N_DOFS,1,6*N_ENDEFFS);
   }
 
   // if no intergral controller, zero intergrator state
@@ -385,7 +385,7 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
   SL_InvDyn(joint_state,state,endeff,&base_state,&base_orient);
 
   // get the properly sized Jacobian + pseudoInverse + Nullspace Projector
-  computeInertiaWeightedPseudoInverseAndNullSpace(status, Jprop, &nr, Jhash, Nproj);
+  computeInertiaWeightedPseudoInverseAndNullSpace(status, Jprop, &nr, Jhash, Nproj, JTJbar);
   
   // the simple cartesion impedance controller only uses J-trans 
   for (i=1; i<=N_DOFS; ++i) {
@@ -396,17 +396,20 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
 
   // compute the PD term for the Null space  */
   for (i=1; i<=N_DOFS; ++i) {
-    double fac=0.1*10;
-    e[i] = 
+    double fac=0.1;
+    e[i] = rest[i].w*(
       fac*controller_gain_th[i]*(rest[i].th - state[i].th) - 
-      sqrt(fac)*controller_gain_thd[i] *state[i].thd;
+      sqrt(fac)*controller_gain_thd[i] *state[i].thd);
   }
   mat_vec_mult(Nproj,e,en);
 
-  /* add this as a PD command to uff */
+  // add this as a PD command to uff 
   for (i=1; i<=N_DOFS; ++i) {
     state[i].uff += en[i];
+    //printf("%d.%f\n",i,en[i]);
   }
+
+  // compute the models based feedforward tem
 
   return TRUE;
 
@@ -698,7 +701,7 @@ Paramters:  (i/o = input/output)
 
 *****************************************************************************/
 static int
-computeInertiaWeightedPseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix Jhash, Matrix Nproj)
+computeInertiaWeightedPseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix Jhash, Matrix Nproj, Matrix JTJbar)
 {
   
   int            i,j,n,m;
@@ -743,27 +746,15 @@ computeInertiaWeightedPseudoInverseAndNullSpace(iVector status, Matrix Jprop, in
     }
   }
 
-  // compute J*inv(M) 
-  for (i=1; i<=count; ++i) {
-    for (j=1; j<=N_DOFS-N_DOFS_EST_SKIP; ++j) {
-      JinvM[ind[i]][j] = 0.0;
-      for (n=1; n<=N_DOFS-N_DOFS_EST_SKIP; ++n) 
-	JinvM[ind[i]][j] += J[ind[i]][n]*invM[n][j];
-    }
-  }
+  // compute J*inv(M)
+  mat_mult_size(Jred,count,N_DOFS,invM,N_DOFS,N_DOFS,JinvM);
 
   /* build the inertia weighted pseudo-inverse according to the status
      information */
   mat_zero(P);
-  for (i=1; i<=count; ++i) {
-    for (j=1; j<=count; ++j) {
-      for (n=1; n<=N_DOFS-N_DOFS_EST_SKIP; ++n) {
-	P[i][j] += J[ind[i]][n] * JinvM[ind[j]][n];
-      }
-      if (i==j) 
-	P[i][j] += ridge;
-    }
-  }
+  mat_mult_normal_transpose_size(JinvM,count,N_DOFS,Jred,count,N_DOFS,P);
+  for (i=1; i<=count; ++i)
+    P[i][i] += ridge;
 
   /* invert the matrix */
   if (!my_inv_ludcmp(P, count, P)) {
@@ -771,14 +762,12 @@ computeInertiaWeightedPseudoInverseAndNullSpace(iVector status, Matrix Jprop, in
   }
 
   /* build the B matrix, i.e., the inertia weighted pseudo-inverse */
-  for (i=1; i<=N_DOFS-N_DOFS_EST_SKIP; ++i) {
-    for (j=1; j<=count; ++j) {
-      B[i][j]=0.0;
-      for (n=1; n<=count; ++n) {
-	B[i][j] += JinvM[ind[n]][i] * P[n][j];
-      }
-    }
-  }
+  mat_mult_transpose_normal_size(JinvM,count,N_DOFS,P,count,count,B);
+
+
+  /* build the J'*Jbar matrix, i.e., the inertia weighted pseudo-inverse left multipled by the inertia matrix*/
+  mat_mult_transpose_normal_size(Jred,count,N_DOFS,P,count,count,JTJbar);
+
 
   /**********************/
   /* the null space term */
@@ -794,7 +783,7 @@ computeInertiaWeightedPseudoInverseAndNullSpace(iVector status, Matrix Jprop, in
       else
 	O[i][j] = 0.0;
       for (n=1; n<=count; ++n) {
-	O[i][j] -= J[ind[n]][i] * B[j][n];
+	O[i][j] -= Jred[n][i] * B[j][n];
       }
     }
   }
