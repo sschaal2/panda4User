@@ -76,7 +76,8 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
 // local functions 
 static int computePseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix Jhash, Matrix Nproj);
 static int init_filters(void);
-static int computeInertiaWeightedPseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix Jhash, Matrix Nproj, Matrix JTJbar);
+static int computeInertiaWeightedPseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix Jhash, Matrix Nproj,
+							   Matrix JTJbar, Vector dJdtthd);
 
 
 
@@ -321,6 +322,7 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
   int            nr = 0;
   int            count = 0;
   static Matrix  Jprop, Jhash, Nproj, JTJbar;
+  static Vector  dJdtthd;
   static int     firsttime = TRUE;
   static Vector  e, en;
   
@@ -334,6 +336,7 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
     Nproj  = my_matrix(1,N_DOFS,1,N_DOFS);
     Jprop  = my_matrix(1,6*N_ENDEFFS,1,N_DOFS);
     JTJbar = my_matrix(1,N_DOFS,1,6*N_ENDEFFS);
+    dJdtthd= my_vector(1,6*N_ENDEFFS);
   }
 
   // if no intergral controller, zero intergrator state
@@ -385,7 +388,7 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
   SL_InvDyn(joint_state,state,endeff,&base_state,&base_orient);
 
   // get the properly sized Jacobian + pseudoInverse + Nullspace Projector
-  computeInertiaWeightedPseudoInverseAndNullSpace(status, Jprop, &nr, Jhash, Nproj, JTJbar);
+  computeInertiaWeightedPseudoInverseAndNullSpace(status, Jprop, &nr, Jhash, Nproj, JTJbar, dJdtthd);
   
   // the simple cartesion impedance controller only uses J-trans 
   for (i=1; i<=N_DOFS; ++i) {
@@ -409,8 +412,31 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
     //printf("%d.%f\n",i,en[i]);
   }
 
-  // compute the models based feedforward tem
+  // compute the models based feedforward term
+  
+  // re-use "cref" and "en" for a new purpose
+  count = 0;
+  for (j= _X_; j<= _Z_; ++j) {
+      if (status[j]) {
+      ++count;
+      cref[count] = cdes[HAND].xdd[j] - dJdtthd[count];
+    }
+  }
 
+  for (j= _A_; j<= _G_ ; ++j) {
+    if (status[N_CART + j]) {
+      ++count;
+      cref[count] = cdes_orient[HAND].add[j] - dJdtthd[count];;
+    }
+  }
+
+  mat_vec_mult_size(JTJbar,N_DOFS,count,cref,count,en);
+
+  // add this as a feedforward command to uff 
+  for (i=1; i<=N_DOFS; ++i) {
+    state[i].uff += en[i];
+  }
+  
   return TRUE;
 
 }
@@ -701,7 +727,7 @@ Paramters:  (i/o = input/output)
 
 *****************************************************************************/
 static int
-computeInertiaWeightedPseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix Jhash, Matrix Nproj, Matrix JTJbar)
+computeInertiaWeightedPseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix Jhash, Matrix Nproj, Matrix JTJbar, Vector dJdtthd)
 {
   
   int            i,j,n,m;
@@ -738,11 +764,13 @@ computeInertiaWeightedPseudoInverseAndNullSpace(iVector status, Matrix Jprop, in
     }
   }
 
-  // the reduced Jacobian
+  // the reduced Jacobian and dJdtthd
   mat_zero(Jred);
+  vec_zero(dJdtthd);
   for (i=1; i<=count; ++i) {
     for (n=1; n<=N_DOFS; ++n) {
       Jred[i][n] = J[ind[i]][n];
+      dJdtthd[i] += dJdt[ind[i]][n]*joint_state[n].thd;
     }
   }
 
