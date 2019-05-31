@@ -28,8 +28,8 @@
 name		   reference
 duration      	   0
 //pose_x           abs 0.603 0.017 0.07  // first slot
-//pose_x       	   abs 0.603 -0.003 0.07 // second slot
-pose_x       	   abs 0.603 -0.023 0.07 // third slot
+pose_x       	   abs 0.603 -0.003 0.07 // second slot
+//pose_x       	   abs 0.603 -0.023 0.07 // third slot
 pose_q        	   1 abs 0.0 -0.7071 0.7071 0.0
 gripper_start 	   abs 0.05 0
 gripper_end   	   abs 0.05 0

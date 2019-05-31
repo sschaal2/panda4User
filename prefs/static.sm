@@ -32,29 +32,31 @@ endeffector   0  0 0 0  0 0 0.2704  0 0 2.356
 
 {
 name               test_state_1
-duration      	   10
-pose_x        	   abs 0.603 0.017 0.07
+duration      	   2
+pose_x        	   abs 0.603 0.017 0.17
 pose_q        	   1 abs 0.0 -0.7071 0.7071 0.0
 gripper_start 	   abs 0.02 0
 gripper_end        abs 0.02 0
 cart_gain_x_scale  1 1 1 1 1 1
 cart_gain_a_scale  1 1 1 1 1 1
-cart_gain_integral 0.00025
-ff_wrench          0 0 0 0 0 0
-max_wrench    	   abort 10 10 10 5 5 5
+cart_gain_integral 0.0
+force_desired      0 0 0 0
+moment_desired     0 0 0 0
+max_wrench    	   abort 20 20 20 5 5 5
 controller    	   ModelImpedanceJt
 }
 {
 name               test_state_2
-duration      	   10
-pose_x        	   rel 0.0 0.00 -0.05
+duration      	   30
+pose_x        	   rel 0.0 0.00 0.0
 pose_q        	   1 rel 1 0 0 0
 gripper_start 	   abs 0.02 0
 gripper_end   	   abs 0.02 0
 cart_gain_x_scale  1 1 1 1 1 1
 cart_gain_a_scale  1 1 1 1 1 1
-cart_gain_integral 0.00025
-ff_wrench     	   0 0 0 0 0 0
-max_wrench   	   abort 10 10 10 5 5 5
+cart_gain_integral 0.0
+force_desired      1 0 0 0
+moment_desired     1 0 0 0
+max_wrench   	   abort 20 20 20 5 5 5
 controller    	   ModelImpedanceJt
 }
