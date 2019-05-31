@@ -1,0 +1,176 @@
+/* This file contains the specification for a state machine and a particular controller.
+   The file format allows C/C++ comments.
+   If a gain is specified as "def", the default is going to be used
+   If the pose includes
+*/
+
+/* format: every state is in curely brackets, and has keywords before every group of values
+
+{
+   "name" state_name
+   "duration" movement_duration
+   "pose_x" ["abs" | "rel"] pose_x_X pose_x_Y pose_x_Z
+   "pose_q" use_orient ["abs" | "rel"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
+   "gripper_start" ["abs" | "rel"] gripper_start_width gripper_start_force
+   "gripper_end" ["abs" | "rel"] gripper_end_width gripper_end_force
+   "cart_gain_x_scale" cart_gain_x_X cart_gain_x_Y cart_gain_x_Z cart_gain_xd_X cart_gain_xd_Y cart_gain_xd_Z
+   "cart_gain_a_scale" cart_gain_a_A cart_gain_a_B cart_gain_a_G cart_gain_ad_A cart_gain_ad_B cart_gain_ad_G
+   "cart_gain_integral" cart_gain_integral
+   "force_desired" force_gain force_des_x force_des_y force_des_z
+   "moment_desired" moment_gain moment_des_x moment_des_y moment_des_z
+   "ff_wrench" fx fy fz mx my mz
+   "max_wrench" ["cont" | "abort" | "last"] fx_max fy_max fz_max mx_max my_max mz_max
+   "controller" controller_name
+}
+
+*/
+
+// the reference state
+{
+name		   reference
+duration      	   0
+pose_x           abs 0.603 0.017 0.07  // first slot
+//pose_x       	   abs 0.603 -0.003 0.07 // second slot
+//pose_x       	   abs 0.603 -0.023 0.07 // third slot
+pose_q        	   1 abs 0.0 -0.7071 0.7071 0.0
+gripper_start 	   abs 0.05 0
+gripper_end   	   abs 0.05 0
+cart_gain_x_scale  1 1 1 1 1 1
+cart_gain_a_scale  1 1 1 1 1 1
+cart_gain_integral 0.25
+force_desired      0 0 0 0
+moment_desired     0 0 0 0
+max_wrench    	   abort 10 10 10 5 5 5
+controller    	   SimpleImpedanceJt
+}
+
+// endeffector modification: QSFP connect length + flage+finger+gripper QFSP=0.06m
+endeffector   0  0 0 0  0 0 0.2704  0 0 2.356
+
+// grasp the qfsp connector in first slot
+
+{
+name               move_to_grasp
+duration      	   1.5
+pose_x        	   abs 0.603 0.017 0.07
+pose_q        	   1 abs 0.0 -0.7071 0.7071 0.0
+gripper_start 	   abs 0.05 0
+gripper_end        abs 0.05 0
+cart_gain_x_scale  1 1 1 1 1 1
+cart_gain_a_scale  1 1 1 1 1 1
+cart_gain_integral 0.25
+force_desired      0 0 0 0
+moment_desired     0 0 0 0
+max_wrench    	   abort 10 10 10 5 5 5
+controller    	   SimpleImpedanceJt
+}
+{
+name               prepare_grasp
+duration      	   1
+pose_x        	   rel 0.0 0.00 -0.05
+pose_q        	   1 rel 1 0 0 0
+gripper_start 	   abs 0.05 0
+gripper_end   	   abs 0.0  100
+cart_gain_x_scale  1 1 1 1 1 1
+cart_gain_a_scale  1 1 1 1 1 1
+cart_gain_integral 0.25
+force_desired      0 0 0 0
+moment_desired     0 0 0 0
+max_wrench   	   abort 10 10 10 5 5 5
+controller    	   SimpleImpedanceJt
+}
+{
+name               extract_qfsp
+duration      	   2
+pose_x        	   relref 0.0 0.0 0.15
+pose_q        	   1 relref 1 0 0 0
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
+cart_gain_x_scale  1 1 1 1 1 1
+cart_gain_a_scale  1 1 1 1 1 1
+cart_gain_integral 0.0
+force_desired      0 0 0 0
+moment_desired     0 0 0 0
+max_wrench    	   cont 15 15 15 5 5 5 
+controller    	   SimpleImpedanceJt
+}
+
+
+// first qfsp socket slot
+{
+name               approach_tilted
+duration      	   2.5
+pose_x        	   relref 0.004 0 0 
+pose_q        	   1 rel  0.9423 0.2634 0.1219 -0.1678
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
+cart_gain_x_scale  1 1 1 1 1 1
+cart_gain_a_scale  1 1 1 1 1 1
+cart_gain_integral 0.25
+force_desired      0 0 0 0
+moment_desired     0 0 0 0
+max_wrench    	   cont 10 10 10 5 5 5
+controller    	   SimpleImpedanceJt
+}
+{
+name		   reorient_in_slot
+duration      	   2
+pose_x        	   rel -0.0 0.002 -.008
+pose_q        	   1 relref 1 0 0 0
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
+cart_gain_x_scale  1 1 1 1 1 1
+cart_gain_a_scale  1 1 1 1 1 1
+cart_gain_integral 0.0
+force_desired      0 0 0 0
+moment_desired     0 0 0 0
+max_wrench    	   last 15 15 15 5 5 5
+controller    	   SimpleImpedanceJt
+}
+{
+name               push_down_qfsp
+duration      	   1.5
+pose_x        	   rel 0.00 0.01 -0.075
+pose_q        	   1 rel .9979 0 .0654 0
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
+cart_gain_x_scale  1 1 1 1 1 1
+cart_gain_a_scale  1 1 1 1 1 1
+cart_gain_integral 0.0
+force_desired      0 0 0 0
+moment_desired     0 0 0 0
+max_wrench    	   cont 30 30 70 10 10 10
+controller    	   SimpleImpedanceJt
+}
+{
+name		   relax
+duration      	   1
+pose_x        	   relref 0 0 -0.05
+pose_q        	   1 rel 1 0 0 0
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.05 0
+cart_gain_x_scale  1 1 1 1 1 1
+cart_gain_a_scale  1 1 1 1 1 1
+cart_gain_integral 0.0
+force_desired      0 0 0 0
+moment_desired     0 0 0 0
+max_wrench    	   cont 30 30 100 10 10 10
+controller    	   SimpleImpedanceJt
+}
+{
+name               extract_qfsp
+duration      	   1
+pose_x        	   relref 0.0 0.0 0.15
+pose_q        	   1 relref 1 0 0 0
+//gripper_start    abs 0.0  100
+//gripper_end      abs 0.0  100
+gripper_start 	   abs 0.05 0
+gripper_end   	   abs 0.05 0
+cart_gain_x_scale  1 1 1 1 1 1
+cart_gain_a_scale  1 1 1 1 1 1
+cart_gain_integral 0.0
+force_desired      0 0 0 0
+moment_desired     0 0 0 0
+max_wrench    	   cont 15 15 15 5 5 5 
+controller    	   SimpleImpedanceJt
+}
