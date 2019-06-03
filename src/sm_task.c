@@ -124,7 +124,7 @@ static SL_DJstate target[N_DOFS+1];
 static SL_DJstate last_target[N_DOFS+1];
 static int        firsttime = TRUE;
 static double     start_time     = 0;
-static double     default_gain   = 600;  // was 450
+static double     default_gain   = 700;  // was 450
 static double     default_gain_orient = 40;  // was 40
 static double     default_gain_integral = 0.25;
 static double     gain_integral = 0.0;
