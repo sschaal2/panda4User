@@ -40,11 +40,11 @@ gripper_start 	   abs 0.05 0
 gripper_end   	   abs 0.05 0
 cart_gain_x_scale  1 1 1 1 1 1
 cart_gain_a_scale  1 1 1 1 1 1
-cart_gain_integral 0.25
+cart_gain_integral 0.025
 force_desired      0 0 0 0
 moment_desired     0 0 0 0
 max_wrench    	   abort 10 10 10 5 5 5
-controller    	   ModelImpedanceJt
+controller    	   SimpleImpedanceJt
 }
 
 // endeffector modification: QSFP connect length + flage+finger+gripper QFSP=0.06m
@@ -61,11 +61,11 @@ gripper_start 	   abs 0.05 0
 gripper_end        abs 0.05 0
 cart_gain_x_scale  1 1 1 1 1 1
 cart_gain_a_scale  1 1 1 1 1 1
-cart_gain_integral 0.25
+cart_gain_integral 0.025
 force_desired      0 0 0 0
 moment_desired     0 0 0 0
 max_wrench    	   abort 10 10 10 5 5 5
-controller    	   ModelImpedanceJt
+controller    	   SimpleImpedanceJt
 }
 {
 name               prepare_grasp
@@ -76,11 +76,11 @@ gripper_start 	   abs 0.05 0
 gripper_end   	   abs 0.0  100
 cart_gain_x_scale  1 1 1 1 1 1
 cart_gain_a_scale  1 1 1 1 1 1
-cart_gain_integral 0.25
+cart_gain_integral 0.025
 force_desired      0 0 0 0
 moment_desired     0 0 0 0
 max_wrench   	   abort 10 10 10 5 5 5
-controller    	   ModelImpedanceJt
+controller    	   SimpleImpedanceJt
 }
 {
 name               extract_qfsp
@@ -95,25 +95,25 @@ cart_gain_integral 0.0
 force_desired      0 0 0 0
 moment_desired     0 0 0 0
 max_wrench    	   cont 15 15 15 5 5 5 
-controller    	   ModelImpedanceJt
+controller    	   SimpleImpedanceJt
 }
 
 
 // first qfsp socket slot
 {
 name               approach_tilted
-duration      	   3
+duration      	   2.5
 pose_x        	   relref 0.00 0 0.01 
 pose_q        	   1 rel  0.9423 0.2634 0.1219 -0.1678
 gripper_start 	   abs 0.0  100
 gripper_end   	   abs 0.0  100
 cart_gain_x_scale  1 1 1 1 1 1
 cart_gain_a_scale  1 1 1 1 1 1
-cart_gain_integral 0.25
+cart_gain_integral 0.025
 force_desired      0 0 0 0
 moment_desired     0 0 0 0
 max_wrench    	   cont 10 10 10 5 5 5
-controller    	   ModelImpedanceJt
+controller    	   SimpleImpedanceJt
 }
 {
 name               get_in_contact
@@ -125,10 +125,10 @@ gripper_end   	   abs 0.0  100
 cart_gain_x_scale  1 1 1 1 1 1
 cart_gain_a_scale  1 1 1 1 1 1
 cart_gain_integral 0.0
-force_desired      1 0 0 7.5
+force_desired      1 0 0 5
 moment_desired     0 0 0 0
 max_wrench    	   cont 10 10 10 5 5 5
-controller    	   ModelImpedanceJt
+controller    	   SimpleImpedanceJt
 }
 {
 name		   reorient_in_slot
@@ -141,11 +141,11 @@ gripper_start 	   abs 0.0  100
 gripper_end   	   abs 0.0  100
 cart_gain_x_scale  1 1 1 1 1 1
 cart_gain_a_scale  1 1 1 1 1 1
-cart_gain_integral 0.1
+cart_gain_integral 0.01
 force_desired      1 0 3 5
 moment_desired     0 0 0 0
 max_wrench    	   last 15 15 15 5 5 5
-controller    	   ModelImpedanceJt
+controller    	   SimpleImpedanceJt
 }
 {
 name               push_down_qfsp
@@ -160,10 +160,10 @@ gripper_end   	   abs 0.0  100
 cart_gain_x_scale  1 1 1 1 1 1
 cart_gain_a_scale  1 1 1 1 1 1
 cart_gain_integral 0.0
-force_desired      1 0 0 50
-moment_desired     1.5 0 0 0
+force_desired      0 0 0 50
+moment_desired     0 0 0 0
 max_wrench    	   cont 30 30 70 10 10 10
-controller    	   ModelImpedanceJt
+controller    	   SimpleImpedanceJt
 }
 {
 name		   relax
@@ -178,10 +178,11 @@ cart_gain_integral 0.0
 force_desired      0 0 0 0
 moment_desired     0 0 0 0
 max_wrench    	   cont 30 30 100 10 10 10
-controller    	   ModelImpedanceJt
+controller    	   SimpleImpedanceJt
 }
 {
 name               extract_qfsp
+name_next          approach_tilted
 duration      	   1
 pose_x        	   relref 0.0 0.0 0.15
 pose_q        	   1 relref 1 0 0 0
@@ -195,5 +196,5 @@ cart_gain_integral 0.0
 force_desired      0 0 0 0
 moment_desired     0 0 0 0
 max_wrench    	   cont 15 15 15 5 5 5 
-controller    	   ModelImpedanceJt
+controller    	   SimpleImpedanceJt
 }

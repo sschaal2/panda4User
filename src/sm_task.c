@@ -68,6 +68,8 @@ enum RelativeOption {
 
 typedef struct StateMachineTarget {
   char   state_name[100];
+  char   next_state_name[100];
+  int    next_state_id;
   double movement_duration;
   int    pose_x_is_relative;
   double pose_x[N_CART+1];
@@ -80,7 +82,10 @@ typedef struct StateMachineTarget {
   double gripper_width_end;
   double gripper_force_start;
   double gripper_force_end;
-  double ff_wrench[2*N_CART+1];
+  double force_des_gain;
+  double force_des[N_CART+1];
+  double moment_des_gain;
+  double moment_des[N_CART+1];
   int    ft_exception_action;
   double max_wrench[2*N_CART+1];
   double cart_gain_x_scale[N_CART+1]; // diagonal of matrix
@@ -121,10 +126,11 @@ static SL_DJstate target[N_DOFS+1];
 static SL_DJstate last_target[N_DOFS+1];
 static int        firsttime = TRUE;
 static double     start_time     = 0;
-static double     default_gain   = 600;  // was 450
+static double     default_gain   = 700;  // was 450
 static double     default_gain_orient = 40;  // was 40
 static double     default_gain_integral = 0.25;
 static double     gain_integral = 0.0;
+static double     gain_force = 0.1;
 
 static SL_Cstate  ball_state;
 
@@ -506,7 +512,15 @@ run_sm_task(void)
   case INIT_SM_TARGET:
     
     // check whether to end state machine
+
+    // a special adjustment for an explicit jump to a a next_state out of sequence
+    if (current_state_sm != 0 && targets_sm[current_state_sm].next_state_id != 0) {
+      // this simple adjustment allows continuing with the normal sequence below
+      current_state_sm = targets_sm[current_state_sm].next_state_id-1;
+    }
+
     if (current_state_sm < n_states_sm) {
+      
       ++current_state_sm;
       if (current_state_sm == 1) {
 	logMsg("\n",0,0,0,0,0,0);
@@ -518,11 +532,14 @@ run_sm_task(void)
 	sprintf(msg,"    %d.%-30s with %s\n",
 		current_state_sm,targets_sm[current_state_sm].state_name,targets_sm[current_state_sm].controller_name);
       logMsg(msg,0,0,0,0,0,0);
+      
     } else {
+      
       sprintf(msg,"All done!\n");
       logMsg(msg,0,0,0,0,0,0);
       freeze();
       return TRUE;
+      
     }
     
     // assign relevant variables from state machine state array
@@ -797,6 +814,37 @@ run_sm_task(void)
     
   }
 
+  // add force control if the controllers has force gains 
+  double force_world[N_CART+1], torque_world[N_CART+1];
+
+  // need F/T signals in world coordinates
+  for (i=1; i<=N_CART; ++i) {
+    force_world[i] = torque_world[i] = 0;
+    for (j=1; j<=N_CART; ++j) {
+      force_world[i]  += Alink[FLANGE][i][j] * misc_sensor[C_FX-1+j];
+      torque_world[i] += Alink[FLANGE][i][j] * misc_sensor[C_MX-1+j];
+    }
+  }
+
+  for (i=1; i<=N_DOFS; ++i) {
+    for (j=1; j<=N_CART; ++j) {
+      if (stats[j]) 
+	joint_des_state[i].uff -= J[j][i]*
+	  (targets_sm[current_state_sm].force_des[j]-force_world[j])*
+	  targets_sm[current_state_sm].force_des_gain;
+    }
+  }
+
+  for (i=1; i<=N_DOFS; ++i) {
+    for (j=1; j<=N_CART; ++j) {
+      if (stats[N_CART+j])
+	joint_des_state[i].uff -= J[j+N_CART][i]*
+	  (targets_sm[current_state_sm].moment_des[j]-torque_world[j])*
+      	  targets_sm[current_state_sm].moment_des_gain;
+    }
+  }
+
+
   for (i=1; i<=N_DOFS; ++i) {
 
     // smooth out controller switches: Step 2: check the difference in uff
@@ -838,49 +886,15 @@ run_sm_task(void)
 static int 
 change_sm_task(void)
 {
-  int j, i;
-  char string[100];
+  int    j,i;
+  char   string[100];
   double aux;
-  double aux_r[N_CART+1];
-  double aux_r_norm=0;
-  double angle;
-
-  for (i=_Q1_; i<=_Q3_; ++i) 
-    aux_r_norm += ctarget_orient[HAND].q[i];
-
-  for (i=_Q1_; i<=_Q3_; ++i) 
-    aux_r[i-1] = ctarget_orient[HAND].q[i]/aux_r_norm;
-
-  angle = acos(ctarget_orient[HAND].q[_Q0_])/PI*180.*2.;
 
 
-  do{
-    get_double("Target Cart rot X axis",aux_r[_A_], &aux_r[_A_]);
-    get_double("Target Cart rot Y axis",aux_r[_B_], &aux_r[_B_]);
-    get_double("Target Cart rot Z axis",aux_r[_G_], &aux_r[_G_]);
-    
-    aux_r_norm = sqrt(aux_r[_A_]*aux_r[_A_] + aux_r[_B_]*aux_r[_B_]+ aux_r[_G_]*aux_r[_G_]);
-  } while (aux_r_norm < 0.001);
-
-  for (i=1; i<=N_CART; ++i)
-    aux_r[i] /= aux_r_norm;
-
-  do{
-    get_double("Target Cart rot angle phi (-180~180 deg)",angle, &angle);
-  } while (angle < -180 || angle > 180);
-    
-  angle = angle * PI/180.0;
-
-  ctarget_orient[HAND].q[_Q0_] = cos(angle/2.0);
-  ctarget_orient[HAND].q[_Q1_] = aux_r[_A_]*sin(angle/2.0);
-  ctarget_orient[HAND].q[_Q2_] = aux_r[_B_]*sin(angle/2.0);
-  ctarget_orient[HAND].q[_Q3_] = aux_r[_G_]*sin(angle/2.0);
-
-  printf("Target cart quaternion = [%.3f, %.3f, %.3f, %.3f]\n",
-	 ctarget_orient[HAND].q[_Q0_],
-	 ctarget_orient[HAND].q[_Q1_],
-	 ctarget_orient[HAND].q[_Q2_],
-	 ctarget_orient[HAND].q[_Q3_]);
+  get_double("Force gain",gain_force,&aux);
+  if (aux >= 0 && aux <= 3) {
+    gain_force = aux;
+  }
   
 
   return TRUE;
@@ -1077,6 +1091,7 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
 
 {
    "name" state_name
+   "name_next" next_state_name
    "duration" movement_duration
    "pose_x" ["abs" | "rel" | "refref"] pose_x_X pose_x_Y pose_x_Z
    "pose_q" use_orient ["abs" | "rel | relref"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
@@ -1095,6 +1110,7 @@ static char state_group_names[][100]=
   {
    {"dummy"},
    {"name"},
+   {"name_next"},
    {"duration"},
    {"pose_x"},
    {"pose_q"},
@@ -1103,12 +1119,13 @@ static char state_group_names[][100]=
    {"cart_gain_x_scale"},
    {"cart_gain_a_scale"},
    {"cart_gain_integral"},
-   {"ff_wrench"},
+   {"force_desired"},
+   {"moment_desired"},
    {"max_wrench"},
    {"controller"}
   };
 
-static int n_parms[] = {0,1,1,4,6,3,3,6,6,1,6,7,1};
+static int n_parms[] = {0,1,1,1,4,6,3,3,6,6,1,4,4,7,1};
 #define MAX_BIG_STRING 5000
 
 static int
@@ -1154,8 +1171,9 @@ read_state_machine(char *fname) {
   rewind(in);
   
     
-  // zero the number of states in state machine
+  // zero the number of states in state machine and clear the memory
   n_states_sm = 0;
+  bzero((char *)&targets_sm,sizeof(targets_sm));  
   
   // read states into a string, and then parse the string
   while ((cr=fgetc(in)) != EOF) {
@@ -1182,6 +1200,20 @@ read_state_machine(char *fname) {
 	  continue;
 	} else {
 	  n_read = sscanf(c,"%s",sm_temp.state_name);
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	}
+
+	// the name of the next state
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  printf("Could not find group %s\n",state_group_names[i]);
+	  //continue;
+	} else {
+	  n_read = sscanf(c,"%s",sm_temp.next_state_name);
 	  if (n_read != n_parms[i]) {
 	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
 	    continue;
@@ -1354,20 +1386,37 @@ read_state_machine(char *fname) {
 	  }
 	}
 
-	// ff_wrench
+	// force_desired
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
 	  printf("Could not find group %s\n",state_group_names[i]);
 	  continue;
 	} else {
-	  n_read = sscanf(c,"%lf %lf %lf %lf %lf %lf",
-			  &(sm_temp.ff_wrench[_X_]),
-			  &(sm_temp.ff_wrench[_Y_]),
-			  &(sm_temp.ff_wrench[_Z_]),
-			  &(sm_temp.ff_wrench[N_CART+_A_]),
-			  &(sm_temp.ff_wrench[N_CART+_B_]),
-			  &(sm_temp.ff_wrench[N_CART+_G_]));
+	  n_read = sscanf(c,"%lf %lf %lf %lf",
+			  &(sm_temp.force_des_gain),
+			  &(sm_temp.force_des[_X_]),
+			  &(sm_temp.force_des[_Y_]),
+			  &(sm_temp.force_des[_Z_]));
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	}
+
+
+	// moment_desired
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  printf("Could not find group %s\n",state_group_names[i]);
+	  continue;
+	} else {
+	  n_read = sscanf(c,"%lf %lf %lf %lf",
+			  &(sm_temp.moment_des_gain),			  
+			  &(sm_temp.moment_des[_A_]),
+			  &(sm_temp.moment_des[_B_]),
+			  &(sm_temp.moment_des[_G_]));
 	  if (n_read != n_parms[i]) {
 	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
 	    continue;
@@ -1447,6 +1496,18 @@ read_state_machine(char *fname) {
       
     }
 
+  }
+
+  // got through all states and fill in a next_state_id in case a next_state exists
+
+  for (i=1; i<=n_states_sm; ++i) {
+    if (strcmp(targets_sm[i].next_state_name,"") != 0) {
+      for (j=1; j<=n_states_sm; ++j) {
+	if (strcmp(targets_sm[i].next_state_name,targets_sm[j].state_name) == 0) {
+	  targets_sm[i].next_state_id = j;
+	}
+      }
+    }
   }
       
 
