@@ -98,9 +98,10 @@ typedef struct StateMachineTarget {
 
 #define MAX_STATES_SM 1000
 static StateMachineTarget targets_sm[MAX_STATES_SM+1];
-static StateMachineTarget reference_state;
-static int n_states_sm = 0;
-static int current_state_sm = 0;
+static double reference_state_pose_x[N_CART+1];
+static double reference_state_pose_q[N_QUAT+1];
+static int    n_states_sm = 0;
+static int    current_state_sm = 0;
 static double speed_mult = 1.0;
 static int    current_controller = SIMPLE_IMPEDANCE_JT;
 
@@ -403,9 +404,9 @@ init_sm_task(void)
     printf("delta q: %f %f %f %f\n",dq[1],dq[2],dq[3],dq[4]);
 
     for (i=1; i<=N_CART; ++i)
-      reference_state.pose_x[i] += dx[i];
+      reference_state_pose_x[i] += dx[i];
 
-    quatMult(reference_state.pose_q,dq,reference_state.pose_q);
+    quatMult(reference_state_pose_q,dq,reference_state_pose_q);
    
   }
 
@@ -549,7 +550,7 @@ run_sm_task(void)
       if (targets_sm[current_state_sm].pose_x_is_relative == REL) {
 	ctarget[HAND].x[i] += targets_sm[current_state_sm].pose_x[i];
       } else if (targets_sm[current_state_sm].pose_x_is_relative == RELREF) {
-	ctarget[HAND].x[i] = reference_state.pose_x[i] + targets_sm[current_state_sm].pose_x[i];
+	ctarget[HAND].x[i] = reference_state_pose_x[i] + targets_sm[current_state_sm].pose_x[i];
       } else {
 	ctarget[HAND].x[i] = targets_sm[current_state_sm].pose_x[i];
       }
@@ -566,7 +567,7 @@ run_sm_task(void)
 	//print_vec_size("after",ctarget_orient[HAND].q,4);
       } else if (targets_sm[current_state_sm].pose_q_is_relative == RELREF) {	
 	//print_vec_size("before",ctarget_orient[HAND].q,4);
-	quatMult(reference_state.pose_q,targets_sm[current_state_sm].pose_q,ctarget_orient[HAND].q);
+	quatMult(reference_state_pose_q,targets_sm[current_state_sm].pose_q,ctarget_orient[HAND].q);
 	//print_vec_size("after",ctarget_orient[HAND].q,4);
       } else {
 	for (i=1; i<=N_QUAT; ++i) {
@@ -1170,6 +1171,25 @@ read_state_machine(char *fname) {
   }
   rewind(in);
   
+  // look for a reference pose_x
+  if (find_keyword(in,"reference_state_pose_x")) {
+    rc=fscanf(in,"%lf %lf %lf", &reference_state_pose_x[_X_],&reference_state_pose_x[_Y_],&reference_state_pose_x[_Z_]);
+  } else {
+    for (i=1; i<=N_CART; ++i)
+      reference_state_pose_x[i] = cart_state[HAND].x[i];
+  }
+  rewind(in);
+
+  // look for a reference pose_q
+  if (find_keyword(in,"reference_state_pose_q")) {
+    rc=fscanf(in,"%lf %lf %lf %lf", &reference_state_pose_q[_Q0_],&reference_state_pose_q[_Q1_],
+	      &reference_state_pose_q[_Q2_],&reference_state_pose_q[_Q3_]);
+  } else {
+    for (i=1; i<=N_QUAT; ++i)
+      reference_state_pose_q[i] = cart_orient[HAND].q[i];
+  }
+  rewind(in);
+
     
   // zero the number of states in state machine and clear the memory
   n_states_sm = 0;
@@ -1468,10 +1488,7 @@ read_state_machine(char *fname) {
 	}
 
 	// finish up
-	if (strcmp(sm_temp.state_name,"reference") == 0) {
-	  reference_state = sm_temp;
-	  printf("Found reference state\n");
-	} else if (n_states_sm < MAX_STATES_SM) {
+	if (n_states_sm < MAX_STATES_SM) {
 	  targets_sm[++n_states_sm] = sm_temp;
 	} else {
 	  // should be unlikely to happen ever
