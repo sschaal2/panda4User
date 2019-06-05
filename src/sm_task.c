@@ -100,7 +100,13 @@ typedef struct StateMachineTarget {
 static StateMachineTarget targets_sm[MAX_STATES_SM+1];
 static double reference_state_pose_x[N_CART+1];
 static double reference_state_pose_q[N_QUAT+1];
+static double reference_state_pose_x_base[N_CART+1];
+static double reference_state_pose_q_base[N_QUAT+1];
+static double reference_state_pose_delta_x_table[MAX_STATES_SM+1][N_CART+1];
+static double reference_state_pose_delta_q_table[MAX_STATES_SM+1][N_QUAT+1];
 static int    n_states_sm = 0;
+static int    n_states_pose_delta = 0;
+static int    current_state_pose_delta = 0;
 static int    current_state_sm = 0;
 static double speed_mult = 1.0;
 static int    current_controller = SIMPLE_IMPEDANCE_JT;
@@ -132,6 +138,8 @@ static double     default_gain_orient = 40;  // was 40
 static double     default_gain_integral = 0.25;
 static double     gain_integral = 0.0;
 static double     gain_force = 0.1;
+static int        found_recurrance = FALSE;
+static int        run_table = FALSE;
 
 static SL_Cstate  ball_state;
 
@@ -372,42 +380,51 @@ init_sm_task(void)
     printf("No valid state machine found\n");
     return FALSE;
   }
+  if (found_recurrance && n_states_pose_delta > 0) {
+    get_int("Run table of reference perturbations?",run_table,&run_table);
+  } else {
+    run_table = FALSE;
+  }
+
+  // check whether systematic variations should be run
 
   // perturb reference?
-  get_int("Perturb reference?",pert,&pert);
-  if (pert == 1) {
-    double dx[N_CART+1];
-    double dq[N_QUAT+1];
-    double std = sqrt(1./3.);
-    double aux = 0;
-    double angle;
-
-    dx[_X_] = uniform(0.0,std*0.001);
-    dx[_Y_] = uniform(0.0,std*0.001);
-    dx[_Z_] = uniform(0.0,std*0.002);
-    dq[_Q1_] = uniform(0.0,std*1.0);
-    dq[_Q2_] = uniform(0.0,std*1.0);
-    dq[_Q3_] = uniform(0.0,std*1.0);
-
-    angle = 5./180*PI;
-    dq[_Q0_] = cos(angle/2.);
-
-    for (i=_Q1_; i<=_Q3_; ++i)
-      aux += sqr(dq[i]);
-    aux = sqrt(aux);
-    for (i=_Q1_; i<=_Q3_; ++i) {
-      dq[i] /= aux;
-      dq[i] *= sin(angle/2.);
+  if (!run_table) {
+    get_int("Perturb reference?",pert,&pert);
+    if (pert == 1) {
+      double dx[N_CART+1];
+      double dq[N_QUAT+1];
+      double std = sqrt(1./3.);
+      double aux = 0;
+      double angle;
+      
+      dx[_X_] = uniform(0.0,std*0.001);
+      dx[_Y_] = uniform(0.0,std*0.001);
+      dx[_Z_] = uniform(0.0,std*0.002);
+      dq[_Q1_] = uniform(0.0,std*1.0);
+      dq[_Q2_] = uniform(0.0,std*1.0);
+      dq[_Q3_] = uniform(0.0,std*1.0);
+      
+      angle = 5./180*PI;
+      dq[_Q0_] = cos(angle/2.);
+      
+      for (i=_Q1_; i<=_Q3_; ++i)
+	aux += sqr(dq[i]);
+      aux = sqrt(aux);
+      for (i=_Q1_; i<=_Q3_; ++i) {
+	dq[i] /= aux;
+	dq[i] *= sin(angle/2.);
+      }
+      
+      printf("delta x: %f %f %f\n",dx[1],dx[2],dx[3]);
+      printf("delta q: %f %f %f %f\n",dq[1],dq[2],dq[3],dq[4]);
+      
+      for (i=1; i<=N_CART; ++i)
+	reference_state_pose_x[i] = reference_state_pose_x_base[i] + dx[i];
+      
+      quatMult(reference_state_pose_q_base,dq,reference_state_pose_q);
+      
     }
-
-    printf("delta x: %f %f %f\n",dx[1],dx[2],dx[3]);
-    printf("delta q: %f %f %f %f\n",dq[1],dq[2],dq[3],dq[4]);
-
-    for (i=1; i<=N_CART; ++i)
-      reference_state_pose_x[i] += dx[i];
-
-    quatMult(reference_state_pose_q,dq,reference_state_pose_q);
-   
   }
 
   // go to a save posture 
@@ -468,6 +485,7 @@ init_sm_task(void)
   time_step = 1./(double)task_servo_rate;
   start_time = task_servo_time;
   state_machine_state = INIT_SM_TARGET;
+  current_state_pose_delta = 0;
   current_state_sm = 0;
   
   scd();
@@ -516,8 +534,22 @@ run_sm_task(void)
 
     // a special adjustment for an explicit jump to a a next_state out of sequence
     if (current_state_sm != 0 && targets_sm[current_state_sm].next_state_id != 0) {
-      // this simple adjustment allows continuing with the normal sequence below
-      current_state_sm = targets_sm[current_state_sm].next_state_id-1;
+      if ((run_table && current_state_pose_delta < n_states_pose_delta) || !run_table) {
+	// this simple adjustment allows continuing with the normal sequence below
+	current_state_sm = targets_sm[current_state_sm].next_state_id-1;
+      }
+
+      // are we running through the table of reference pertubations?
+      if (run_table && current_state_pose_delta < n_states_pose_delta) {
+	++current_state_pose_delta;
+	sprintf(msg,"Running perturbation %d\n",current_state_pose_delta);
+	logMsg(msg,0,0,0,0,0,0);
+	for (i=1; i<=N_CART; ++i) {
+	  reference_state_pose_x[i] = reference_state_pose_x_base[i] + reference_state_pose_delta_x_table[current_state_pose_delta][i];
+	}
+	quatMult(reference_state_pose_q_base,reference_state_pose_delta_q_table[current_state_pose_delta],reference_state_pose_q);
+      }
+
     }
 
     if (current_state_sm < n_states_sm) {
@@ -542,7 +574,7 @@ run_sm_task(void)
       return TRUE;
       
     }
-    
+
     // assign relevant variables from state machine state array
     time_to_go = targets_sm[current_state_sm].movement_duration/speed_mult;
     
@@ -1173,23 +1205,74 @@ read_state_machine(char *fname) {
   
   // look for a reference pose_x
   if (find_keyword(in,"reference_state_pose_x")) {
-    rc=fscanf(in,"%lf %lf %lf", &reference_state_pose_x[_X_],&reference_state_pose_x[_Y_],&reference_state_pose_x[_Z_]);
+    rc=fscanf(in,"%lf %lf %lf", &reference_state_pose_x_base[_X_],&reference_state_pose_x_base[_Y_],&reference_state_pose_x_base[_Z_]);
   } else {
     for (i=1; i<=N_CART; ++i)
-      reference_state_pose_x[i] = cart_state[HAND].x[i];
+      reference_state_pose_x_base[i] = cart_state[HAND].x[i];
   }
+
+  for (i=1; i<=N_CART; ++i)
+    reference_state_pose_x[i] = reference_state_pose_x_base[i];
+
   rewind(in);
+
 
   // look for a reference pose_q
   if (find_keyword(in,"reference_state_pose_q")) {
-    rc=fscanf(in,"%lf %lf %lf %lf", &reference_state_pose_q[_Q0_],&reference_state_pose_q[_Q1_],
-	      &reference_state_pose_q[_Q2_],&reference_state_pose_q[_Q3_]);
+    rc=fscanf(in,"%lf %lf %lf %lf", &reference_state_pose_q_base[_Q0_],&reference_state_pose_q_base[_Q1_],
+	      &reference_state_pose_q_base[_Q2_],&reference_state_pose_q_base[_Q3_]);
+  } else {
+    for (i=1; i<=N_QUAT; ++i)
+      reference_state_pose_q_base[i] = cart_orient[HAND].q[i];
+  }
+
+  for (i=1; i<=N_QUAT; ++i)
+    reference_state_pose_q[i] = reference_state_pose_q_base[i];
+  
+  rewind(in);
+
+  // look for a refernce_pose_delta table
+  n_states_pose_delta = 0;
+  current_state_pose_delta = 0;
+  if (find_keyword(in,"reference_state_pose_delta_table")) {
+    char fname[100];
+    FILE *fp=NULL;
+    int  count;
+    double aux;
+
+    rc=fscanf(in,"%s",fname);
+    fp = fopen(fname,"r");
+    if (fp != NULL) {
+      while (TRUE) {
+	rc = fscanf(fp,"%lf %lf %lf %lf %lf %lf %lf",&aux,&aux,&aux,&aux,&aux,&aux,&aux);
+	if (rc == 7 && n_states_pose_delta < MAX_STATES_SM) {
+	  ++n_states_pose_delta;
+	} else {
+	  break;
+	}
+      }
+      rewind(fp);
+      for (i=1; i<=n_states_pose_delta; ++i) {
+	rc = fscanf(fp,"%lf %lf %lf %lf %lf %lf %lf",
+		    &reference_state_pose_delta_x_table[i][_X_],
+		    &reference_state_pose_delta_x_table[i][_Y_],
+		    &reference_state_pose_delta_x_table[i][_Z_],
+		    &reference_state_pose_delta_q_table[i][_Q0_],
+		    &reference_state_pose_delta_q_table[i][_Q1_],
+		    &reference_state_pose_delta_q_table[i][_Q2_],
+		    &reference_state_pose_delta_q_table[i][_Q3_]);
+      }
+      printf("Found table of pose perturbations with %d entires\n",n_states_pose_delta);
+    } else {
+      printf("reference_state_pose_delta_table with name >%s< could not be found\n",fname);
+    }
+    
   } else {
     for (i=1; i<=N_QUAT; ++i)
       reference_state_pose_q[i] = cart_orient[HAND].q[i];
   }
   rewind(in);
-
+  
     
   // zero the number of states in state machine and clear the memory
   n_states_sm = 0;
@@ -1230,7 +1313,7 @@ read_state_machine(char *fname) {
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
-	  printf("Could not find group %s\n",state_group_names[i]);
+	  ;//printf("Could not find group %s\n",state_group_names[i]);
 	  //continue;
 	} else {
 	  n_read = sscanf(c,"%s",sm_temp.next_state_name);
@@ -1516,12 +1599,13 @@ read_state_machine(char *fname) {
   }
 
   // got through all states and fill in a next_state_id in case a next_state exists
-
+  found_recurrance = FALSE;
   for (i=1; i<=n_states_sm; ++i) {
     if (strcmp(targets_sm[i].next_state_name,"") != 0) {
       for (j=1; j<=n_states_sm; ++j) {
 	if (strcmp(targets_sm[i].next_state_name,targets_sm[j].state_name) == 0) {
 	  targets_sm[i].next_state_id = j;
+	  found_recurrance = TRUE;
 	}
       }
     }

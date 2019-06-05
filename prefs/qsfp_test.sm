@@ -34,6 +34,9 @@ reference_state_pose_x	0.603 0.017 0.07  // 1.1 slot
 //reference_state_pose_x	0.615 -0.023 0.07  // 2.3 slot
 reference_state_pose_q		0.0 -0.7071 0.7071 0.0  // vertical down aligned with Z
 
+// the table of reference state perturbations
+reference_state_pose_delta_table prefs/half_range_delta_pose.txt
+
 // endeffector modification: QSFP connect length + flage+finger+gripper QFSP=0.06m
 endeffector   0  0 0 0  0 0 0.2704  0 0 2.356
 
