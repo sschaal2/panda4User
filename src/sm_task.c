@@ -545,9 +545,11 @@ run_sm_task(void)
 	sprintf(msg,"Running perturbation %d\n",current_state_pose_delta);
 	logMsg(msg,0,0,0,0,0,0);
 	for (i=1; i<=N_CART; ++i) {
-	  reference_state_pose_x[i] = reference_state_pose_x_base[i] + reference_state_pose_delta_x_table[current_state_pose_delta][i];
+	  reference_state_pose_x[i] = reference_state_pose_x_base[i] +
+	    reference_state_pose_delta_x_table[current_state_pose_delta][i];
 	}
-	quatMult(reference_state_pose_q_base,reference_state_pose_delta_q_table[current_state_pose_delta],reference_state_pose_q);
+	quatMult(reference_state_pose_q_base,reference_state_pose_delta_q_table[current_state_pose_delta],
+		 reference_state_pose_q);
       }
 
     }
@@ -599,6 +601,7 @@ run_sm_task(void)
 	//print_vec_size("after",ctarget_orient[HAND].q,4);
       } else if (targets_sm[current_state_sm].pose_q_is_relative == RELREF) {	
 	//print_vec_size("before",ctarget_orient[HAND].q,4);
+	//print_vec_size("ref_state_pose",reference_state_pose_q,4);
 	quatMult(reference_state_pose_q,targets_sm[current_state_sm].pose_q,ctarget_orient[HAND].q);
 	//print_vec_size("after",ctarget_orient[HAND].q,4);
       } else {
@@ -1205,8 +1208,11 @@ read_state_machine(char *fname) {
   
   // look for a reference pose_x
   if (find_keyword(in,"reference_state_pose_x")) {
-    rc=fscanf(in,"%lf %lf %lf", &reference_state_pose_x_base[_X_],&reference_state_pose_x_base[_Y_],&reference_state_pose_x_base[_Z_]);
+    printf("Found reference pose_x\n");
+    rc=fscanf(in,"%lf %lf %lf", &reference_state_pose_x_base[_X_],
+	      &reference_state_pose_x_base[_Y_],&reference_state_pose_x_base[_Z_]);
   } else {
+    printf("WARNING: reference pose_x defaults to current pose_x\n");
     for (i=1; i<=N_CART; ++i)
       reference_state_pose_x_base[i] = cart_state[HAND].x[i];
   }
@@ -1219,19 +1225,21 @@ read_state_machine(char *fname) {
 
   // look for a reference pose_q
   if (find_keyword(in,"reference_state_pose_q")) {
+    printf("Found reference pose_q\n");
     rc=fscanf(in,"%lf %lf %lf %lf", &reference_state_pose_q_base[_Q0_],&reference_state_pose_q_base[_Q1_],
 	      &reference_state_pose_q_base[_Q2_],&reference_state_pose_q_base[_Q3_]);
   } else {
+    printf("WARNING: reference pose_q defaults to current pose_q\n");
     for (i=1; i<=N_QUAT; ++i)
       reference_state_pose_q_base[i] = cart_orient[HAND].q[i];
   }
 
   for (i=1; i<=N_QUAT; ++i)
     reference_state_pose_q[i] = reference_state_pose_q_base[i];
-  
+
   rewind(in);
 
-  // look for a refernce_pose_delta table
+  // look for a reference_pose_delta table
   n_states_pose_delta = 0;
   current_state_pose_delta = 0;
   if (find_keyword(in,"reference_state_pose_delta_table")) {
@@ -1267,10 +1275,8 @@ read_state_machine(char *fname) {
       printf("reference_state_pose_delta_table with name >%s< could not be found\n",fname);
     }
     
-  } else {
-    for (i=1; i<=N_QUAT; ++i)
-      reference_state_pose_q[i] = cart_orient[HAND].q[i];
   }
+  
   rewind(in);
   
     
@@ -1289,6 +1295,7 @@ read_state_machine(char *fname) {
     } else if ( cr == '}' && found_start ) { // a complete record was found
 
       found_start = FALSE;
+      bzero((char *)&sm_temp,sizeof(sm_temp));  
 
       if (count < MAX_BIG_STRING) {
 	string[count++] = '\0';
@@ -1309,16 +1316,16 @@ read_state_machine(char *fname) {
 	  }
 	}
 
-	// the name of the next state
+	// the name of the next state (optional)
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
-	  ;//printf("Could not find group %s\n",state_group_names[i]);
-	  //continue;
+	  ;
 	} else {
 	  n_read = sscanf(c,"%s",sm_temp.next_state_name);
 	  if (n_read != n_parms[i]) {
-	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",
+		   n_parms[i],n_read,state_group_names[i]);
 	    continue;
 	  }
 	}
@@ -1332,7 +1339,8 @@ read_state_machine(char *fname) {
 	} else {
 	  n_read = sscanf(c,"%lf",&sm_temp.movement_duration);
 	  if (n_read != n_parms[i]) {
-	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",
+		   n_parms[i],n_read,state_group_names[i]);
 	    continue;
 	  }
 	}
@@ -1344,9 +1352,11 @@ read_state_machine(char *fname) {
 	  printf("Could not find group %s\n",state_group_names[i]);
 	  continue;
 	} else {
-	  n_read = sscanf(c,"%s %lf %lf %lf",saux,&(sm_temp.pose_x[_X_]),&(sm_temp.pose_x[_Y_]),&(sm_temp.pose_x[_Z_]));
+	  n_read = sscanf(c,"%s %lf %lf %lf",
+			  saux,&(sm_temp.pose_x[_X_]),&(sm_temp.pose_x[_Y_]),&(sm_temp.pose_x[_Z_]));
 	  if (n_read != n_parms[i]) {
-	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",
+		   n_parms[i],n_read,state_group_names[i]);
 	    continue;
 	  }
 	  if (strcmp(saux,"rel")==0)
@@ -1357,12 +1367,11 @@ read_state_machine(char *fname) {
 	    sm_temp.pose_x_is_relative = ABS;
 	}
 
-	// pose_q
+	// pose_q (optional)
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
-	  printf("Could not find group %s\n",state_group_names[i]);
-	  continue;
+	  sm_temp.use_orient = FALSE;
 	} else {
 	  n_read = sscanf(c,"%d %s %lf %lf %lf %lf", &(sm_temp.use_orient),saux,
 			  &(sm_temp.pose_q[_Q0_]),
@@ -1395,7 +1404,7 @@ read_state_machine(char *fname) {
 	}
 
 	
-	// gripper_start
+	// gripper_start (optional)
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
@@ -1404,7 +1413,8 @@ read_state_machine(char *fname) {
 	} else {
 	  n_read = sscanf(c,"%s %lf %lf",saux,&(sm_temp.gripper_width_start), &(sm_temp.gripper_force_start));
 	  if (n_read != n_parms[i]) {
-	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",
+		   n_parms[i],n_read,state_group_names[i]);
 	    continue;
 	  }
 	  if (strcmp(saux,"rel")==0)
@@ -1433,12 +1443,12 @@ read_state_machine(char *fname) {
 	}
 
 
-	// gain_x
+	// gain_x (optional)
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
-	  printf("Could not find group %s\n",state_group_names[i]);
-	  continue;
+	  for (j=1; j<=N_CART; ++j)
+	    sm_temp.cart_gain_x_scale[j] = sm_temp.cart_gain_xd_scale[j] = 1.0;
 	} else {
 	  n_read = sscanf(c,"%lf %lf %lf %lf %lf %lf",
 			  &(sm_temp.cart_gain_x_scale[_X_]),
@@ -1448,18 +1458,19 @@ read_state_machine(char *fname) {
 			  &(sm_temp.cart_gain_xd_scale[_Y_]),
 			  &(sm_temp.cart_gain_xd_scale[_Z_]));
 	  if (n_read != n_parms[i]) {
-	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",
+		   n_parms[i],n_read,state_group_names[i]);
 	    continue;
 	  }
 	}
 
 
-	// gain_a
+	// gain_a (optional) 
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
-	  printf("Could not find group %s\n",state_group_names[i]);
-	  continue;
+	  for (j=1; j<=N_CART; ++j)
+	    sm_temp.cart_gain_a_scale[j] = sm_temp.cart_gain_ad_scale[j] = 1.0;
 	} else {
 	  n_read = sscanf(c,"%lf %lf %lf %lf %lf %lf",
 			  &(sm_temp.cart_gain_a_scale[_X_]),
@@ -1469,18 +1480,18 @@ read_state_machine(char *fname) {
 			  &(sm_temp.cart_gain_ad_scale[_Y_]),
 			  &(sm_temp.cart_gain_ad_scale[_Z_]));
 	  if (n_read != n_parms[i]) {
-	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",
+		   n_parms[i],n_read,state_group_names[i]);
 	    continue;
 	  }
 	}
 
 
-	// the integral gains
+	// the integral gains (optinal)
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
-	  printf("Could not find group %s\n",state_group_names[i]);
-	  continue;
+	  sm_temp.cart_gain_integral = 0.0;
 	} else {
 	  n_read = sscanf(c,"%lf",&sm_temp.cart_gain_integral);
 	  if (n_read != n_parms[i]) {
@@ -1489,12 +1500,11 @@ read_state_machine(char *fname) {
 	  }
 	}
 
-	// force_desired
+	// force_desired (optional)
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
-	  printf("Could not find group %s\n",state_group_names[i]);
-	  continue;
+	  sm_temp.force_des_gain = 0.0;
 	} else {
 	  n_read = sscanf(c,"%lf %lf %lf %lf",
 			  &(sm_temp.force_des_gain),
@@ -1508,12 +1518,11 @@ read_state_machine(char *fname) {
 	}
 
 
-	// moment_desired
+	// moment_desired (optional)
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
-	  printf("Could not find group %s\n",state_group_names[i]);
-	  continue;
+	  sm_temp.moment_des_gain = 0.0;
 	} else {
 	  n_read = sscanf(c,"%lf %lf %lf %lf",
 			  &(sm_temp.moment_des_gain),			  
@@ -1527,12 +1536,13 @@ read_state_machine(char *fname) {
 	}
 
 
-	// max_wrench
+	// max_wrench (optional)
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
-	  printf("Could not find group %s\n",state_group_names[i]);
-	  continue;
+	  for (j=1; j<=N_CART*2; ++j)
+	    sm_temp.max_wrench[j] = 1000;
+	  sm_temp.ft_exception_action = CONT;
 	} else {
 	  n_read = sscanf(c,"%s %lf %lf %lf %lf %lf %lf",saux,
 			  &(sm_temp.max_wrench[_X_]),
