@@ -46,7 +46,7 @@ reference_state_pose_x	0.603 0.017 0.07  // 1.1 slot
 reference_state_pose_q		0.0 -0.7071 0.7071 0.0  // vertical down aligned with Z
 
 // the table of reference state perturbations
-reference_state_pose_delta_table prefs/half_range_delta_pose.txt
+reference_state_pose_delta_table prefs/qsfp_vl_coarse.txt
 
 // endeffector modification: QSFP connect length + flage+finger+gripper QFSP=0.06m
 endeffector   0  0 0 0  0 0 0.2704  0 0 2.356
@@ -66,7 +66,7 @@ cart_gain_integral 0.25
 force_desired      0 0 0 0
 moment_desired     0 0 0 0
 max_wrench    	   abort 10 10 10 5 5 5
-controller    	   SimpleImpedanceJt
+controller    	   ModelImpedanceJt
 }
 {
 name               prepare_grasp
@@ -81,7 +81,7 @@ cart_gain_integral 0.25
 force_desired      0 0 0 0
 moment_desired     0 0 0 0
 max_wrench   	   abort 10 10 10 5 5 5
-controller    	   SimpleImpedanceJt
+controller    	   ModelImpedanceJt
 }
 {
 name               extract_qfsp
@@ -96,7 +96,7 @@ cart_gain_integral 0.0
 force_desired      0 0 0 0
 moment_desired     0 0 0 0
 max_wrench    	   cont 20 20 20 5 5 5 
-controller    	   SimpleImpedanceJt
+controller    	   ModelImpedanceJt
 }
 
 
@@ -114,11 +114,10 @@ cart_gain_integral 0.25
 force_desired      0 0 0 0
 moment_desired     0 0 0 0
 max_wrench    	   cont 10 10 10 5 5 5
-controller    	   SimpleImpedanceJt
+controller    	   ModelImpedanceJt
 }
 {
 name               get_in_contact
-name_next          approach_tilted
 duration      	   1
 pose_x        	   rel 0.00 0 -0.025 
 pose_q        	   1 rel  1 0 0 0
@@ -127,10 +126,26 @@ gripper_end   	   abs 0.0  100
 cart_gain_x_scale  1 1 1 1 1 1
 cart_gain_a_scale  1 1 1 1 1 1
 cart_gain_integral 0.1
-force_desired      1 0 0 10
+force_desired      1 0 0 5
 moment_desired     0 0 0 0
 max_wrench    	   cont 10 10 10 5 5 5
-controller    	   SimpleImpedanceJt
+controller    	   ModelImpedanceJt
+}
+{
+name               wait_take_a_picture
+name_next          approach_tilted
+duration      	   1
+pose_x        	   rel 0 0 0
+pose_q        	   1 rel  1 0 0 0
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
+cart_gain_x_scale  1 1 1 1 1 1
+cart_gain_a_scale  1 1 1 1 1 1
+cart_gain_integral 0.1
+force_desired      1 0 0 5
+moment_desired     0 0 0 0
+max_wrench    	   cont 10 10 10 5 5 5
+controller    	   ModelImpedanceJt
 }
 {
 name               move_away
@@ -148,5 +163,5 @@ cart_gain_integral 0.0
 force_desired      0 0 0 0
 moment_desired     0 0 0 0
 max_wrench    	   cont 15 15 15 5 5 5 
-controller    	   SimpleImpedanceJt
+controller    	   ModelImpedanceJt
 }
