@@ -169,7 +169,7 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
 			   double *gain_ad_scale)
 
 {
-  double         default_gain   = 600;  // was 450
+  double         default_gain   = 800;  // was 450
   double         default_gain_orient = 40;  // was 40
   
   double         corient_error[N_CART+1];
@@ -311,7 +311,7 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
 			  double *gain_ad_scale)
 
 {
-  double         default_gain   = 600;  // was 450
+  double         default_gain   = 800;  // was 450
   double         default_gain_orient = 40;  // was 40
   
   double         corient_error[N_CART+1];

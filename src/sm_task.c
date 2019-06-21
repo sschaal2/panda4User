@@ -230,7 +230,7 @@ init_sm_task(void)
 {
   int    j, i;
   char   string[100];
-  static char   fname[100] = "qsfp.sm";
+  static char   fname[100] = "qsfp_vl.sm";
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;
@@ -889,7 +889,7 @@ run_sm_task(void)
     }
 
     joint_des_state[i].uff   += u_delta_switch[i]; // transient to avoid jumps from controller switch
-    u_delta_switch[i] *= 0.999;
+    u_delta_switch[i] *= 0.99;
   }
 
 
@@ -1499,6 +1499,10 @@ read_state_machine(char *fname) {
 	    continue;
 	  }
 	}
+
+	// simulator does not like high integral gains
+	if (!real_robot_flag)
+	  sm_temp.cart_gain_integral /= 10.0;
 
 	// force_desired (optional)
 	++i;
