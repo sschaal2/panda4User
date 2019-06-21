@@ -7,7 +7,6 @@
 /* format: every state is in curely brackets, and has keywords before every group of values
 
 {
-{
    "name" state_name
    "name_next" next_state_name
    	    (optional: default=none)
