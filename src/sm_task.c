@@ -230,7 +230,7 @@ init_sm_task(void)
 {
   int    j, i;
   char   string[100];
-  static char   fname[100] = "qsfp_vl.sm";
+  static char   fname[100] = "qsfp.sm";
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;

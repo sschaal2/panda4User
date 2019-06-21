@@ -45,13 +45,8 @@ reference_state_pose_x	0.603 0.017 0.07  // 1.1 slot
 //reference_state_pose_x	0.615 -0.023 0.07  // 2.3 slot
 reference_state_pose_q		0.0 -0.7071 0.7071 0.0  // vertical down aligned with Z
 
-// the table of reference state perturbations
-//reference_state_pose_delta_table prefs/all_slots.txt
-reference_state_pose_delta_table prefs/half_range_delta_pose.txt
-
-
 // endeffector modification: QSFP connect length + flage+finger+gripper QFSP=0.06m
-endeffector   0  0 0 0  0 0 0.2724  0 0 2.356
+endeffector   0  0 0 0  0 0 0.2704  0 0 2.356
 
 // grasp the qfsp connector in first slot
 
@@ -106,7 +101,7 @@ controller    	   ModelImpedanceJt
 {
 name               approach_tilted
 duration      	   2.5
-pose_x        	   relref 0.005 0.002 0.01 
+pose_x        	   relref 0.001 0.002 0.01 
 pose_q        	   1 rel  0.9423 0.2634 0.1219 -0.1678
 gripper_start 	   abs 0.0  100
 gripper_end   	   abs 0.0  100
@@ -127,7 +122,7 @@ gripper_start 	   abs 0.0  100
 gripper_end   	   abs 0.0  100
 cart_gain_x_scale  1 1 1 1 1 1
 cart_gain_a_scale  1 1 1 1 1 1
-cart_gain_integral 0.25
+cart_gain_integral 0.
 force_desired      1 0 0 10
 moment_desired     0 0 0 0
 max_wrench    	   cont 10 10 10 5 5 5
@@ -145,8 +140,7 @@ gripper_end   	   abs 0.0  100
 cart_gain_x_scale  1 1 1 1 1 1
 cart_gain_a_scale  1 1 1 1 1 1
 cart_gain_integral 0.1
-force_desired      1 0 3 10
-
+force_desired      1 0 5 10
 moment_desired     0 0 0 0
 max_wrench    	   last 10 10 10 5 5 5
 controller    	   ModelImpedanceJt
@@ -164,7 +158,7 @@ gripper_end   	   abs 0.0  100
 cart_gain_x_scale  1 1 1 1 1 1
 cart_gain_a_scale  1 1 1 1 1 1
 cart_gain_integral 0.0
-force_desired      1 0 0 40
+force_desired      1 0 0 50
 moment_desired     1.5 0 0 0
 max_wrench    	   last 30 30 70 10 10 10
 controller    	   ModelImpedanceJt
