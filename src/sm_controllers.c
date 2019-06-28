@@ -26,7 +26,9 @@ Remarks:
 #include "SL_man.h"
 #include "SL_common.h"
 
-// local variables 
+// local variables
+
+static int sm_controllers_initialized = FALSE;
 
 // variables for filtering
 #define FILTER_ORDER 2
@@ -115,6 +117,8 @@ init_sm_controllers( void )
     if (!read_gains(config_files[GAINS],controller_gain_th, 
 		    controller_gain_thd, controller_gain_int))
       return;
+
+    sm_controllers_initialized = TRUE;
     
   }
 
@@ -192,6 +196,10 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
     Jhash  = my_matrix(1,N_DOFS,1,6*N_ENDEFFS);
     Nproj  = my_matrix(1,N_DOFS,1,N_DOFS);
     Jprop  = my_matrix(1,6*N_ENDEFFS,1,N_DOFS);
+
+    if (!sm_controllers_initialized)
+      init_sm_controllers();      
+    
   }
 
   // if no intergral controller, zero intergrator state
@@ -338,6 +346,10 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
     Jprop  = my_matrix(1,6*N_ENDEFFS,1,N_DOFS);
     JTJbar = my_matrix(1,N_DOFS,1,6*N_ENDEFFS);
     dJdtthd= my_vector(1,6*N_ENDEFFS);
+
+    if (!sm_controllers_initialized)
+      init_sm_controllers();      
+    
   }
 
   // if no intergral controller, zero intergrator state
