@@ -49,7 +49,8 @@ set(SRCS_XTASK
 	sm_task.c
 	sm_controllers.c	
 	test_task.c
-	impedance_test_task.c	
+	impedance_test_task.c
+	cilantro_track_task.cpp		
 	)
 
 set(SRCS_XOPENGL

@@ -46,11 +46,13 @@ initUserTasks(void)
   extern void add_gravcomp_task();
   extern void add_test_task();
   extern void add_impedance_test_task();
+  extern void add_cilantro_track_task();
 
   add_gravcomp_task();
   add_sm_task();
   add_test_task();
   add_impedance_test_task();
+  add_cilantro_track_task();
 
   //sprintf(initial_user_command,"go0");
 }
