@@ -105,7 +105,7 @@ controller    	   SimpleImpedanceJt
 {
 name               approach_tilted
 duration      	   2.5
-pose_x        	   relref 0.002 0.002 0.01 
+pose_x        	   relref 0.004 0.002 0.01 
 pose_q        	   1 rel  0.9423 0.2634 0.1219 -0.1678
 gripper_start 	   abs 0.0  100
 gripper_end   	   abs 0.0  100
