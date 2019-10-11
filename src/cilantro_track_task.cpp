@@ -23,6 +23,7 @@ Remarks:
 #include "SL_collect_data.h"
 #include "SL_shared_memory.h"
 #include "SL_man.h"
+#include "SL_unix_common.h"
 
 // defines
 
@@ -245,6 +246,9 @@ run_cilantro_track_task(void)
 			     cart_gain_xd_scale,
 			     cart_gain_a_scale,
 			     cart_gain_ad_scale);
+
+  if (task_time == 1)
+    sendCommandLineCmd("saveData");
   
 
   return TRUE;
