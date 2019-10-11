@@ -59,11 +59,24 @@ enum FTEceptionAction
    LAST
   };
 
-enum RelativeOption {
-  ABS = 0,
-  REL,
-  RELREF
-};
+enum RelativeOption
+  {
+   ABS = 0,
+   REL,
+   RELREF
+  };
+
+enum ExitOption
+  {
+   NO_EXIT = 0,
+   POS_EXIT,
+   ORIENT_EXIT,
+   POS_ORIENT_EXIT,
+   FORCE_EXIT,
+   MOMENT_EXIT,
+   FORCE_MOMENT_EXIT
+  };
+		 
 
 
 typedef struct StateMachineTarget {
@@ -94,6 +107,12 @@ typedef struct StateMachineTarget {
   double cart_gain_ad_scale[N_CART+1]; // diagonal of matrix
   double cart_gain_integral;
   char   controller_name[100];
+  int    exit_condition;
+  double exit_timeout;
+  double err_pos; // abs error in position x,y,z
+  double err_orient; // abs error in rad
+  double err_force; // abs error in force
+  double err_moment; // abs error in moment
 } StateMachineTarget;
 
 #define MAX_STATES_SM 1000
@@ -235,6 +254,12 @@ init_sm_task(void)
   int    flag = FALSE;
   static int firsttime = TRUE;
   static int pert = 0;
+
+  double aux;
+  double q1[5]={0 , 0.0 , -0.7071 , 0.7071 ,0.0};
+  double qf[5]={0 , 0.9423 , 0.2634 , 0.1219 , -0.1678};
+  double q2[5],qerr[5],qfn[5];
+  
   
   if (firsttime) {
 
@@ -349,7 +374,21 @@ init_sm_task(void)
 
   }
 
-  // the sm_controllers
+  // hack
+  aux = sqrt(vec_mult_inner_size(q1,q1,4));
+  vec_mult_scalar_size(q1,4,1./aux,q1);
+  aux = sqrt(vec_mult_inner_size(qf,qf,4));
+  vec_mult_scalar_size(qf,4,1./aux,qf);
+  quatRelative(q1, qf, q2);
+  print_vec_size("q1",q1,4);
+  print_vec_size("qf",qf,4);
+  print_vec_size("q2",q2,4);
+  quatMult(q1,q2,qfn);
+  print_vec_size("qf-next",qfn,4);
+  vec_sub_size(qf,qfn,4,qerr);
+  print_vec_size("qerr",qerr,4);
+
+    // the sm_controllers
   init_sm_controllers();
 
   // zero the delta command from controller switches
@@ -526,6 +565,7 @@ run_sm_task(void)
   int    update_u_delta_switch = FALSE;
   int    ft_exception_flag = FALSE;
   char   string[200];
+  float  b[N_CART*3+1];
 
   switch (state_machine_state) {
 
@@ -772,12 +812,60 @@ run_sm_task(void)
     }
     
     time_to_go -= time_step;
+    
+    // check whether theere is an exit condtion which overules progressing 
+    // to the next state
+    
+    if (time_to_go < 0 && targets_sm[current_state_sm].exit_condition) {
+      double pos_error=0;
+      double orient_error=0;
+      double q_temp[N_QUAT+1];
+      int    exit_flag = TRUE;
+      
+      // position error
+      for (i=1; i<=N_CART; ++i)
+	pos_error += sqr(ctarget[HAND].x[i]-cart_state[HAND].x[i]);
+      pos_error = sqrt(pos_error);
+      
+      // orientation error
+      quatRelative(ctarget_orient[HAND].q, cart_orient[HAND].q, q_temp);
+      orient_error = fabs(acos(q_temp[_Q0_]));
+      
+      switch(targets_sm[current_state_sm].exit_condition)
+	{
+	case POS_EXIT:
+	  if (pos_error > targets_sm[current_state_sm].err_pos)
+	    exit_flag = FALSE;
+	  break;
+	  
+	case ORIENT_EXIT:
+	  if (orient_error > targets_sm[current_state_sm].err_orient)
+	    exit_flag = FALSE;
+	  break;
+	  
+	case POS_ORIENT_EXIT:
+	  if (pos_error > targets_sm[current_state_sm].err_pos ||
+	      orient_error > targets_sm[current_state_sm].err_orient)
+	    exit_flag = FALSE;
+	  break;
+	  
+	}
+
+      if (!exit_flag && fabs(time_to_go) < targets_sm[current_state_sm].exit_timeout)
+	break; 
+      
+    } // end check exit condiitons
+    
+
+    // at this point we know that we will exit this state of the state machine    
     if (time_to_go < 0) {
       time_to_go = 0;
 
       no_gripper_motion = FALSE;
-      if (targets_sm[current_state_sm].gripper_width_end == targets_sm[current_state_sm].gripper_width_start &&
-	  targets_sm[current_state_sm].gripper_force_end == targets_sm[current_state_sm].gripper_force_start) {
+      if (targets_sm[current_state_sm].gripper_width_end ==
+	  targets_sm[current_state_sm].gripper_width_start &&
+	  targets_sm[current_state_sm].gripper_force_end ==
+	  targets_sm[current_state_sm].gripper_force_start) {
 	no_gripper_motion=TRUE; 
       }
 
@@ -797,7 +885,7 @@ run_sm_task(void)
       } else {
 	state_machine_state = INIT_SM_TARGET;
       }
-    }
+    } // end time_to_go < 0
 
     break;
 
@@ -906,7 +994,18 @@ run_sm_task(void)
   pos[_Z_+1] = 0.005;
   sendUserGraphics("ballSize",&(pos[_X_]), (N_CART+1)*sizeof(float));
 
+  b[1] = .5;
+  b[2] =  0.0;
+  b[3] = .4;
+  b[4] = 0;
+  b[5] = -1;
+  b[6] = 0;
+  b[7] = .1;
+  b[8] = 0.05;
+  b[9] = 0.01;
 
+  sendUserGraphics("RectCuboid",&(b[1]), (N_CART*3)*sizeof(float));  
+  
   return TRUE;
   
 }
@@ -1146,6 +1245,7 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
    "ff_wrench" fx fy fz mx my mz
    "max_wrench" ["cont" | "abort" | "last"] fx_max fy_max fz_max mx_max my_max mz_max
    "controller" controller_name
+   "exit_condition" ["none" | "pos" | "orient" | "pos_orient" | "force" | "moment" | "force_moment"] exit_timeout err_pos err_orient err_force err_moment
 }
 
  ******************************************************************************/
@@ -1165,10 +1265,11 @@ static char state_group_names[][100]=
    {"force_desired"},
    {"moment_desired"},
    {"max_wrench"},
-   {"controller"}
+   {"controller"},
+   {"exit_condition"}
   };
 
-static int n_parms[] = {0,1,1,1,4,6,3,3,6,6,1,4,4,7,1};
+static int n_parms[] = {0,1,1,1,4,6,3,3,6,6,1,4,4,7,1,5};
 #define MAX_BIG_STRING 5000
 
 static int
@@ -1277,7 +1378,7 @@ read_state_machine(char *fname) {
 		    &reference_state_pose_delta_q_table[i][_Q2_],
 		    &reference_state_pose_delta_q_table[i][_Q3_]);
       }
-      printf("Found table of pose perturbations with %d entires\n",n_states_pose_delta);
+      printf("Found table of pose perturbations with %d entries\n",n_states_pose_delta);
     } else {
       printf("reference_state_pose_delta_table with name >%s< could not be found\n",fname);
     }
@@ -1589,6 +1690,48 @@ read_state_machine(char *fname) {
 	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
 	    continue;
 	  }
+	}
+
+	// the exit condition
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  sm_temp.exit_condition = NO_EXIT;
+	} else {
+	  n_read = sscanf(c,"%s %lf %lf %lf %lf %lf",
+			  saux,
+			  &sm_temp.exit_timeout,
+			  &sm_temp.err_pos,
+			  &sm_temp.err_orient,
+			  &sm_temp.err_force,
+			  &sm_temp.err_moment			  			  
+			  );
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+
+	  //   "exit_condition" ["none" | "pos" | "orient" | "pos_orient" | "force" | "moment" | "force_moment"] err_pos err_orient err_force err_moment
+
+	  if (strcmp(saux,"pos")==0)
+	    sm_temp.exit_condition = POS_EXIT;
+	  else if (strcmp(saux,"orient")==0)
+	    sm_temp.exit_condition = ORIENT_EXIT;
+	  else if (strcmp(saux,"pos_orient")==0)
+	    sm_temp.exit_condition = POS_ORIENT_EXIT;
+	  else if (strcmp(saux,"force")==0)
+	    sm_temp.exit_condition = FORCE_EXIT;
+	  else if (strcmp(saux,"moment")==0)
+	    sm_temp.exit_condition = MOMENT_EXIT;
+	  else if (strcmp(saux,"force_moment")==0)
+	    sm_temp.exit_condition = FORCE_MOMENT_EXIT;
+	  else
+	    sm_temp.exit_condition = NO_EXIT;
+
+
+	  if (sm_temp.exit_timeout < 0)
+	    sm_temp.exit_timeout = 0;
+	  
 	}
 
 	// finish up
