@@ -168,6 +168,9 @@ HAND_cdes_x
 HAND_cdes_y
 HAND_cdes_z
 
+sm_pos_error
+sm_orient_error
+
 vaux_1
 vaux_2
 vaux_3

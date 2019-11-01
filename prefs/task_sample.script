@@ -327,3 +327,5 @@ HAND_cart_ref_g
 HAND_cdes_x
 HAND_cdes_y
 HAND_cdes_z
+sm_pos_error
+sm_orient_error
