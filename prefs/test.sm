@@ -33,7 +33,7 @@ endeffector   0  0 0 0  0 0 0.2704  0 0 2.356
 {
 name               test_state_1
 duration      	   3
-pose_x        	   abs 0.403 0.317 0.40
+pose_x        	   abs 0.403 0.217 0.40
 pose_q        	   1 abs 0.0 -0.7071 0.7071 0.0
 gripper_start 	   abs 0.02 0
 gripper_end        abs 0.02 0
@@ -51,10 +51,10 @@ pose_x        	   rel 0.0 0.0 0.0
 pose_q        	   1 rel 1 0 0 0
 gripper_start 	   abs 0.02 0
 gripper_end   	   abs 0.02 0
-cart_gain_x_scale  .1 .1 .1 1 1 1
-cart_gain_a_scale  .1 .1 .1 1 1 1
+cart_gain_x_scale  1 1 1 1 1 1
+cart_gain_a_scale  1 1 1 1 1 1
 cart_gain_integral 0.0
 ff_wrench     	   0 0 0 0 0 0
-max_wrench   	   abort 10 10 10 5 5 5
+max_wrench   	   abort 30 30 30 5 5 5
 controller    	   SimpleImpedanceJt
 }

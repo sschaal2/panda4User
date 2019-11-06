@@ -82,7 +82,7 @@ exit_condition	   pos_orient 10 0.0025 0.01 0 0
 }
 {
 name               extract_powerplug
-duration      	   1
+duration      	   3
 pose_x        	   rel 0.0 0.0 0.10
 pose_q        	   1 rel 1 0 0 0
 gripper_start 	   abs 0.0  100
@@ -114,7 +114,7 @@ pose_x        	   rel 0.0 0.0 -0.015
 pose_q        	   1 rel  1 0 0 0
 gripper_start 	   abs 0.0  100
 gripper_end   	   abs 0.0  100
-cart_gain_integral 0.25
+cart_gain_integral 0.5
 force_desired      1 0 0 8
 moment_desired     0 0 0 0
 max_wrench    	   cont 10 10 15 5 5 5

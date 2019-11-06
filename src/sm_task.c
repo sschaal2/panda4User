@@ -66,6 +66,12 @@ enum RelativeOption
    RELREF
   };
 
+enum CoordinateFrame
+  {
+   WORLD_FRAME = 0,
+   REFERENCE_FRAME
+  };
+
 enum ExitOption
   {
    NO_EXIT = 0,
