@@ -212,7 +212,7 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
   // compute orientation error term for quaterion feedback control
   quatRelative(cart_orient[HAND].q,cdes_orient[HAND].q,q_rel);
   for (i=1; i<=N_CART; ++i)
-    corient_error[i] = -q_rel[_Q0_+i];
+    corient_error[i] = q_rel[_Q0_+i];
 
   q_rel_angle = acos(q_rel[_Q0_]);
   log_q_mult = q_rel_angle/(sqrt(vec_mult_inner_size(corient_error,corient_error,N_CART))+1.e-6);
@@ -237,10 +237,10 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
     if (status[N_CART + j]) {
       ++count;
       
-      cref_integral[count] +=  - 0.1 * log_q_mult * corient_error[j] * gain_integral;
+      cref_integral[count] +=  0.1 * log_q_mult * corient_error[j] * gain_integral;
       
       cref[count] = cref_integral[count] +
-	(cdes_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) *0.025 * 2.0 * sqrt(default_gain_orient) * gain_ad_scale[j] - 
+	(cdes_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) *0.025 * 2.0 * sqrt(default_gain_orient) * gain_ad_scale[j] + 
 	log_q_mult * corient_error[j] * default_gain_orient * gain_a_scale[j]; 
     }
   }
@@ -369,7 +369,7 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
   // compute orientation error term for quaterion feedback control
   quatRelative(cart_orient[HAND].q,cdes_orient[HAND].q,q_rel);
   for (i=1; i<=N_CART; ++i)
-    corient_error[i] = -q_rel[_Q1_+i-1];
+    corient_error[i] = q_rel[_Q1_+i-1];
 
   q_rel_angle = acos(q_rel[_Q0_]);
   log_q_mult = q_rel_angle/(sqrt(vec_mult_inner_size(corient_error,corient_error,N_CART))+1.e-6);
@@ -395,10 +395,10 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
     if (status[N_CART + j]) {
       ++count;
       
-      cref_integral[count] +=  - 0.1 * log_q_mult * corient_error[j] * gain_integral;
+      cref_integral[count] +=  0.1 * log_q_mult * corient_error[j] * gain_integral;
       
       cref[count] = cref_integral[count] +
-	(cdes_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) *0.025 * 2.0 * sqrt(default_gain_orient) * gain_ad_scale[j] - 
+	(cdes_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) *0.025 * 2.0 * sqrt(default_gain_orient) * gain_ad_scale[j] + 
 	log_q_mult * corient_error[j] * default_gain_orient * gain_a_scale[j]; 
     }
   }
