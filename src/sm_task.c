@@ -82,6 +82,18 @@ enum ExitOption
    MOMENT_EXIT,
    FORCE_MOMENT_EXIT
   };
+
+enum ManipulationFrame
+  {
+    ABS_FRAME=0,
+    REF_FRAME
+  };
+		 
+enum FunctionCalls
+  {
+    NO_FUNC = 0,
+    ZERO_FT
+  };
 		 
 
 
@@ -89,6 +101,8 @@ typedef struct StateMachineTarget {
   char   state_name[100];
   char   next_state_name[100];
   int    next_state_id;
+  int    manipulation_frame;
+  int    function_call;
   double movement_duration;
   int    pose_x_is_relative;
   double pose_x[N_CART+1];
@@ -135,6 +149,7 @@ static int    current_state_pose_delta = 0;
 static int    current_state_sm = 0;
 static double speed_mult = 1.0;
 static int    current_controller = SIMPLE_IMPEDANCE_JT;
+static int    default_controller = SIMPLE_IMPEDANCE_JT;
 
 /* Cartesian orientation representation with a rotation around an axis */
 typedef struct { 
@@ -605,7 +620,7 @@ run_sm_task(void)
       // are we running through the table of reference pertubations?
       if (run_table && current_state_pose_delta < n_states_pose_delta) {
 	++current_state_pose_delta;
-	sprintf(msg,"Running perturbation %d\n",current_state_pose_delta);
+	sprintf(msg,"\nRunning perturbation %d\n",current_state_pose_delta);
 	logMsg(msg,0,0,0,0,0,0);
 	for (i=1; i<=N_CART; ++i) {
 	  reference_state_pose_x[i] = reference_state_pose_x_base[i] +
@@ -640,9 +655,16 @@ run_sm_task(void)
       
     }
 
+    // check whether this is a function call
+    if (targets_sm[current_state_sm].function_call == ZERO_FT) {
+      sprintf(msg,"Calibrate F/T offsets\n");
+      logMsg(msg,0,0,0,0,0,0);      
+      sendCalibrateFTCommand();
+    }
+
     // assign relevant variables from state machine state array
     time_to_go = targets_sm[current_state_sm].movement_duration/speed_mult;
-    
+
     for (i=1; i<=N_CART; ++i) {
       if (targets_sm[current_state_sm].pose_x_is_relative == REL) {
 	ctarget[HAND].x[i] += targets_sm[current_state_sm].pose_x[i];
@@ -1264,6 +1286,8 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
    "name" state_name
    "name_next" next_state_name
    "duration" movement_duration
+   "manipulation_frame" ["abs" | "ref"]
+   "func_call" "...." (arbitrary name of implemented function to be called at this state)
    "pose_x" ["abs" | "rel" | "refref"] pose_x_X pose_x_Y pose_x_Z
    "pose_q" use_orient ["abs" | "rel | relref"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
    "gripper_start" ["abs" | "rel"] gripper_start_width gripper_start_force
@@ -1284,6 +1308,8 @@ static char state_group_names[][100]=
    {"name"},
    {"name_next"},
    {"duration"},
+   {"manipulation_frame"},
+   {"func_call"},
    {"pose_x"},
    {"pose_q"},
    {"gripper_start"},
@@ -1298,7 +1324,7 @@ static char state_group_names[][100]=
    {"exit_condition"}
   };
 
-static int n_parms[] = {0,1,1,1,4,6,3,3,6,6,1,4,4,7,1,6};
+static int n_parms[] = {0,1,1,1,1,1,4,6,3,3,6,6,1,4,4,7,1,6};
 #define MAX_BIG_STRING 5000
 
 static int
@@ -1306,6 +1332,7 @@ read_state_machine(char *fname) {
   
   int    j,i,rc;
   char   string[MAX_BIG_STRING+1];
+  char   default_controller_name[100];
   FILE  *in;
   int    n_read;
   StateMachineTarget sm_temp;
@@ -1313,7 +1340,7 @@ read_state_machine(char *fname) {
   int    count = 0;
   char  *c;
   char   cr;
-  char   saux[20];
+  char   saux[MAX_BIG_STRING+1];
   double aux;
     
   // open the file and strip all comments
@@ -1343,24 +1370,36 @@ read_state_machine(char *fname) {
   }
   rewind(in);
   
+  // look for a default controller
+  if (find_keyword(in,"default_controller")) {
+    rc=fscanf(in,"%s",default_controller_name);
+    if (rc == 1) {
+      printf("Found default controller: %s\n",default_controller_name);
+    } else {
+      sprintf(default_controller_name,"none");
+    }
+  }
+  rewind(in);
+
+
   // look for a reference pose_x
   if (find_keyword(in,"reference_state_pose_x")) {
     printf("Found reference pose_x\n");
     rc=fscanf(in,"%lf %lf %lf", &reference_state_pose_x_base[_X_],
-	      &reference_state_pose_x_base[_Y_],&reference_state_pose_x_base[_Z_]);
+               &reference_state_pose_x_base[_Y_],&reference_state_pose_x_base[_Z_]);
   } else {
     printf("WARNING: reference pose_x defaults to current pose_x\n");
     for (i=1; i<=N_CART; ++i)
       reference_state_pose_x_base[i] = cart_state[HAND].x[i];
   }
-
+ 
   for (i=1; i<=N_CART; ++i)
     reference_state_pose_x[i] = reference_state_pose_x_base[i];
-
+  
   rewind(in);
 
 
-  // look for a reference pose_q
+   // look for a reference pose_q
   if (find_keyword(in,"reference_state_pose_q")) {
     printf("Found reference pose_q\n");
     rc=fscanf(in,"%lf %lf %lf %lf", &reference_state_pose_q_base[_Q0_],&reference_state_pose_q_base[_Q1_],
@@ -1515,6 +1554,42 @@ read_state_machine(char *fname) {
 		   n_parms[i],n_read,state_group_names[i]);
 	    continue;
 	  }
+	}
+
+	// the frame in which to manipulate (optional)
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  sm_temp.manipulation_frame = ABS_FRAME;
+	} else {
+	  n_read = sscanf(c,"%s",saux);
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",
+		   n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	  if (strcmp(saux,"ref")==0)
+	    sm_temp.manipulation_frame = REF_FRAME;
+	  else
+	    sm_temp.manipulation_frame = ABS_FRAME;	    	  
+	}
+
+	// an arbitrary function to be called at the beginning of state switch (optional)
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  sm_temp.function_call = NO_FUNC;
+	} else {
+	  n_read = sscanf(c,"%s",saux);
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",
+		   n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	  if (strcmp(saux,"zero_ft")==0)
+	    sm_temp.function_call = ZERO_FT;
+	  else
+	    sm_temp.function_call = NO_FUNC;
 	}
 
 	// pose_x
@@ -1749,9 +1824,11 @@ read_state_machine(char *fname) {
 	// the controller
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
-	if (c == NULL) {
+	if (c == NULL && strcmp(default_controller_name,"none")==0) {
 	  printf("Could not find group %s\n",state_group_names[i]);
 	  continue;
+	} else if (c == NULL) {
+	  strcpy(sm_temp.controller_name,default_controller_name);
 	} else {
 	  n_read = sscanf(c,"%s",sm_temp.controller_name);
 	  if (n_read != n_parms[i]) {
