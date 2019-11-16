@@ -24,6 +24,7 @@ Remarks:
 #include "SL_shared_memory.h"
 #include "SL_man.h"
 #include "SL_common.h"
+#include "utility_macros.h"
 
 // defines
 enum StateMachineStates
@@ -121,10 +122,14 @@ typedef struct StateMachineTarget {
   double moment_des[N_CART+1];
   int    ft_exception_action;
   double max_wrench[2*N_CART+1];
-  double cart_gain_x_scale[N_CART+1]; // diagonal of matrix
-  double cart_gain_xd_scale[N_CART+1]; // diagonal of matrix
-  double cart_gain_a_scale[N_CART+1];  // diagonal of matrix
-  double cart_gain_ad_scale[N_CART+1]; // diagonal of matrix
+  double cart_gain_x_scale[N_CART+1]; // diagonal of matrix in ref frame
+  double cart_gain_xd_scale[N_CART+1]; // diagonal of matrix in ref frame
+  double cart_gain_a_scale[N_CART+1];  // diagonal of matrix in ref frame
+  double cart_gain_ad_scale[N_CART+1]; // diagonal of matrix in ref frame
+  Matrix cart_gain_x_scale_matrix;  //  full matrix in world frame
+  Matrix cart_gain_xd_scale_matrix; // full matrix in world frame
+  Matrix cart_gain_a_scale_matrix;  // full matrix in world frame
+  Matrix cart_gain_ad_scale_matrix; // full matrix in world frame
   double cart_gain_integral;
   char   controller_name[100];
   int    exit_condition;
@@ -294,6 +299,13 @@ init_sm_task(void)
     bzero((char *)&cref,sizeof(cref));
     bzero((char *)&ctarget,sizeof(ctarget));
     bzero((char *)&ctarget_orient,sizeof(ctarget_orient));
+
+    for (i=1; i<=MAX_STATES_SM; ++i) {
+      targets_sm[i].cart_gain_x_scale_matrix = my_matrix(1,N_CART,1,N_CART);
+      targets_sm[i].cart_gain_xd_scale_matrix = my_matrix(1,N_CART,1,N_CART);
+      targets_sm[i].cart_gain_a_scale_matrix = my_matrix(1,N_CART,1,N_CART);
+      targets_sm[i].cart_gain_ad_scale_matrix = my_matrix(1,N_CART,1,N_CART);
+    }
 
 
     // add variables to data collection
@@ -751,6 +763,41 @@ run_sm_task(void)
       printf("State %s has no valid controller --- abort\n",targets_sm[current_state_sm].state_name);
       freeze();
       return FALSE;
+    }
+
+    // convert diag control gains from local to global
+    if (targets_sm[current_state_sm].manipulation_frame == REF_FRAME) { // gains are in reference frame
+      SL_quat temp_q;
+      MY_MATRIX(R,1,N_CART,1,N_CART);
+      int r;
+
+
+      // assign to temp quaternion structure
+      for (r=1; r<=N_QUAT; ++r)
+	temp_q.q[r] = reference_state_pose_q[r];
+
+      // compute rotation matrix
+      quatToRotMat(&temp_q,R);
+
+      // rotate gains into the full matrix
+
+    } else { // default: gains are in ABS_FRAME
+      
+      for (i=1; i<=N_CART; ++i) {
+	for (j=1; j<=N_CART; ++j) {
+	  if ( i == j ) {
+	    targets_sm[current_state_sm].cart_gain_x_scale_matrix[i][j] = targets_sm[current_state_sm].cart_gain_x_scale[i];
+	    targets_sm[current_state_sm].cart_gain_xd_scale_matrix[i][j] = targets_sm[current_state_sm].cart_gain_xd_scale[i];
+	    targets_sm[current_state_sm].cart_gain_a_scale_matrix[i][j] = targets_sm[current_state_sm].cart_gain_a_scale[i];
+	    targets_sm[current_state_sm].cart_gain_ad_scale_matrix[i][j] = targets_sm[current_state_sm].cart_gain_ad_scale[i];
+	  } else {
+	    targets_sm[current_state_sm].cart_gain_x_scale_matrix[i][j] = 0.0;
+	    targets_sm[current_state_sm].cart_gain_xd_scale_matrix[i][j] = 0.0;
+	    targets_sm[current_state_sm].cart_gain_a_scale_matrix[i][j] = 0.0;
+	    targets_sm[current_state_sm].cart_gain_ad_scale_matrix[i][j] = 0.0;
+	  }
+	}
+      }
     }
     
     break;
@@ -1491,9 +1538,8 @@ read_state_machine(char *fname) {
   rewind(in);
   
     
-  // zero the number of states in state machine and clear the memory
+  // zero the number of states in state machine
   n_states_sm = 0;
-  bzero((char *)&targets_sm,sizeof(targets_sm));  
   
   // read states into a string, and then parse the string
   while ((cr=fgetc(in)) != EOF) {
@@ -1881,7 +1927,22 @@ read_state_machine(char *fname) {
 
 	// finish up
 	if (n_states_sm < MAX_STATES_SM) {
-	  targets_sm[++n_states_sm] = sm_temp;
+	  Matrix mx,mxd,ma,mad; // need to store pointers temporarily
+
+	  ++n_states_sm;
+
+	  mx  = targets_sm[n_states_sm].cart_gain_x_scale_matrix;
+	  mxd = targets_sm[n_states_sm].cart_gain_xd_scale_matrix;
+	  ma  = targets_sm[n_states_sm].cart_gain_a_scale_matrix;
+	  mad = targets_sm[n_states_sm].cart_gain_ad_scale_matrix;
+
+	  targets_sm[n_states_sm] = sm_temp;
+
+	  targets_sm[n_states_sm].cart_gain_x_scale_matrix = mx;
+	  targets_sm[n_states_sm].cart_gain_xd_scale_matrix = mxd;
+	  targets_sm[n_states_sm].cart_gain_a_scale_matrix = ma;
+	  targets_sm[n_states_sm].cart_gain_ad_scale_matrix = mad;
+	  
 	} else {
 	  // should be unlikely to happen ever
 	  printf("Error: ran out of memory for state machine targets\n");
