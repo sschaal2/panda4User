@@ -207,17 +207,17 @@ extern void init_sm_controllers(void);
 extern int  cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
 			   SL_OJstate *rest, iVector status,
 			   double  gain_integral,
-			   double *gain_x_scale,
-			   double *gain_xd_scale,
-			   double *gain_a_scale,
-			   double *gain_ad_scale);
+			   double **gain_x_scale,
+			   double **gain_xd_scale,
+			   double **gain_a_scale,
+			   double **gain_ad_scale);
 extern int  cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
 			   SL_OJstate *rest, iVector status,
 			   double  gain_integral,
-			   double *gain_x_scale,
-			   double *gain_xd_scale,
-			   double *gain_a_scale,
-			   double *gain_ad_scale);
+			   double **gain_x_scale,
+			   double **gain_xd_scale,
+			   double **gain_a_scale,
+			   double **gain_ad_scale);
 
 
 /* local functions */
@@ -970,10 +970,10 @@ run_sm_task(void)
 
     cartesianImpedanceSimpleJt(cdes, cdes_orient, joint_des_state, joint_opt_state, stats,
 			       current_target_sm.cart_gain_integral,
-			       current_target_sm.cart_gain_x_scale,
-			       current_target_sm.cart_gain_xd_scale,
-			       current_target_sm.cart_gain_a_scale,
-			       current_target_sm.cart_gain_ad_scale);
+			       current_target_sm.cart_gain_x_scale_matrix,
+			       current_target_sm.cart_gain_xd_scale_matrix,
+			       current_target_sm.cart_gain_a_scale_matrix,
+			       current_target_sm.cart_gain_ad_scale_matrix);
 
     break;
     
@@ -981,10 +981,10 @@ run_sm_task(void)
 
     cartesianImpedanceModelJt(cdes, cdes_orient, joint_des_state, joint_opt_state, stats,
 			      current_target_sm.cart_gain_integral,
-			      current_target_sm.cart_gain_x_scale,
-			      current_target_sm.cart_gain_xd_scale,
-			      current_target_sm.cart_gain_a_scale,
-			      current_target_sm.cart_gain_ad_scale);
+			      current_target_sm.cart_gain_x_scale_matrix,
+			      current_target_sm.cart_gain_xd_scale_matrix,
+			      current_target_sm.cart_gain_a_scale_matrix,
+			      current_target_sm.cart_gain_ad_scale_matrix);
     
     break;
     
