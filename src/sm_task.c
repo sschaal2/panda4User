@@ -288,7 +288,7 @@ init_sm_task(void)
 {
   int    j, i;
   char   string[100];
-  static char   fname[100] = "qsfp_MJT.sm";
+  static char   fname[100] = "powerplug_JT.sm";
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;
@@ -2110,86 +2110,136 @@ assignCurrentSMTarget(StateMachineTarget smt,
 		      SL_quat   *cto,
 		      StateMachineTarget *smc)
 {
-  int i,j;
-
+  int i,j,r;
+  MY_MATRIX(R,1,N_CART,1,N_CART);
+  SL_quat temp_q;
 
   // to get started, simply copy the target to the current target, and this what needs
   // to be fixed.
   *smc = smt;
 
+  // the rotation matrix relative to the reference frame
+  // assign to temp quaternion structure
+  for (r=1; r<=N_QUAT; ++r)
+    temp_q.q[r] = reference_state_pose_q[r];
+
+  // compute rotation matrix
+  quatToRotMat(&temp_q,R);
+  
+
+  
   // assign the target position
-  for (i=1; i<=N_CART; ++i) {
-    if (smc->pose_x_is_relative == REL) {
+  if (smc->pose_x_is_relative == REL && smc->manipulation_frame == ABS_FRAME) {
+    for (i=1; i<=N_CART; ++i) {
       ct[HAND].x[i] += smc->pose_x[i];
-    } else if (smc->pose_x_is_relative == RELREF) {
+    }
+  } else if (smc->pose_x_is_relative == ABS && smc->manipulation_frame == REF_FRAME) {
+    mat_vec_mult_size(R,N_CART,N_CART,smt.pose_x,N_CART,smc->pose_x);
+    for (i=1; i<=N_CART; ++i) {
       ct[HAND].x[i] = reference_state_pose_x[i] + smc->pose_x[i];
-    } else {
+    }
+  } else if (smc->pose_x_is_relative == REL && smc->manipulation_frame == REF_FRAME) {
+    mat_vec_mult_size(R,N_CART,N_CART,smt.pose_x,N_CART,smc->pose_x);
+    for (i=1; i<=N_CART; ++i) {
+      ct[HAND].x[i] += smc->pose_x[i];
+    }
+  } else { // absolute pose info just needs easy assignment
+    for (i=1; i<=N_CART; ++i) {
       ct[HAND].x[i] = smc->pose_x[i];
     }
   }
 
+  // print_vec_size("ctarget",ct[HAND].x,N_CART);
+  
   // assign the target orientation if needed
   if (smc->use_orient) {
     
     for (i=1; i<=N_CART; ++i)
       stats[N_CART+i] = 1;
-    
-    if (smc->pose_q_is_relative == REL) {	
+
+    if (smc->pose_q_is_relative == REL && smc->manipulation_frame == ABS_FRAME) {	
       //print_vec_size("before",cto[HAND].q,4);
       quatMult(cto[HAND].q,smc->pose_q,cto[HAND].q);
       //print_vec_size("after",cto[HAND].q,4);
-    } else if (smc->pose_q_is_relative == RELREF) {	
+    } else if (smc->pose_q_is_relative == ABS && smc->manipulation_frame == REF_FRAME) {	
       //print_vec_size("before",cto[HAND].q,4);
       //print_vec_size("ref_state_pose",reference_state_pose_q,4);
+      mat_vec_mult_size(R,N_CART,N_CART,&(smt.pose_q[_Q0_]),N_CART,&(smc->pose_q[_Q0_]));
       quatMult(reference_state_pose_q,smc->pose_q,cto[HAND].q);
+      //print_vec_size("after",cto[HAND].q,4);
+    } else if (smc->pose_q_is_relative == REL && smc->manipulation_frame == REF_FRAME) {	
+      //print_vec_size("before",cto[HAND].q,4);
+      //print_vec_size("ref_state_pose",reference_state_pose_q,4);
+      mat_vec_mult_size(R,N_CART,N_CART,&(smt.pose_q[_Q0_]),N_CART,&(smc->pose_q[_Q0_]));      
+      quatMult(cto[HAND].q,smc->pose_q,cto[HAND].q);
       //print_vec_size("after",cto[HAND].q,4);
     } else {
       for (i=1; i<=N_QUAT; ++i) {
 	cto[HAND].q[i] = smc->pose_q[i];
       }
     }
-    
+
   } else { // no orientation
     
     for (i=1; i<=N_CART; ++i)
       stats[N_CART+i] = 0;
     
   }
-    
-  // convert diag control gains from local to global
-  if (smc->manipulation_frame == REF_FRAME) { // gains are in reference frame
-    SL_quat temp_q;
-    MY_MATRIX(R,1,N_CART,1,N_CART);
-    int r;
-    
-    
-    // assign to temp quaternion structure
-    for (r=1; r<=N_QUAT; ++r)
-      temp_q.q[r] = reference_state_pose_q[r];
-    
-    // compute rotation matrix
-    quatToRotMat(&temp_q,R);
-    
-    // rotate gains into the full matrix
-    
-  } else { // default: gains are in ABS_FRAME
-    
-    for (i=1; i<=N_CART; ++i) {
-      for (j=1; j<=N_CART; ++j) {
-	if ( i == j ) {
-	  smc->cart_gain_x_scale_matrix[i][j] = smc->cart_gain_x_scale[i];
-	  smc->cart_gain_xd_scale_matrix[i][j] = smc->cart_gain_xd_scale[i];
-	  smc->cart_gain_a_scale_matrix[i][j] = smc->cart_gain_a_scale[i];
-	  smc->cart_gain_ad_scale_matrix[i][j] = smc->cart_gain_ad_scale[i];
-	} else {
-	  smc->cart_gain_x_scale_matrix[i][j] = 0.0;
-	  smc->cart_gain_xd_scale_matrix[i][j] = 0.0;
-	  smc->cart_gain_a_scale_matrix[i][j] = 0.0;
-	  smc->cart_gain_ad_scale_matrix[i][j] = 0.0;
-	}
+
+  // print_vec_size("ctarget_orient",cto[HAND].q,N_QUAT);
+
+  // by default, the PD gains just go into a diagonal matrix
+  for (i=1; i<=N_CART; ++i) {
+    for (j=1; j<=N_CART; ++j) {
+      if ( i == j ) {
+	smc->cart_gain_x_scale_matrix[i][j] = smc->cart_gain_x_scale[i];
+	smc->cart_gain_xd_scale_matrix[i][j] = smc->cart_gain_xd_scale[i];
+	smc->cart_gain_a_scale_matrix[i][j] = smc->cart_gain_a_scale[i];
+	smc->cart_gain_ad_scale_matrix[i][j] = smc->cart_gain_ad_scale[i];
+      } else {
+	smc->cart_gain_x_scale_matrix[i][j] = 0.0;
+	smc->cart_gain_xd_scale_matrix[i][j] = 0.0;
+	smc->cart_gain_a_scale_matrix[i][j] = 0.0;
+	smc->cart_gain_ad_scale_matrix[i][j] = 0.0;
       }
     }
   }
+
+  // convert diag control gains from local to global if the state of the state
+  // machine is in a special  reference frame. Also adjust the desired and
+  // max wrench
+  if (smc->manipulation_frame == REF_FRAME) { // gains are in reference frame
+    MY_MATRIX(T,1,N_CART,1,N_CART);
+    
+    // rotate gain matrix appropriately
+    mat_mult(R,smc->cart_gain_x_scale_matrix,T);
+    mat_mult_normal_transpose(T,R,smc->cart_gain_x_scale_matrix);
+
+    mat_mult(R,smc->cart_gain_xd_scale_matrix,T);
+    mat_mult_normal_transpose(T,R,smc->cart_gain_xd_scale_matrix);
+
+    mat_mult(R,smc->cart_gain_a_scale_matrix,T);
+    mat_mult_normal_transpose(T,R,smc->cart_gain_a_scale_matrix);
+
+    mat_mult(R,smc->cart_gain_ad_scale_matrix,T);
+    mat_mult_normal_transpose(T,R,smc->cart_gain_ad_scale_matrix);
+
+    print_mat("x-scale",smc->cart_gain_x_scale_matrix);
+    print_mat("xd-scale",smc->cart_gain_xd_scale_matrix);
+    print_mat("a-scale",smc->cart_gain_a_scale_matrix);
+    print_mat("ad-scale",smc->cart_gain_ad_scale_matrix);
+
+
+
+    // rotate force/torque values
+    mat_vec_mult_size(R,N_CART,N_CART,smt.force_des,N_CART,smc->force_des);
+    mat_vec_mult_size(R,N_CART,N_CART,smt.moment_des,N_CART,smc->moment_des);
+    mat_vec_mult_size(R,N_CART,N_CART,smt.max_wrench,N_CART,smc->max_wrench);
+    mat_vec_mult_size(R,N_CART,N_CART,&(smt.max_wrench[_Z_]),N_CART,&(smc->max_wrench[_Z_]));
+    for (i=1; i<=2*N_CART; ++i)
+      smc->max_wrench[i] = fabs(smc->max_wrench[i]);
+
+  } 
   
 }
 
