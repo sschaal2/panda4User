@@ -389,8 +389,7 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
     if (status[j]) {
       ++count;
 
-      for (n= _X_; n<= _Z_; ++n)
-	cref_integral[count] += gain_integral * (cdes[HAND].x[n]  - cart_state[HAND].x[n]);
+      cref_integral[count] += gain_integral * (cdes[HAND].x[j]  - cart_state[HAND].x[j]);
 
       cref[count] = cref_integral[count];
       for (n= _X_; n<= _Z_; ++n)      
@@ -405,8 +404,7 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
     if (status[N_CART + j]) {
       ++count;
 
-      for (n= _A_; n<= _G_ ; ++n) 
-	cref_integral[count] +=  0.1 * log_q_mult * corient_error[n] * gain_integral;
+      cref_integral[count] +=  0.1 * log_q_mult * corient_error[j] * gain_integral;
 
       cref[count] = cref_integral[count];
       for (n= _A_; n<= _G_ ; ++n) 
