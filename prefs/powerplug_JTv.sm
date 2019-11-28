@@ -1,0 +1,205 @@
+/* This file contains the specification for a state machine and a particular controller.
+   The file format allows C/C++ comments.
+   If a gain is specified as "def", the default is going to be used
+   If the pose includes
+*/
+
+/* format: every state is in curely brackets, and has keywords before every group of values
+
+{
+{
+   "name" state_name
+   "name_next" next_state_name
+   	    (optional: default=none)
+   "duration" movement_duration
+   "manipulation_frame" ["abs" | "ref"]
+            (optional: default=abs)
+   "pose_x" ["abs" | "rel"] pose_x_X pose_x_Y pose_x_Z
+   "pose_q" use_orient ["abs" | "rel"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
+   	    (optional: default=none)
+   "gripper_start" ["abs" | "rel"] gripper_start_width gripper_start_force
+             (optional: default: no motion)
+   "gripper_end" ["abs" | "rel"] gripper_end_width gripper_end_force
+             (optional: default: no motion)
+   "cart_gain_x_scale" cart_gain_x_X cart_gain_x_Y cart_gain_x_Z cart_gain_xd_X cart_gain_xd_Y cart_gain_xd_Z
+             (optional: default 100% of default)
+   "cart_gain_a_scale" cart_gain_a_A cart_gain_a_B cart_gain_a_G cart_gain_ad_A cart_gain_ad_B cart_gain_ad_G
+              (optional: default 100% of default)
+   "cart_gain_integral" cart_gain_integral
+              (optional: default=0)
+   "force_desired" force_gain force_des_x force_des_y force_des_z
+              (optional: default force_gain=0)
+   "moment_desired" moment_gain moment_des_x moment_des_y moment_des_z
+              (optional: default moment_gain=0)
+   "max_wrench" ["cont" | "abort" | "last"] fx_max fy_max fz_max mx_max my_max mz_max
+              (optional: default=max values)
+   "controller" controller_name
+}
+
+*/
+
+// the reference state: this is the slot pose, with x,y,z denoting the top surface of slot
+// such that the connector needs to push beyond this surface, for 0.035m
+
+reference_state_pose_x	0.615 0.021 0.722        // 1.1=4 slot in vertical plane
+reference_state_pose_q	0.5 -0.5 0.5 -0.5  // vertical down aligned with Z
+
+// the table of reference state perturbations
+//reference_state_pose_delta_table prefs/all_powerplug_slots.txt
+//reference_state_pose_delta_table prefs/half_range_delta_pose.txt
+reference_state_pose_delta_table prefs/full_range_delta_pose.txt
+
+// endeffector modification: QSFP connect length + flange+finger+gripper PowerPlug=0.035m
+endeffector   0.1  0 0 0  0 0 0.26  0 0 2.356
+
+// default gains
+default_cart_gain_x_scale	1 1 1 1 1 1
+default_cart_gain_a_scale	1 1 1 1 1 1
+
+// default controller
+default_controller SimpleImpedanceJt
+
+// grasp the qfsp connector in first slot
+
+{
+name               move_to_grasp
+manipulation_frame abs
+duration      	   2
+pose_x        	   abs 0.60 0.021 0.722
+pose_q        	   1 abs 0.5 -0.5 0.5 -0.5
+gripper_start 	   abs 0.05 0
+gripper_end        abs 0.05 0
+cart_gain_integral 0.25
+max_wrench    	   last 10 10 10 5 5 5
+}
+{
+name               prepare_grasp
+manipulation_frame abs
+duration      	   2
+pose_x        	   rel 0.05 0.0 0.0
+pose_q        	   1 rel 1 0 0 0
+gripper_start 	   abs 0.05 0
+gripper_end   	   abs 0.0  100
+cart_gain_x_scale  1.4 1.4 1.4 1.4 1.4 1.4
+cart_gain_a_scale  1.4 1.4 1.4 1.4 1.4 1.4
+cart_gain_integral 0.5
+max_wrench   	   last 10 10 10 5 5 5
+exit_condition	   pos_orient 10 0.0025 0.01 0 0
+}
+{
+name               extract_powerplug
+manipulation_frame abs
+duration      	   3
+pose_x        	   rel -0.1 0.0 0.0
+pose_q        	   1 rel 1 0 0 0
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
+max_wrench    	   cont 20 20 40 5 5 5 
+}
+
+
+// first qfsp socket slot
+{
+name               zero_force_torque_offsets
+manipulation_frame abs
+func_call	   zero_ft
+duration      	   0.5
+pose_x        	   rel 0 0 0
+pose_q        	   1 rel  1 0 0 0 
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
+max_wrench    	   cont 10 10 10 5 5 5
+}
+{
+name               approach_tilted
+manipulation_frame ref
+duration      	   2
+pose_x        	   abs -0.01 0.00 -0.01 
+//pose_q        	   1 rel  0.9423 0.2634 0.1219 -0.1678
+pose_q        	   1 rel  0.9423 -0.1219 -0.2634 0.1678
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
+cart_gain_x_scale  1.8 1.8 1.8 1.8 1.8 1.8
+cart_gain_a_scale  1.8 1.8 1.8 1.8 1.8 1.8
+cart_gain_integral 0.5
+max_wrench    	   cont 10 10 10 5 5 5
+exit_condition	   pos_orient 10 0.003 0.01 0 0
+}
+{
+name               get_in_contact
+manipulation_frame ref
+duration      	   2
+pose_x        	   rel 0.0 0.0 0.015 
+pose_q        	   1 rel  1 0 0 0
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
+cart_gain_integral 0.5
+force_desired      1 0 0 -8
+moment_desired     0 0 0 0
+max_wrench    	   cont 10 10 15 5 5 5
+}
+{
+name		   reorient_in_slot
+manipulation_frame ref
+duration      	   2
+//pose_x        	   abs 0.0 0.0 0.0
+pose_x        	   rel -0.0 0.0 0.0
+pose_q        	   1 abs 1 0 0 0
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
+cart_gain_x_scale  1.2 1.2 1.2 1.2 1.2 1.2
+cart_gain_a_scale  1.2 1.2 1.2 1.2 1.2 1.2
+cart_gain_integral 0.0
+force_desired      1 -8 0 -5
+moment_desired     0 0 0 0
+max_wrench    	   last 15 15 15 5 5 5
+}
+{
+name               push_down_powerplug
+manipulation_frame ref
+duration      	   1.5
+pose_x       	   abs 0 0 .02 
+pose_q        	   1 rel 1 0 0 0
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
+cart_gain_x_scale  1.2 1.2 1.2 1.2 1.2 1.2
+force_desired      1 0 -10 -60
+moment_desired     1.5 0 0 0
+max_wrench    	   last 30 30 70 10 10 10
+exit_condition	   pos 10 0.01 0.0 0 0
+}
+{
+name		   relax
+manipulation_frame ref
+duration      	   1
+pose_x        	   abs 0 0 0.022
+pose_q        	   1 rel 1 0 0 0
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.05 0
+max_wrench    	   cont 30 30 100 10 10 10
+}
+{
+name               move_away_and_redo
+manipulation_frame ref
+name_next          move_to_grasp
+duration      	   2
+pose_x        	   abs 0.0 0.0 -0.1
+pose_q        	   1 abs 1 0 0 0
+//gripper_start    abs 0.0  100
+//gripper_end      abs 0.0  100
+gripper_start 	   abs 0.05 0
+gripper_end   	   abs 0.05 0
+max_wrench    	   cont 15 15 15 5 5 5 
+}
+{
+name               move_away
+manipulation_frame ref
+duration      	   1
+pose_x        	   abs 0.0 0.0 0.15
+pose_q        	   1 abs 1 0 0 0
+//gripper_start    abs 0.0  100
+//gripper_end      abs 0.0  100
+gripper_start 	   abs 0.05 0
+gripper_end   	   abs 0.05 0
+max_wrench    	   cont 15 15 15 5 5 5 
+}
