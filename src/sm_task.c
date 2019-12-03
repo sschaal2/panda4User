@@ -2124,7 +2124,7 @@ assignCurrentSMTarget(StateMachineTarget smt,
     temp_q.q[r] = reference_state_pose_q[r];
 
   // compute rotation matrix
-  quatToRotMat(&temp_q,R);
+  quatToRotMatInv(&temp_q,R);
   
 
   
@@ -2168,11 +2168,12 @@ assignCurrentSMTarget(StateMachineTarget smt,
       quatMult(reference_state_pose_q,smc->pose_q,cto[HAND].q);
       //print_vec_size("after",cto[HAND].q,4);
     } else if (smc->pose_q_is_relative == REL && smc->manipulation_frame == REF_FRAME) {	
-      //print_vec_size("before",cto[HAND].q,4);
-      //print_vec_size("ref_state_pose",reference_state_pose_q,4);
-      mat_vec_mult_size(R,N_CART,N_CART,&(smt.pose_q[_Q0_]),N_CART,&(smc->pose_q[_Q0_]));      
+      print_vec_size("before",cto[HAND].q,4);
+      print_vec_size("desired change",smt.pose_q,4);
+      mat_vec_mult_size(R,N_CART,N_CART,&(smt.pose_q[_Q0_]),N_CART,&(smc->pose_q[_Q0_]));
+      print_vec_size("rotated desired change",smc->pose_q,4);      
       quatMult(cto[HAND].q,smc->pose_q,cto[HAND].q);
-      //print_vec_size("after",cto[HAND].q,4);
+      print_vec_size("after",cto[HAND].q,4);
     } else {
       for (i=1; i<=N_QUAT; ++i) {
 	cto[HAND].q[i] = smc->pose_q[i];
@@ -2224,12 +2225,12 @@ assignCurrentSMTarget(StateMachineTarget smt,
     mat_mult(R,smc->cart_gain_ad_scale_matrix,T);
     mat_mult_normal_transpose(T,R,smc->cart_gain_ad_scale_matrix);
 
+    /*
     print_mat("x-scale",smc->cart_gain_x_scale_matrix);
     print_mat("xd-scale",smc->cart_gain_xd_scale_matrix);
     print_mat("a-scale",smc->cart_gain_a_scale_matrix);
     print_mat("ad-scale",smc->cart_gain_ad_scale_matrix);
-
-
+    */
 
     // rotate force/torque values
     mat_vec_mult_size(R,N_CART,N_CART,smt.force_des,N_CART,smc->force_des);

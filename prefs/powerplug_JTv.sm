@@ -41,7 +41,7 @@
 // the reference state: this is the slot pose, with x,y,z denoting the top surface of slot
 // such that the connector needs to push beyond this surface, for 0.035m
 
-reference_state_pose_x	0.615 0.021 0.722        // 1.1=4 slot in vertical plane
+reference_state_pose_x	0.615 0.021 0.922        // 1.1=4 slot in vertical plane
 reference_state_pose_q	0.5 -0.5 0.5 -0.5  // vertical down aligned with Z
 
 // the table of reference state perturbations
@@ -64,8 +64,8 @@ default_controller SimpleImpedanceJt
 {
 name               move_to_grasp
 manipulation_frame abs
-duration      	   2
-pose_x        	   abs 0.60 0.021 0.722
+duration      	   5
+pose_x        	   abs 0.60 0.021 0.922
 pose_q        	   1 abs 0.5 -0.5 0.5 -0.5
 gripper_start 	   abs 0.05 0
 gripper_end        abs 0.05 0
@@ -116,7 +116,7 @@ manipulation_frame ref
 duration      	   2
 pose_x        	   abs -0.01 0.00 -0.01 
 //pose_q        	   1 rel  0.9423 0.2634 0.1219 -0.1678
-pose_q        	   1 rel  0.9423 -0.1219 -0.2634 0.1678
+pose_q        	   1 rel   0.9423 -0.1219 -0.2634 0.1678
 gripper_start 	   abs 0.0  100
 gripper_end   	   abs 0.0  100
 cart_gain_x_scale  1.8 1.8 1.8 1.8 1.8 1.8

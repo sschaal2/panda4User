@@ -182,6 +182,7 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
   double         q_rel[N_QUAT+1];
   double         q_rel_angle;
   double         log_q_mult;
+  double         aux;
 
   int            i,j,n,m;
   int            nr = 0;
@@ -211,10 +212,13 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
 
   // compute orientation error term for quaterion feedback control
   quatRelative(cart_orient[HAND].q,cdes_orient[HAND].q,q_rel);
+  
   for (i=1; i<=N_CART; ++i)
     corient_error[i] = q_rel[_Q0_+i];
 
   q_rel_angle = acos(q_rel[_Q0_]);
+  
+  if (q_rel_angle > 3)getchar();
   log_q_mult = q_rel_angle/(sqrt(vec_mult_inner_size(corient_error,corient_error,N_CART))+1.e-6);
   
   // prepare the impdance controller, i.e., compute operational
