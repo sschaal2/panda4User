@@ -526,6 +526,8 @@ init_sm_task(void)
     target[i] = joint_default_state[i];
     last_target[i] = joint_default_state[i];
   }
+
+  /*
   target[J1].th  = -0.023;
   target[J2].th  =  0.29;
   target[J3].th  =  0.029;
@@ -533,6 +535,7 @@ init_sm_task(void)
   target[J5].th  = 0.092;
   target[J6].th  = 2.237;
   target[J7].th  = -0.867;
+  */
 
   des_gripper_width = 0.05;
   sendGripperMoveCommand(des_gripper_width,0.1);
@@ -868,7 +871,7 @@ run_sm_task(void)
     // check whether there is an exit condtion which overules progressing 
     // to the next state
     
-    if (time_to_go < 0 && current_target_sm.exit_condition) {
+    if (time_to_go < 0 && current_target_sm.exit_condition && !ft_exception_flag) {
       int    exit_flag = TRUE;
       
       switch(current_target_sm.exit_condition)
@@ -2168,12 +2171,12 @@ assignCurrentSMTarget(StateMachineTarget smt,
       quatMult(reference_state_pose_q,smc->pose_q,cto[HAND].q);
       //print_vec_size("after",cto[HAND].q,4);
     } else if (smc->pose_q_is_relative == REL && smc->manipulation_frame == REF_FRAME) {	
-      print_vec_size("before",cto[HAND].q,4);
-      print_vec_size("desired change",smt.pose_q,4);
+      //print_vec_size("before",cto[HAND].q,4);
+      //print_vec_size("desired change",smt.pose_q,4);
       mat_vec_mult_size(R,N_CART,N_CART,&(smt.pose_q[_Q0_]),N_CART,&(smc->pose_q[_Q0_]));
-      print_vec_size("rotated desired change",smc->pose_q,4);      
+      //print_vec_size("rotated desired change",smc->pose_q,4);      
       quatMult(cto[HAND].q,smc->pose_q,cto[HAND].q);
-      print_vec_size("after",cto[HAND].q,4);
+      //print_vec_size("after",cto[HAND].q,4);
     } else {
       for (i=1; i<=N_QUAT; ++i) {
 	cto[HAND].q[i] = smc->pose_q[i];

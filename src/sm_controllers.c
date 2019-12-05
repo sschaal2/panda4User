@@ -51,6 +51,9 @@ static double controller_gain_int[N_DOFS+1];
 
 static double cref_integral[N_ENDEFFS*6+1];
 
+#define MAX_INTEGRAL_FORCE   10 // in N
+#define MAX_INTEGRAL_MOMENT   5 // in Nm
+
 
 // global functions
 
@@ -230,6 +233,8 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
       ++count;
 
       cref_integral[count] += gain_integral * (cdes[HAND].x[j]  - cart_state[HAND].x[j]);
+      if (cref_integral[count] > MAX_INTEGRAL_FORCE)
+	cref_integral[count] = MAX_INTEGRAL_FORCE;
 
       cref[count] = cref_integral[count];
       for (n= _X_; n<= _Z_; ++n)      
@@ -245,6 +250,8 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
       ++count;
 
       cref_integral[count] +=  0.1 * log_q_mult * corient_error[j] * gain_integral;
+      if (cref_integral[count] > MAX_INTEGRAL_MOMENT)
+	cref_integral[count] = MAX_INTEGRAL_MOMENT;
 
       cref[count] = cref_integral[count];
       for (n= _A_; n<= _G_ ; ++n) 
@@ -392,6 +399,8 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
       ++count;
 
       cref_integral[count] += gain_integral * (cdes[HAND].x[j]  - cart_state[HAND].x[j]);
+      if (cref_integral[count] > MAX_INTEGRAL_FORCE)
+	cref_integral[count] = MAX_INTEGRAL_FORCE;
 
       cref[count] = cref_integral[count];
       for (n= _X_; n<= _Z_; ++n)      
@@ -407,6 +416,8 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
       ++count;
 
       cref_integral[count] +=  0.1 * log_q_mult * corient_error[j] * gain_integral;
+      if (cref_integral[count] > MAX_INTEGRAL_MOMENT)
+	cref_integral[count] = MAX_INTEGRAL_MOMENT;
 
       cref[count] = cref_integral[count];
       for (n= _A_; n<= _G_ ; ++n) 
