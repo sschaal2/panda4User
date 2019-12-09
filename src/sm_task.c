@@ -168,6 +168,12 @@ static int    state_machine_state = INIT_SM_TARGET;
 
 static double s[3+1]; // indicator for min jerk in orientation space
 
+static double     default_cart_gain_x_scale[2*N_CART+1];
+static double     default_cart_gain_a_scale[2*N_CART+1];
+
+static double pos_error;
+static double orient_error;
+
 /* global functions */
 void add_sm_task(void);
 extern void init_sm_controllers(void);
@@ -249,7 +255,7 @@ init_sm_task(void)
 {
   int    j, i;
   char   string[100];
-  static char   fname[100] = "qsfp.sm";
+  static char   fname[100] = "qsfp_MJT.sm";
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;
@@ -365,6 +371,11 @@ init_sm_task(void)
       
     }
     
+    sprintf(string,"sm_pos_error");
+    addVarToCollect((char *)&(pos_error),string,"m", DOUBLE,FALSE);
+    sprintf(string,"sm_orient_error");
+    addVarToCollect((char *)&(orient_error),string,"rad", DOUBLE,FALSE);
+    
     updateDataCollectScript();
     
     
@@ -375,6 +386,7 @@ init_sm_task(void)
   }
 
   // hack
+  /*
   aux = sqrt(vec_mult_inner_size(q1,q1,4));
   vec_mult_scalar_size(q1,4,1./aux,q1);
   aux = sqrt(vec_mult_inner_size(qf,qf,4));
@@ -387,6 +399,7 @@ init_sm_task(void)
   print_vec_size("qf-next",qfn,4);
   vec_sub_size(qf,qfn,4,qerr);
   print_vec_size("qerr",qerr,4);
+  */
 
     // the sm_controllers
   init_sm_controllers();
@@ -506,9 +519,6 @@ init_sm_task(void)
     cdes_orient[HAND].q[j] = ctarget_orient[HAND].q[j] = cart_des_orient[HAND].q[j];
   }
 
-  // reclibrate the gripper offsets
-  sendCalibrateFTCommand();
-
 
   // ready to go
   ans = 999;
@@ -520,6 +530,10 @@ init_sm_task(void)
   if (ans != 1) 
     return FALSE;
 
+
+  // reclibrate the gripper offsets
+  sendCalibrateFTCommand();
+  taskDelay(100);
 
   time_step = 1./(double)task_servo_rate;
   start_time = task_servo_time;
@@ -566,7 +580,8 @@ run_sm_task(void)
   int    ft_exception_flag = FALSE;
   char   string[200];
   float  b[N_CART*3+1];
-
+  double q_temp[N_QUAT+1];
+  
   switch (state_machine_state) {
 
   case INIT_SM_TARGET:
@@ -578,6 +593,7 @@ run_sm_task(void)
       if ((run_table && current_state_pose_delta < n_states_pose_delta) || !run_table) {
 	// this simple adjustment allows continuing with the normal sequence below
 	current_state_sm = targets_sm[current_state_sm].next_state_id-1;
+	scd();
       }
 
       // are we running through the table of reference pertubations?
@@ -812,24 +828,26 @@ run_sm_task(void)
     }
     
     time_to_go -= time_step;
+
+    // logging of position and orientation error
+
+    // position error
+    pos_error = 0.0;
+    for (i=1; i<=N_CART; ++i)
+      pos_error += sqr(ctarget[HAND].x[i]-cart_state[HAND].x[i]);
+    pos_error = sqrt(pos_error);
     
-    // check whether theere is an exit condtion which overules progressing 
+    // orientation error
+    quatRelative(ctarget_orient[HAND].q, cart_orient[HAND].q, q_temp);
+    orient_error = 2.0*fabs(acos(q_temp[_Q0_]));
+    if (orient_error > PI)
+      orient_error = 2.*PI-orient_error;
+    
+    // check whether there is an exit condtion which overules progressing 
     // to the next state
     
     if (time_to_go < 0 && targets_sm[current_state_sm].exit_condition) {
-      double pos_error=0;
-      double orient_error=0;
-      double q_temp[N_QUAT+1];
       int    exit_flag = TRUE;
-      
-      // position error
-      for (i=1; i<=N_CART; ++i)
-	pos_error += sqr(ctarget[HAND].x[i]-cart_state[HAND].x[i]);
-      pos_error = sqrt(pos_error);
-      
-      // orientation error
-      quatRelative(ctarget_orient[HAND].q, cart_orient[HAND].q, q_temp);
-      orient_error = fabs(acos(q_temp[_Q0_]));
       
       switch(targets_sm[current_state_sm].exit_condition)
 	{
@@ -852,7 +870,12 @@ run_sm_task(void)
 	}
 
       if (!exit_flag && fabs(time_to_go) < targets_sm[current_state_sm].exit_timeout)
-	break; 
+	break;
+      else if (fabs(time_to_go) >= targets_sm[current_state_sm].exit_timeout) {
+	sprintf(msg,"Time out at  %f e_pos=%f e_orient=%f\n",time_to_go,pos_error,orient_error);
+	logMsg(msg,0,0,0,0,0,0);
+      }
+
       
     } // end check exit condiitons
     
@@ -993,7 +1016,7 @@ run_sm_task(void)
     pos[i] = cdes[HAND].x[i];
   pos[_Z_+1] = 0.005;
   sendUserGraphics("ballSize",&(pos[_X_]), (N_CART+1)*sizeof(float));
-
+  /*
   b[1] = .5;
   b[2] =  0.0;
   b[3] = .4;
@@ -1005,7 +1028,7 @@ run_sm_task(void)
   b[9] = 0.01;
 
   sendUserGraphics("RectCuboid",&(b[1]), (N_CART*3)*sizeof(float));  
-  
+  */
   return TRUE;
   
 }
@@ -1269,7 +1292,7 @@ static char state_group_names[][100]=
    {"exit_condition"}
   };
 
-static int n_parms[] = {0,1,1,1,4,6,3,3,6,6,1,4,4,7,1,5};
+static int n_parms[] = {0,1,1,1,4,6,3,3,6,6,1,4,4,7,1,6};
 #define MAX_BIG_STRING 5000
 
 static int
@@ -1344,6 +1367,41 @@ read_state_machine(char *fname) {
 
   for (i=1; i<=N_QUAT; ++i)
     reference_state_pose_q[i] = reference_state_pose_q_base[i];
+
+  rewind(in);
+
+  // look for cartesian default gains
+  if (find_keyword(in,"default_cart_gain_x_scale")) {
+    printf("Found default gains in x\n");
+    rc=fscanf(in,"%lf %lf %lf %lf %lf %lf",
+	      &default_cart_gain_x_scale[1],
+	      &default_cart_gain_x_scale[2],
+	      &default_cart_gain_x_scale[3],
+	      &default_cart_gain_x_scale[4],
+	      &default_cart_gain_x_scale[5],
+	      &default_cart_gain_x_scale[6]);
+  } else {
+    printf("WARNING: use x gain defaults\n");
+    for (i=1; i<=N_CART*2; ++i)
+      default_cart_gain_x_scale[i] = 1.0;
+  }
+
+  rewind(in);
+
+  if (find_keyword(in,"default_cart_gain_a_scale")) {
+    printf("Found default gains in a\n");
+    rc=fscanf(in,"%lf %lf %lf %lf %lf %lf",
+	      &default_cart_gain_a_scale[1],
+	      &default_cart_gain_a_scale[2],
+	      &default_cart_gain_a_scale[3],
+	      &default_cart_gain_a_scale[4],
+	      &default_cart_gain_a_scale[5],
+	      &default_cart_gain_a_scale[6]);
+  } else {
+    printf("WARNING: use a gain defaults\n");
+    for (i=1; i<=N_CART*2; ++i)
+      default_cart_gain_a_scale[i] = 1.0;
+  }
 
   rewind(in);
 
@@ -1555,8 +1613,10 @@ read_state_machine(char *fname) {
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
-	  for (j=1; j<=N_CART; ++j)
-	    sm_temp.cart_gain_x_scale[j] = sm_temp.cart_gain_xd_scale[j] = 1.0;
+	  for (j=1; j<=N_CART; ++j) {
+	    sm_temp.cart_gain_x_scale[j]  = default_cart_gain_x_scale[j];
+	    sm_temp.cart_gain_xd_scale[j] = default_cart_gain_x_scale[j+N_CART];
+	  }
 	} else {
 	  n_read = sscanf(c,"%lf %lf %lf %lf %lf %lf",
 			  &(sm_temp.cart_gain_x_scale[_X_]),
@@ -1577,8 +1637,10 @@ read_state_machine(char *fname) {
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
-	  for (j=1; j<=N_CART; ++j)
-	    sm_temp.cart_gain_a_scale[j] = sm_temp.cart_gain_ad_scale[j] = 1.0;
+	  for (j=1; j<=N_CART; ++j) {
+	    sm_temp.cart_gain_a_scale[j]  = default_cart_gain_a_scale[j];
+	    sm_temp.cart_gain_ad_scale[j] = default_cart_gain_a_scale[j+N_CART];
+	  }
 	} else {
 	  n_read = sscanf(c,"%lf %lf %lf %lf %lf %lf",
 			  &(sm_temp.cart_gain_a_scale[_X_]),
