@@ -1,0 +1,78 @@
+/* This file contains the specification for a state machine and a particular controller.
+   The file format allows C/C++ comments.
+   If a gain is specified as "def", the default is going to be used
+   If the pose includes
+*/
+
+/* format: every state is in curely brackets, and has keywords before every group of values
+
+{
+   "name" state_name
+   "name_next" next_state_name
+   	    (optional: default=none)
+   "duration" movement_duration
+   "manipulation_frame" ["abs" | "ref"]
+            (optional: default=abs)
+   "pose_x" ["abs" | "rel"] pose_x_X pose_x_Y pose_x_Z
+   "pose_q" use_orient ["abs" | "rel"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
+   	    (optional: default=none)
+   "gripper_start" ["abs" | "rel"] gripper_start_width gripper_start_force
+             (optional: default: no motion)
+   "gripper_end" ["abs" | "rel"] gripper_end_width gripper_end_force
+             (optional: default: no motion)
+   "cart_gain_x_scale" cart_gain_x_X cart_gain_x_Y cart_gain_x_Z cart_gain_xd_X cart_gain_xd_Y cart_gain_xd_Z
+             (optional: default 100% of default)
+   "cart_gain_a_scale" cart_gain_a_A cart_gain_a_B cart_gain_a_G cart_gain_ad_A cart_gain_ad_B cart_gain_ad_G
+              (optional: default 100% of default)
+   "cart_gain_integral" cart_gain_integral
+              (optional: default=0)
+   "force_desired" force_gain force_des_x force_des_y force_des_z
+              (optional: default force_gain=0)
+   "moment_desired" moment_gain moment_des_x moment_des_y moment_des_z
+              (optional: default moment_gain=0)
+   "max_wrench" ["cont" | "abort" | "last"] fx_max fy_max fz_max mx_max my_max mz_max
+              (optional: default=max values)
+   "controller" controller_name
+}
+
+*/
+
+// just a test sequence
+
+// endeffector modification: QSFP connect length + flage+finger+gripper QFSP=0.06m
+endeffector   0  0 0 0  0 0 0.2704  0 0 2.356
+
+// default gains
+default_cart_gain_x_scale	1 1 1 1 1 1
+default_cart_gain_a_scale	1 1 1 1 1 1
+
+// default controller
+default_controller ModelImpedanceJt
+
+
+{
+name               test_state_1
+manipulation_frame abs
+duration      	   2
+pose_x        	   abs 0.403 0.217 0.40
+pose_q        	   1 abs 0.0 -0.7071 0.7071 0.0
+gripper_start 	   abs 0.02 0
+gripper_end        abs 0.02 0
+cart_gain_integral 0.0
+max_wrench    	   abort 10 10 10 5 5 5
+}
+{
+name               test_state_2
+manipulation_frame abs
+duration      	   60
+pose_x        	   rel 0.0 0.0 0.0
+pose_q        	   1 rel 1 0 0 0
+gripper_start 	   abs 0.02 0
+gripper_end   	   abs 0.02 0
+cart_gain_x_scale  .1 .1 .1 .1 .1 .1
+cart_gain_a_scale  1 1 1 1 1 1
+cart_gain_integral 0.0
+force_desired      0 0 0 0 
+moment_desired     1 0 0 0
+max_wrench   	   abort 30 30 30 10 10 10
+}
