@@ -24,6 +24,7 @@ Remarks:
 #include "SL_shared_memory.h"
 #include "SL_man.h"
 #include "SL_common.h"
+#include "utility_macros.h"
 
 // defines
 enum StateMachineStates
@@ -66,6 +67,12 @@ enum RelativeOption
    RELREF
   };
 
+enum CoordinateFrame
+  {
+   WORLD_FRAME = 0,
+   REFERENCE_FRAME
+  };
+
 enum ExitOption
   {
    NO_EXIT = 0,
@@ -76,6 +83,18 @@ enum ExitOption
    MOMENT_EXIT,
    FORCE_MOMENT_EXIT
   };
+
+enum ManipulationFrame
+  {
+    ABS_FRAME=0,
+    REF_FRAME
+  };
+		 
+enum FunctionCalls
+  {
+    NO_FUNC = 0,
+    ZERO_FT
+  };
 		 
 
 
@@ -83,6 +102,8 @@ typedef struct StateMachineTarget {
   char   state_name[100];
   char   next_state_name[100];
   int    next_state_id;
+  int    manipulation_frame;
+  int    function_call;
   double movement_duration;
   int    pose_x_is_relative;
   double pose_x[N_CART+1];
@@ -101,10 +122,14 @@ typedef struct StateMachineTarget {
   double moment_des[N_CART+1];
   int    ft_exception_action;
   double max_wrench[2*N_CART+1];
-  double cart_gain_x_scale[N_CART+1]; // diagonal of matrix
-  double cart_gain_xd_scale[N_CART+1]; // diagonal of matrix
-  double cart_gain_a_scale[N_CART+1];  // diagonal of matrix
-  double cart_gain_ad_scale[N_CART+1]; // diagonal of matrix
+  double cart_gain_x_scale[N_CART+1]; // diagonal of matrix in ref frame
+  double cart_gain_xd_scale[N_CART+1]; // diagonal of matrix in ref frame
+  double cart_gain_a_scale[N_CART+1];  // diagonal of matrix in ref frame
+  double cart_gain_ad_scale[N_CART+1]; // diagonal of matrix in ref frame
+  Matrix cart_gain_x_scale_matrix;  //  full matrix in world frame
+  Matrix cart_gain_xd_scale_matrix; // full matrix in world frame
+  Matrix cart_gain_a_scale_matrix;  // full matrix in world frame
+  Matrix cart_gain_ad_scale_matrix; // full matrix in world frame
   double cart_gain_integral;
   char   controller_name[100];
   int    exit_condition;
@@ -117,6 +142,7 @@ typedef struct StateMachineTarget {
 
 #define MAX_STATES_SM 1000
 static StateMachineTarget targets_sm[MAX_STATES_SM+1];
+static StateMachineTarget current_target_sm;
 static double reference_state_pose_x[N_CART+1];
 static double reference_state_pose_q[N_QUAT+1];
 static double reference_state_pose_x_base[N_CART+1];
@@ -129,6 +155,7 @@ static int    current_state_pose_delta = 0;
 static int    current_state_sm = 0;
 static double speed_mult = 1.0;
 static int    current_controller = SIMPLE_IMPEDANCE_JT;
+static int    default_controller = SIMPLE_IMPEDANCE_JT;
 
 /* Cartesian orientation representation with a rotation around an axis */
 typedef struct { 
@@ -180,17 +207,17 @@ extern void init_sm_controllers(void);
 extern int  cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
 			   SL_OJstate *rest, iVector status,
 			   double  gain_integral,
-			   double *gain_x_scale,
-			   double *gain_xd_scale,
-			   double *gain_a_scale,
-			   double *gain_ad_scale);
+			   double **gain_x_scale,
+			   double **gain_xd_scale,
+			   double **gain_a_scale,
+			   double **gain_ad_scale);
 extern int  cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
 			   SL_OJstate *rest, iVector status,
 			   double  gain_integral,
-			   double *gain_x_scale,
-			   double *gain_xd_scale,
-			   double *gain_a_scale,
-			   double *gain_ad_scale);
+			   double **gain_x_scale,
+			   double **gain_xd_scale,
+			   double **gain_a_scale,
+			   double **gain_ad_scale);
 
 
 /* local functions */
@@ -205,6 +232,12 @@ static int    min_jerk_next_step_quat (SL_quat q_current, SL_quat q_target, doub
 				       double t_togo, double dt, SL_quat *q_next);
 static int    read_state_machine(char *fname);
 static void   print_sm_state(void);
+static void   assignCurrentSMTarget(StateMachineTarget smt,
+				    double *ref_x,
+				    double *ref_q,
+				    SL_Cstate *ct,
+				    SL_quat   *cto,
+				    StateMachineTarget *smc);
 
 
 /*****************************************************************************
@@ -255,7 +288,7 @@ init_sm_task(void)
 {
   int    j, i;
   char   string[100];
-  static char   fname[100] = "qsfp_MJT.sm";
+  static char   fname[100] = "powerplug_JT.sm";
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;
@@ -273,6 +306,13 @@ init_sm_task(void)
     bzero((char *)&cref,sizeof(cref));
     bzero((char *)&ctarget,sizeof(ctarget));
     bzero((char *)&ctarget_orient,sizeof(ctarget_orient));
+
+    for (i=1; i<=MAX_STATES_SM; ++i) {
+      targets_sm[i].cart_gain_x_scale_matrix = my_matrix(1,N_CART,1,N_CART);
+      targets_sm[i].cart_gain_xd_scale_matrix = my_matrix(1,N_CART,1,N_CART);
+      targets_sm[i].cart_gain_a_scale_matrix = my_matrix(1,N_CART,1,N_CART);
+      targets_sm[i].cart_gain_ad_scale_matrix = my_matrix(1,N_CART,1,N_CART);
+    }
 
 
     // add variables to data collection
@@ -486,6 +526,8 @@ init_sm_task(void)
     target[i] = joint_default_state[i];
     last_target[i] = joint_default_state[i];
   }
+
+  /*
   target[J1].th  = -0.023;
   target[J2].th  =  0.29;
   target[J3].th  =  0.029;
@@ -493,6 +535,7 @@ init_sm_task(void)
   target[J5].th  = 0.092;
   target[J6].th  = 2.237;
   target[J7].th  = -0.867;
+  */
 
   des_gripper_width = 0.05;
   sendGripperMoveCommand(des_gripper_width,0.1);
@@ -540,6 +583,7 @@ init_sm_task(void)
   state_machine_state = INIT_SM_TARGET;
   current_state_pose_delta = 0;
   current_state_sm = 0;
+  current_target_sm = targets_sm[current_state_sm];
   
   scd();
   
@@ -575,7 +619,7 @@ run_sm_task(void)
   double gripper_move_threshold = 1e-8;
   static int wait_ticks=0;
   int    no_gripper_motion = TRUE;
-  char   msg[100];
+  char   msg[1000];
   int    update_u_delta_switch = FALSE;
   int    ft_exception_flag = FALSE;
   char   string[200];
@@ -589,17 +633,18 @@ run_sm_task(void)
     // check whether to end state machine
 
     // a special adjustment for an explicit jump to a a next_state out of sequence
-    if (current_state_sm != 0 && targets_sm[current_state_sm].next_state_id != 0) {
+    if (current_state_sm != 0 && current_target_sm.next_state_id != 0) {
+
       if ((run_table && current_state_pose_delta < n_states_pose_delta) || !run_table) {
 	// this simple adjustment allows continuing with the normal sequence below
-	current_state_sm = targets_sm[current_state_sm].next_state_id-1;
+	current_state_sm = current_target_sm.next_state_id-1;
 	scd();
       }
 
       // are we running through the table of reference pertubations?
       if (run_table && current_state_pose_delta < n_states_pose_delta) {
 	++current_state_pose_delta;
-	sprintf(msg,"Running perturbation %d\n",current_state_pose_delta);
+	sprintf(msg,"\nRunning perturbation %d\n",current_state_pose_delta);
 	logMsg(msg,0,0,0,0,0,0);
 	for (i=1; i<=N_CART; ++i) {
 	  reference_state_pose_x[i] = reference_state_pose_x_base[i] +
@@ -613,16 +658,25 @@ run_sm_task(void)
 
     if (current_state_sm < n_states_sm) {
       
-     ++current_state_sm;
-      if (current_state_sm == 1) {
+      ++current_state_sm;
+      if (current_state_sm == 1) { // just for clearer print-outs
 	logMsg("\n",0,0,0,0,0,0);
       }
-      if (targets_sm[current_state_sm].cart_gain_integral != 0) 
+
+      // assign to simpler variable and take into account the reference frame of the state
+      assignCurrentSMTarget(targets_sm[current_state_sm],
+			    reference_state_pose_x,
+			    reference_state_pose_q,
+			    ctarget,
+			    ctarget_orient,
+			    &current_target_sm);
+      
+      if (current_target_sm.cart_gain_integral != 0) 
 	sprintf(msg,"    %d.%-30s with %sInt\n",
-		current_state_sm,targets_sm[current_state_sm].state_name,targets_sm[current_state_sm].controller_name);
+		current_state_sm,current_target_sm.state_name,current_target_sm.controller_name);
       else
 	sprintf(msg,"    %d.%-30s with %s\n",
-		current_state_sm,targets_sm[current_state_sm].state_name,targets_sm[current_state_sm].controller_name);
+		current_state_sm,current_target_sm.state_name,current_target_sm.controller_name);
       logMsg(msg,0,0,0,0,0,0);
       
     } else {
@@ -634,70 +688,40 @@ run_sm_task(void)
       
     }
 
+    // check whether there is a function call
+    if (current_target_sm.function_call == ZERO_FT) {
+      sprintf(msg,"Calibrate F/T offsets\n");
+      logMsg(msg,0,0,0,0,0,0);      
+      sendCalibrateFTCommand();
+    }
+
     // assign relevant variables from state machine state array
-    time_to_go = targets_sm[current_state_sm].movement_duration/speed_mult;
-    
-    for (i=1; i<=N_CART; ++i) {
-      if (targets_sm[current_state_sm].pose_x_is_relative == REL) {
-	ctarget[HAND].x[i] += targets_sm[current_state_sm].pose_x[i];
-      } else if (targets_sm[current_state_sm].pose_x_is_relative == RELREF) {
-	ctarget[HAND].x[i] = reference_state_pose_x[i] + targets_sm[current_state_sm].pose_x[i];
-      } else {
-	ctarget[HAND].x[i] = targets_sm[current_state_sm].pose_x[i];
-      }
-    }
-    
-    if (targets_sm[current_state_sm].use_orient) {
-      
-      for (i=1; i<=N_CART; ++i)
-	stats[N_CART+i] = 1;
-      
-      if (targets_sm[current_state_sm].pose_q_is_relative == REL) {	
-	//print_vec_size("before",ctarget_orient[HAND].q,4);
-	quatMult(ctarget_orient[HAND].q,targets_sm[current_state_sm].pose_q,ctarget_orient[HAND].q);
-	//print_vec_size("after",ctarget_orient[HAND].q,4);
-      } else if (targets_sm[current_state_sm].pose_q_is_relative == RELREF) {	
-	//print_vec_size("before",ctarget_orient[HAND].q,4);
-	//print_vec_size("ref_state_pose",reference_state_pose_q,4);
-	quatMult(reference_state_pose_q,targets_sm[current_state_sm].pose_q,ctarget_orient[HAND].q);
-	//print_vec_size("after",ctarget_orient[HAND].q,4);
-      } else {
-	for (i=1; i<=N_QUAT; ++i) {
-	  ctarget_orient[HAND].q[i] = targets_sm[current_state_sm].pose_q[i];
-	}
-      }
-      
-    } else { // no orientation
-      
-      for (i=1; i<=N_CART; ++i)
-	stats[N_CART+i] = 0;
-      
-    }
-    
+    time_to_go = current_target_sm.movement_duration/speed_mult;
+
     // need to memorize the cart orient start for min jerk interpolation
     cdes_start_orient[HAND] = cdes_orient[HAND];
 
     // gripper movement: only if gripper states have changed
     no_gripper_motion = FALSE;
     if (current_state_sm > 1) {
-      if (targets_sm[current_state_sm].gripper_width_start == targets_sm[current_state_sm-1].gripper_width_end &&
-	  targets_sm[current_state_sm].gripper_force_start == targets_sm[current_state_sm-1].gripper_force_end) {
+      if (current_target_sm.gripper_width_start == targets_sm[current_state_sm-1].gripper_width_end &&
+	  current_target_sm.gripper_force_start == targets_sm[current_state_sm-1].gripper_force_end) {
 	no_gripper_motion=TRUE; 
       }
     }
 
     if (!no_gripper_motion) {
       // give move command to gripper to desired position if width is larger than current width
-      if (targets_sm[current_state_sm].gripper_width_start > misc_sensor[G_WIDTH] ||
-	  targets_sm[current_state_sm].gripper_force_start == 0) {
+      if (current_target_sm.gripper_width_start > misc_sensor[G_WIDTH] ||
+	  current_target_sm.gripper_force_start == 0) {
 	
-	sendGripperMoveCommand(targets_sm[current_state_sm].gripper_width_start,0.1);
+	sendGripperMoveCommand(current_target_sm.gripper_width_start,0.1);
 	
       } else { // or close gripper with force control otherwise
 	
-	sendGripperGraspCommand(targets_sm[current_state_sm].gripper_width_start,
+	sendGripperGraspCommand(current_target_sm.gripper_width_start,
 				0.1,
-				targets_sm[current_state_sm].gripper_force_start,
+				current_target_sm.gripper_force_start,
 				0.08,
 				0.08);
 	
@@ -713,17 +737,18 @@ run_sm_task(void)
 
     // which controller?
     for (i=1; i<=n_controllers; ++i) {
-      if (strcmp(targets_sm[current_state_sm].controller_name,controller_names[i]) == 0) {
+      if (strcmp(current_target_sm.controller_name,controller_names[i]) == 0) {
 	current_controller = i;
 	update_u_delta_switch = TRUE;
 	break;
       }
     }
     if (i > n_controllers ) { // did not find valid controller
-      printf("State %s has no valid controller --- abort\n",targets_sm[current_state_sm].state_name);
+      printf("State %s has no valid controller --- abort\n",current_target_sm.state_name);
       freeze();
       return FALSE;
     }
+
     
     break;
     
@@ -742,38 +767,38 @@ run_sm_task(void)
   case MOVE_TO_TARGET:
 
     // check for exceeding max force/torque
-    if (fabs(misc_sensor[C_FX]) > targets_sm[current_state_sm].max_wrench[_X_]) {
-      sprintf(string,"max force X exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_FX],targets_sm[current_state_sm].max_wrench[_X_]);
+    if (fabs(misc_sensor[C_FX]) > current_target_sm.max_wrench[_X_]) {
+      sprintf(string,"max force X exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_FX],current_target_sm.max_wrench[_X_]);
       logMsg(string,0,0,0,0,0,0);
       ft_exception_flag = TRUE;
     }
 
-    if (fabs(misc_sensor[C_FY]) > targets_sm[current_state_sm].max_wrench[_Y_]) {
-      sprintf(string,"max force Y exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_FY],targets_sm[current_state_sm].max_wrench[_Y_]);
+    if (fabs(misc_sensor[C_FY]) > current_target_sm.max_wrench[_Y_]) {
+      sprintf(string,"max force Y exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_FY],current_target_sm.max_wrench[_Y_]);
       logMsg(string,0,0,0,0,0,0);
       ft_exception_flag = TRUE;
     }
 
-    if (fabs(misc_sensor[C_FZ]) > targets_sm[current_state_sm].max_wrench[_Z_]) {
-      sprintf(string,"max force Z exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_FZ],targets_sm[current_state_sm].max_wrench[_Z_]);
+    if (fabs(misc_sensor[C_FZ]) > current_target_sm.max_wrench[_Z_]) {
+      sprintf(string,"max force Z exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_FZ],current_target_sm.max_wrench[_Z_]);
       logMsg(string,0,0,0,0,0,0);
       ft_exception_flag = TRUE;
     }
 
-    if (fabs(misc_sensor[C_MX]) > targets_sm[current_state_sm].max_wrench[N_CART+_A_]) {
-      sprintf(string,"max torque A exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_MX],targets_sm[current_state_sm].max_wrench[N_CART+_A_]);
+    if (fabs(misc_sensor[C_MX]) > current_target_sm.max_wrench[N_CART+_A_]) {
+      sprintf(string,"max torque A exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_MX],current_target_sm.max_wrench[N_CART+_A_]);
       logMsg(string,0,0,0,0,0,0);
       ft_exception_flag = TRUE;
     }
 
-    if (fabs(misc_sensor[C_MY]) > targets_sm[current_state_sm].max_wrench[N_CART+_B_]) {
-      sprintf(string,"max torque B exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_MY],targets_sm[current_state_sm].max_wrench[N_CART+_B_]);
+    if (fabs(misc_sensor[C_MY]) > current_target_sm.max_wrench[N_CART+_B_]) {
+      sprintf(string,"max torque B exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_MY],current_target_sm.max_wrench[N_CART+_B_]);
       logMsg(string,0,0,0,0,0,0);
       ft_exception_flag = TRUE;
     }
 
-    if (fabs(misc_sensor[C_MZ]) > targets_sm[current_state_sm].max_wrench[N_CART+_G_]) {
-      sprintf(string,"max torque G exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_MZ],targets_sm[current_state_sm].max_wrench[N_CART+_G_]);
+    if (fabs(misc_sensor[C_MZ]) > current_target_sm.max_wrench[N_CART+_G_]) {
+      sprintf(string,"max torque G exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_MZ],current_target_sm.max_wrench[N_CART+_G_]);
       logMsg(string,0,0,0,0,0,0);
       ft_exception_flag = TRUE;
     }
@@ -789,7 +814,7 @@ run_sm_task(void)
 
       time_to_go = 0;
 
-      switch (targets_sm[current_state_sm].ft_exception_action) {
+      switch (current_target_sm.ft_exception_action) {
 
       case CONT: // not action needed for continue action
 	break;
@@ -810,6 +835,7 @@ run_sm_task(void)
       for (i=1; i<=N_CART; ++i) {
 	min_jerk_next_step(cdes[HAND].x[i],
 			   cdes[HAND].xd[i],
+
 			   cdes[HAND].xdd[i],
 			   ctarget[HAND].x[i],
 			   ctarget[HAND].xd[i],
@@ -821,7 +847,7 @@ run_sm_task(void)
 			   &(cdes[HAND].xdd[i]));
       }
       
-      if (targets_sm[current_state_sm].use_orient) {
+      if (current_target_sm.use_orient) {
 	min_jerk_next_step_quat(cdes_start_orient[HAND], ctarget_orient[HAND], s,
 				time_to_go, time_step, &(cdes_orient[HAND]));
       }
@@ -846,32 +872,32 @@ run_sm_task(void)
     // check whether there is an exit condtion which overules progressing 
     // to the next state
     
-    if (time_to_go < 0 && targets_sm[current_state_sm].exit_condition) {
+    if (time_to_go < 0 && current_target_sm.exit_condition && !ft_exception_flag) {
       int    exit_flag = TRUE;
       
-      switch(targets_sm[current_state_sm].exit_condition)
+      switch(current_target_sm.exit_condition)
 	{
 	case POS_EXIT:
-	  if (pos_error > targets_sm[current_state_sm].err_pos)
+	  if (pos_error > current_target_sm.err_pos)
 	    exit_flag = FALSE;
 	  break;
 	  
 	case ORIENT_EXIT:
-	  if (orient_error > targets_sm[current_state_sm].err_orient)
+	  if (orient_error > current_target_sm.err_orient)
 	    exit_flag = FALSE;
 	  break;
 	  
 	case POS_ORIENT_EXIT:
-	  if (pos_error > targets_sm[current_state_sm].err_pos ||
-	      orient_error > targets_sm[current_state_sm].err_orient)
+	  if (pos_error > current_target_sm.err_pos ||
+	      orient_error > current_target_sm.err_orient)
 	    exit_flag = FALSE;
 	  break;
 	  
 	}
 
-      if (!exit_flag && fabs(time_to_go) < targets_sm[current_state_sm].exit_timeout)
+      if (!exit_flag && fabs(time_to_go) < current_target_sm.exit_timeout)
 	break;
-      else if (fabs(time_to_go) >= targets_sm[current_state_sm].exit_timeout) {
+      else if (fabs(time_to_go) >= current_target_sm.exit_timeout) {
 	sprintf(msg,"Time out at  %f e_pos=%f e_orient=%f\n",time_to_go,pos_error,orient_error);
 	logMsg(msg,0,0,0,0,0,0);
       }
@@ -885,21 +911,21 @@ run_sm_task(void)
       time_to_go = 0;
 
       no_gripper_motion = FALSE;
-      if (targets_sm[current_state_sm].gripper_width_end ==
-	  targets_sm[current_state_sm].gripper_width_start &&
-	  targets_sm[current_state_sm].gripper_force_end ==
-	  targets_sm[current_state_sm].gripper_force_start) {
+      if (current_target_sm.gripper_width_end ==
+	  current_target_sm.gripper_width_start &&
+	  current_target_sm.gripper_force_end ==
+	  current_target_sm.gripper_force_start) {
 	no_gripper_motion=TRUE; 
       }
 
       if (!no_gripper_motion) {
-	if (targets_sm[current_state_sm].gripper_width_end > misc_sensor[G_WIDTH] ||
-	    targets_sm[current_state_sm].gripper_force_end == 0) {
-	  sendGripperMoveCommand(targets_sm[current_state_sm].gripper_width_end,0.1);
+	if (current_target_sm.gripper_width_end > misc_sensor[G_WIDTH] ||
+	    current_target_sm.gripper_force_end == 0) {
+	  sendGripperMoveCommand(current_target_sm.gripper_width_end,0.1);
 	} else {
-	  sendGripperGraspCommand(targets_sm[current_state_sm].gripper_width_end,
+	  sendGripperGraspCommand(current_target_sm.gripper_width_end,
 				  0.1,
-				  targets_sm[current_state_sm].gripper_force_end,
+				  current_target_sm.gripper_force_end,
 				  0.08,
 				  0.08);
 	}
@@ -947,22 +973,22 @@ run_sm_task(void)
   case SIMPLE_IMPEDANCE_JT:
 
     cartesianImpedanceSimpleJt(cdes, cdes_orient, joint_des_state, joint_opt_state, stats,
-			       targets_sm[current_state_sm].cart_gain_integral,
-			       targets_sm[current_state_sm].cart_gain_x_scale,
-			       targets_sm[current_state_sm].cart_gain_xd_scale,
-			       targets_sm[current_state_sm].cart_gain_a_scale,
-			       targets_sm[current_state_sm].cart_gain_ad_scale);
+			       current_target_sm.cart_gain_integral,
+			       current_target_sm.cart_gain_x_scale_matrix,
+			       current_target_sm.cart_gain_xd_scale_matrix,
+			       current_target_sm.cart_gain_a_scale_matrix,
+			       current_target_sm.cart_gain_ad_scale_matrix);
 
     break;
     
   case MODEL_IMPEDANCE_JT:
 
     cartesianImpedanceModelJt(cdes, cdes_orient, joint_des_state, joint_opt_state, stats,
-			      targets_sm[current_state_sm].cart_gain_integral,
-			      targets_sm[current_state_sm].cart_gain_x_scale,
-			      targets_sm[current_state_sm].cart_gain_xd_scale,
-			      targets_sm[current_state_sm].cart_gain_a_scale,
-			      targets_sm[current_state_sm].cart_gain_ad_scale);
+			      current_target_sm.cart_gain_integral,
+			      current_target_sm.cart_gain_x_scale_matrix,
+			      current_target_sm.cart_gain_xd_scale_matrix,
+			      current_target_sm.cart_gain_a_scale_matrix,
+			      current_target_sm.cart_gain_ad_scale_matrix);
     
     break;
     
@@ -984,8 +1010,8 @@ run_sm_task(void)
     for (j=1; j<=N_CART; ++j) {
       if (stats[j]) 
 	joint_des_state[i].uff -= J[j][i]*
-	  (targets_sm[current_state_sm].force_des[j]-force_world[j])*
-	  targets_sm[current_state_sm].force_des_gain;
+	  (current_target_sm.force_des[j]-force_world[j])*
+	  current_target_sm.force_des_gain;
     }
   }
 
@@ -993,8 +1019,8 @@ run_sm_task(void)
     for (j=1; j<=N_CART; ++j) {
       if (stats[N_CART+j])
 	joint_des_state[i].uff -= J[j+N_CART][i]*
-	  (targets_sm[current_state_sm].moment_des[j]-torque_world[j])*
-      	  targets_sm[current_state_sm].moment_des_gain;
+	  (current_target_sm.moment_des[j]-torque_world[j])*
+      	  current_target_sm.moment_des_gain;
     }
   }
 
@@ -1190,8 +1216,8 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
 		    double *x_next, double *xd_next, double *xdd_next)
 
 {
-  double t1,t2,t3,t4,t5;
-  double tau,tau1,tau2,tau3,tau4,tau5;
+  long double t1,t2,t3,t4,t5;
+  long double tau,tau1,tau2,tau3,tau4,tau5;
   int    i,j;
 
   // a safety check
@@ -1212,27 +1238,29 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
   tau5 = tau4 * tau;
 
   // calculate the constants
-  const double dist   = t - x;
-  const double p1     = t;
-  const double p0     = x;
-  const double a1t2   = tdd;
-  const double a0t2   = xdd;
-  const double v1t1   = td;
-  const double v0t1   = xd;
+  long double dist   = t - x;
+  long double p1     = t;
+  long double p0     = x;
+  long double a1t2   = tdd*tau2;
+  long double a0t2   = xdd*tau2;
+  long double v1t1   = td*tau1;
+  long double v0t1   = xd*tau1;
+
+  // guards against numerical drift for large tau
+  if (fabs(dist) < 1.e-5)
+    dist = 0.0;
+
+  long double c1 = (6.*dist + (a1t2 - a0t2)/2. - 3.*(v0t1 + v1t1));
+  long double c2 = (-15.*dist + (3.*a0t2 - 2.*a1t2)/2. + (8.*v0t1 + 7.*v1t1))*tau1; 
+  long double c3 = (10.*dist + (a1t2 - 3.*a0t2)/2. - (6.*v0t1 + 4.*v1t1))*tau2; 
+  long double c4 = xdd/2.;
+  long double c5 = xd;
+  long double c6 = x;
   
-  const double c1 = 6.*dist/tau5 + (a1t2 - a0t2)/(2.*tau3) - 
-    3.*(v0t1 + v1t1)/tau4;
-  const double c2 = -15.*dist/tau4 + (3.*a0t2 - 2.*a1t2)/(2.*tau2) +
-    (8.*v0t1 + 7.*v1t1)/tau3; 
-  const double c3 = 10.*dist/tau3+ (a1t2 - 3.*a0t2)/(2.*tau) -
-    (6.*v0t1 + 4.*v1t1)/tau2; 
-  const double c4 = xdd/2.;
-  const double c5 = xd;
-  const double c6 = x;
-  
-  *x_next   = c1*t5 + c2*t4 + c3*t3 + c4*t2 + c5*t1 + c6;
-  *xd_next  = 5.*c1*t4 + 4*c2*t3 + 3*c3*t2 + 2*c4*t1 + c5;
-  *xdd_next = 20.*c1*t3 + 12.*c2*t2 + 6.*c3*t1 + 2.*c4;
+  *x_next   = (c1*t5 + c2*t4 + c3*t3)/tau5 + c4*t2 + c5*t1 + c6;
+  *xd_next  = (5.*c1*t4 + 4*c2*t3 + 3*c3*t2)/tau5 + 2.*c4*t1 + c5;
+  *xdd_next = (20.*c1*t3 + 12.*c2*t2 + 6.*c3*t1)/tau5 + 2.*c4;
+
   
   return TRUE;
 }
@@ -1258,6 +1286,8 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
    "name" state_name
    "name_next" next_state_name
    "duration" movement_duration
+   "manipulation_frame" ["abs" | "ref"]
+   "func_call" "...." (arbitrary name of implemented function to be called at this state)
    "pose_x" ["abs" | "rel" | "refref"] pose_x_X pose_x_Y pose_x_Z
    "pose_q" use_orient ["abs" | "rel | relref"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
    "gripper_start" ["abs" | "rel"] gripper_start_width gripper_start_force
@@ -1278,6 +1308,8 @@ static char state_group_names[][100]=
    {"name"},
    {"name_next"},
    {"duration"},
+   {"manipulation_frame"},
+   {"func_call"},
    {"pose_x"},
    {"pose_q"},
    {"gripper_start"},
@@ -1292,7 +1324,7 @@ static char state_group_names[][100]=
    {"exit_condition"}
   };
 
-static int n_parms[] = {0,1,1,1,4,6,3,3,6,6,1,4,4,7,1,6};
+static int n_parms[] = {0,1,1,1,1,1,4,6,3,3,6,6,1,4,4,7,1,6};
 #define MAX_BIG_STRING 5000
 
 static int
@@ -1300,6 +1332,7 @@ read_state_machine(char *fname) {
   
   int    j,i,rc;
   char   string[MAX_BIG_STRING+1];
+  char   default_controller_name[100];
   FILE  *in;
   int    n_read;
   StateMachineTarget sm_temp;
@@ -1307,7 +1340,7 @@ read_state_machine(char *fname) {
   int    count = 0;
   char  *c;
   char   cr;
-  char   saux[20];
+  char   saux[MAX_BIG_STRING+1];
   double aux;
     
   // open the file and strip all comments
@@ -1337,24 +1370,36 @@ read_state_machine(char *fname) {
   }
   rewind(in);
   
+  // look for a default controller
+  if (find_keyword(in,"default_controller")) {
+    rc=fscanf(in,"%s",default_controller_name);
+    if (rc == 1) {
+      printf("Found default controller: %s\n",default_controller_name);
+    } else {
+      sprintf(default_controller_name,"none");
+    }
+  }
+  rewind(in);
+
+
   // look for a reference pose_x
   if (find_keyword(in,"reference_state_pose_x")) {
     printf("Found reference pose_x\n");
     rc=fscanf(in,"%lf %lf %lf", &reference_state_pose_x_base[_X_],
-	      &reference_state_pose_x_base[_Y_],&reference_state_pose_x_base[_Z_]);
+               &reference_state_pose_x_base[_Y_],&reference_state_pose_x_base[_Z_]);
   } else {
     printf("WARNING: reference pose_x defaults to current pose_x\n");
     for (i=1; i<=N_CART; ++i)
       reference_state_pose_x_base[i] = cart_state[HAND].x[i];
   }
-
+ 
   for (i=1; i<=N_CART; ++i)
     reference_state_pose_x[i] = reference_state_pose_x_base[i];
-
+  
   rewind(in);
 
 
-  // look for a reference pose_q
+   // look for a reference pose_q
   if (find_keyword(in,"reference_state_pose_q")) {
     printf("Found reference pose_q\n");
     rc=fscanf(in,"%lf %lf %lf %lf", &reference_state_pose_q_base[_Q0_],&reference_state_pose_q_base[_Q1_],
@@ -1446,9 +1491,8 @@ read_state_machine(char *fname) {
   rewind(in);
   
     
-  // zero the number of states in state machine and clear the memory
+  // zero the number of states in state machine
   n_states_sm = 0;
-  bzero((char *)&targets_sm,sizeof(targets_sm));  
   
   // read states into a string, and then parse the string
   while ((cr=fgetc(in)) != EOF) {
@@ -1509,6 +1553,42 @@ read_state_machine(char *fname) {
 		   n_parms[i],n_read,state_group_names[i]);
 	    continue;
 	  }
+	}
+
+	// the frame in which to manipulate (optional)
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  sm_temp.manipulation_frame = ABS_FRAME;
+	} else {
+	  n_read = sscanf(c,"%s",saux);
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",
+		   n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	  if (strcmp(saux,"ref")==0)
+	    sm_temp.manipulation_frame = REF_FRAME;
+	  else
+	    sm_temp.manipulation_frame = ABS_FRAME;	    	  
+	}
+
+	// an arbitrary function to be called at the beginning of state switch (optional)
+	++i;
+	c = find_keyword_in_string(string,state_group_names[i]);
+	if (c == NULL) {
+	  sm_temp.function_call = NO_FUNC;
+	} else {
+	  n_read = sscanf(c,"%s",saux);
+	  if (n_read != n_parms[i]) {
+	    printf("Expected %d elements, but found only %d elements  in group %s\n",
+		   n_parms[i],n_read,state_group_names[i]);
+	    continue;
+	  }
+	  if (strcmp(saux,"zero_ft")==0)
+	    sm_temp.function_call = ZERO_FT;
+	  else
+	    sm_temp.function_call = NO_FUNC;
 	}
 
 	// pose_x
@@ -1743,9 +1823,11 @@ read_state_machine(char *fname) {
 	// the controller
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
-	if (c == NULL) {
+	if (c == NULL && strcmp(default_controller_name,"none")==0) {
 	  printf("Could not find group %s\n",state_group_names[i]);
 	  continue;
+	} else if (c == NULL) {
+	  strcpy(sm_temp.controller_name,default_controller_name);
 	} else {
 	  n_read = sscanf(c,"%s",sm_temp.controller_name);
 	  if (n_read != n_parms[i]) {
@@ -1798,7 +1880,22 @@ read_state_machine(char *fname) {
 
 	// finish up
 	if (n_states_sm < MAX_STATES_SM) {
-	  targets_sm[++n_states_sm] = sm_temp;
+	  Matrix mx,mxd,ma,mad; // need to store pointers temporarily
+
+	  ++n_states_sm;
+
+	  mx  = targets_sm[n_states_sm].cart_gain_x_scale_matrix;
+	  mxd = targets_sm[n_states_sm].cart_gain_xd_scale_matrix;
+	  ma  = targets_sm[n_states_sm].cart_gain_a_scale_matrix;
+	  mad = targets_sm[n_states_sm].cart_gain_ad_scale_matrix;
+
+	  targets_sm[n_states_sm] = sm_temp;
+
+	  targets_sm[n_states_sm].cart_gain_x_scale_matrix = mx;
+	  targets_sm[n_states_sm].cart_gain_xd_scale_matrix = mxd;
+	  targets_sm[n_states_sm].cart_gain_a_scale_matrix = ma;
+	  targets_sm[n_states_sm].cart_gain_ad_scale_matrix = mad;
+	  
 	} else {
 	  // should be unlikely to happen ever
 	  printf("Error: ran out of memory for state machine targets\n");
@@ -1987,5 +2084,178 @@ min_jerk_next_step_quat (SL_quat q_current, SL_quat q_target, double *s,
   return TRUE;
 
 }
+
+/*!*****************************************************************************
+ *******************************************************************************
+\note  assignCurrentSMTarget
+\date  November 2019
+   
+\remarks 
+
+ The new state machine state is assigned the the relevant current structures.
+ Most importantly, reference frame issues are resolved, such that the resulting
+ information is in base coordinates.
+ 
+
+ *******************************************************************************
+ Function Parameters: [in]=input,[out]=output
+
+ \param[in]          smt      : state machine target
+ \param[in]          ref_x    : reference position
+ \param[in]          ref_q    : reference orientation
+ \param[out]         ct       : cartesian target position
+ \param[out]         cto      : cartesian target orientation
+ \param[out]         smc      : the current state machine state
+
+ ******************************************************************************/
+static void
+assignCurrentSMTarget(StateMachineTarget smt,
+		      double *ref_x,
+		      double *ref_q,
+		      SL_Cstate *ct,
+		      SL_quat   *cto,
+		      StateMachineTarget *smc)
+{
+  int i,j,r;
+  MY_MATRIX(R,1,N_CART,1,N_CART);
+  SL_quat temp_q;
+
+  // to get started, simply copy the target to the current target, and this what needs
+  // to be fixed.
+  *smc = smt;
+
+  // the rotation matrix relative to the reference frame
+  // assign to temp quaternion structure
+  for (r=1; r<=N_QUAT; ++r)
+    temp_q.q[r] = reference_state_pose_q[r];
+
+  // compute rotation matrix
+  quatToRotMatInv(&temp_q,R);
+  
+
+  
+  // assign the target position
+  if (smc->pose_x_is_relative == REL && smc->manipulation_frame == ABS_FRAME) {
+    for (i=1; i<=N_CART; ++i) {
+      ct[HAND].x[i] += smc->pose_x[i];
+    }
+  } else if (smc->pose_x_is_relative == ABS && smc->manipulation_frame == REF_FRAME) {
+    mat_vec_mult_size(R,N_CART,N_CART,smt.pose_x,N_CART,smc->pose_x);
+    for (i=1; i<=N_CART; ++i) {
+      ct[HAND].x[i] = reference_state_pose_x[i] + smc->pose_x[i];
+    }
+  } else if (smc->pose_x_is_relative == REL && smc->manipulation_frame == REF_FRAME) {
+    mat_vec_mult_size(R,N_CART,N_CART,smt.pose_x,N_CART,smc->pose_x);
+    for (i=1; i<=N_CART; ++i) {
+      ct[HAND].x[i] += smc->pose_x[i];
+    }
+  } else { // absolute pose info just needs easy assignment
+    for (i=1; i<=N_CART; ++i) {
+      ct[HAND].x[i] = smc->pose_x[i];
+    }
+  }
+
+  //print_vec_size("ctarget",ct[HAND].x,N_CART);
+  // print_vec_size("ctarget",ct[HAND].xd,N_CART);
+  //print_vec_size("ctarget",ct[HAND].xdd,N_CART);
+  
+  // assign the target orientation if needed
+  if (smc->use_orient) {
+    
+    for (i=1; i<=N_CART; ++i)
+      stats[N_CART+i] = 1;
+
+    if (smc->pose_q_is_relative == REL && smc->manipulation_frame == ABS_FRAME) {	
+      //print_vec_size("before",cto[HAND].q,4);
+      quatMult(cto[HAND].q,smc->pose_q,cto[HAND].q);
+      //print_vec_size("after",cto[HAND].q,4);
+    } else if (smc->pose_q_is_relative == ABS && smc->manipulation_frame == REF_FRAME) {	
+      //print_vec_size("before",cto[HAND].q,4);
+      //print_vec_size("ref_state_pose",reference_state_pose_q,4);
+      mat_vec_mult_size(R,N_CART,N_CART,&(smt.pose_q[_Q0_]),N_CART,&(smc->pose_q[_Q0_]));
+      quatMult(reference_state_pose_q,smc->pose_q,cto[HAND].q);
+      //print_vec_size("after",cto[HAND].q,4);
+    } else if (smc->pose_q_is_relative == REL && smc->manipulation_frame == REF_FRAME) {	
+      //print_vec_size("before",cto[HAND].q,4);
+      //print_vec_size("desired change",smt.pose_q,4);
+      mat_vec_mult_size(R,N_CART,N_CART,&(smt.pose_q[_Q0_]),N_CART,&(smc->pose_q[_Q0_]));
+      //print_vec_size("rotated desired change",smc->pose_q,4);      
+      quatMult(cto[HAND].q,smc->pose_q,cto[HAND].q);
+      //print_vec_size("after",cto[HAND].q,4);
+    } else {
+      for (i=1; i<=N_QUAT; ++i) {
+	cto[HAND].q[i] = smc->pose_q[i];
+      }
+    }
+
+  } else { // no orientation
+    
+    for (i=1; i<=N_CART; ++i)
+      stats[N_CART+i] = 0;
+    
+  }
+
+  // print_vec_size("ctarget_orient",cto[HAND].q,N_QUAT);
+
+  // by default, the PD gains just go into a diagonal matrix
+  for (i=1; i<=N_CART; ++i) {
+    for (j=1; j<=N_CART; ++j) {
+      if ( i == j ) {
+	smc->cart_gain_x_scale_matrix[i][j] = smc->cart_gain_x_scale[i];
+	smc->cart_gain_xd_scale_matrix[i][j] = smc->cart_gain_xd_scale[i];
+	smc->cart_gain_a_scale_matrix[i][j] = smc->cart_gain_a_scale[i];
+	smc->cart_gain_ad_scale_matrix[i][j] = smc->cart_gain_ad_scale[i];
+      } else {
+	smc->cart_gain_x_scale_matrix[i][j] = 0.0;
+	smc->cart_gain_xd_scale_matrix[i][j] = 0.0;
+	smc->cart_gain_a_scale_matrix[i][j] = 0.0;
+	smc->cart_gain_ad_scale_matrix[i][j] = 0.0;
+      }
+    }
+  }
+
+  // convert diag control gains from local to global if the state of the state
+  // machine is in a special  reference frame. Also adjust the desired and
+  // max wrench
+  if (smc->manipulation_frame == REF_FRAME) { // gains are in reference frame
+    MY_MATRIX(T,1,N_CART,1,N_CART);
+    
+    // rotate gain matrix appropriately
+    mat_mult(R,smc->cart_gain_x_scale_matrix,T);
+    mat_mult_normal_transpose(T,R,smc->cart_gain_x_scale_matrix);
+
+    mat_mult(R,smc->cart_gain_xd_scale_matrix,T);
+    mat_mult_normal_transpose(T,R,smc->cart_gain_xd_scale_matrix);
+
+    mat_mult(R,smc->cart_gain_a_scale_matrix,T);
+    mat_mult_normal_transpose(T,R,smc->cart_gain_a_scale_matrix);
+
+    mat_mult(R,smc->cart_gain_ad_scale_matrix,T);
+    mat_mult_normal_transpose(T,R,smc->cart_gain_ad_scale_matrix);
+
+    /*
+    print_mat("x-scale",smc->cart_gain_x_scale_matrix);
+    print_mat("xd-scale",smc->cart_gain_xd_scale_matrix);
+    print_mat("a-scale",smc->cart_gain_a_scale_matrix);
+    print_mat("ad-scale",smc->cart_gain_ad_scale_matrix);
+    */
+
+    // rotate force/torque values
+    mat_vec_mult_size(R,N_CART,N_CART,smt.force_des,N_CART,smc->force_des);
+    mat_vec_mult_size(R,N_CART,N_CART,smt.moment_des,N_CART,smc->moment_des);
+    mat_vec_mult_size(R,N_CART,N_CART,smt.max_wrench,N_CART,smc->max_wrench);
+    mat_vec_mult_size(R,N_CART,N_CART,&(smt.max_wrench[_Z_]),N_CART,&(smc->max_wrench[_Z_]));
+    for (i=1; i<=2*N_CART; ++i)
+      smc->max_wrench[i] = fabs(smc->max_wrench[i]);
+
+  } 
+  
+}
+
+
+
+
+
+
 
 

@@ -51,6 +51,9 @@ static double controller_gain_int[N_DOFS+1];
 
 static double cref_integral[N_ENDEFFS*6+1];
 
+#define MAX_INTEGRAL_FORCE   10 // in N
+#define MAX_INTEGRAL_MOMENT   5 // in Nm
+
 
 // global functions
 
@@ -61,19 +64,19 @@ int
 cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
 			   SL_OJstate *rest, iVector status,
 			   double  gain_integral,
-			   double *gain_x_scale,
-			   double *gain_xd_scale,
-			   double *gain_a_scale,
-			   double *gain_ad_scale);
+			   double **gain_x_scale,
+			   double **gain_xd_scale,
+			   double **gain_a_scale,
+			   double **gain_ad_scale);
 
 int
 cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
 			   SL_OJstate *rest, iVector status,
 			   double  gain_integral,
-			   double *gain_x_scale,
-			   double *gain_xd_scale,
-			   double *gain_a_scale,
-			   double *gain_ad_scale);
+			   double **gain_x_scale,
+			   double **gain_xd_scale,
+			   double **gain_a_scale,
+			   double **gain_ad_scale);
 
 // local functions 
 static int computePseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix Jhash, Matrix Nproj);
@@ -167,10 +170,10 @@ int
 cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
 			   SL_OJstate *rest, iVector status,
 			   double  gain_integral,
-			   double *gain_x_scale,
-			   double *gain_xd_scale,
-			   double *gain_a_scale,
-			   double *gain_ad_scale)
+			   double **gain_x_scale,
+			   double **gain_xd_scale,
+			   double **gain_a_scale,
+			   double **gain_ad_scale)
 
 {
   double         default_gain   = 800;  // was 450
@@ -179,6 +182,10 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
   double         corient_error[N_CART+1];
   double         cref[N_ENDEFFS*6+1];
   static double  cref_integral[N_ENDEFFS*6+1];
+  double         q_rel[N_QUAT+1];
+  double         q_rel_angle;
+  double         log_q_mult;
+  double         aux;
 
   int            i,j,n,m;
   int            nr = 0;
@@ -207,34 +214,50 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
     bzero((char *)&cref_integral,sizeof(cref_integral));
 
   // compute orientation error term for quaterion feedback control
-  quatErrorVector(cdes_orient[HAND].q,cart_orient[HAND].q,corient_error);
+  quatRelative(cart_orient[HAND].q,cdes_orient[HAND].q,q_rel);
+  
+  for (i=1; i<=N_CART; ++i)
+    corient_error[i] = q_rel[_Q0_+i];
+
+  q_rel_angle = acos(q_rel[_Q0_]);
+  
+  if (q_rel_angle > 3)getchar();
+  log_q_mult = q_rel_angle/(sqrt(vec_mult_inner_size(corient_error,corient_error,N_CART))+1.e-6);
   
   // prepare the impdance controller, i.e., compute operational
   // space force command
   
-  for (j= _X_; j<= _Z_; ++j) {
+  for (j= _X_; j<= _Z_; ++j) {  /* translation */
     
     if (status[j]) {
       ++count;
-      
+
       cref_integral[count] += gain_integral * (cdes[HAND].x[j]  - cart_state[HAND].x[j]);
-      
-      cref[count] = cref_integral[count] +
-	(cdes[HAND].xd[j]  - cart_state[HAND].xd[j]) * 2.*sqrt(default_gain) * gain_xd_scale[j] +
-	(cdes[HAND].x[j]  - cart_state[HAND].x[j]) * default_gain * gain_x_scale[j];
+      if (cref_integral[count] > MAX_INTEGRAL_FORCE)
+	cref_integral[count] = MAX_INTEGRAL_FORCE;
+
+      cref[count] = cref_integral[count];
+      for (n= _X_; n<= _Z_; ++n)      
+	cref[count] += 
+	  (cdes[HAND].xd[n]  - cart_state[HAND].xd[n]) * 2.*sqrt(default_gain) * gain_xd_scale[j][n] +
+	  (cdes[HAND].x[n]  - cart_state[HAND].x[n]) * default_gain * gain_x_scale[j][n];
     }
   }
   
-
   for (j= _A_; j<= _G_ ; ++j) { /* orientation */
+
     if (status[N_CART + j]) {
       ++count;
-      
-      cref_integral[count] +=  - corient_error[j] * gain_integral;
-      
-      cref[count] = cref_integral[count] +
-	(cdes_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) *0.025 * 2.0 * sqrt(default_gain_orient) * gain_ad_scale[j] - 
-	corient_error[j] * default_gain_orient * gain_a_scale[j]; 
+
+      cref_integral[count] +=  0.1 * log_q_mult * corient_error[j] * gain_integral;
+      if (cref_integral[count] > MAX_INTEGRAL_MOMENT)
+	cref_integral[count] = MAX_INTEGRAL_MOMENT;
+
+      cref[count] = cref_integral[count];
+      for (n= _A_; n<= _G_ ; ++n) 
+	cref[count] += 
+	  (cdes_orient[HAND].ad[n] - cart_orient[HAND].ad[n]) *0.025 * 2.0 * sqrt(default_gain_orient) * gain_ad_scale[j][n] + 
+	  log_q_mult * corient_error[n] * default_gain_orient * gain_a_scale[j][n]; 
     }
   }
   
@@ -314,10 +337,10 @@ int
 cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
 			  SL_OJstate *rest, iVector status,
 			  double  gain_integral,
-			  double *gain_x_scale,
-			  double *gain_xd_scale,
-			  double *gain_a_scale,
-			  double *gain_ad_scale)
+			  double **gain_x_scale,
+			  double **gain_xd_scale,
+			  double **gain_a_scale,
+			  double **gain_ad_scale)
 
 {
   double         default_gain   = 800;  // was 450
@@ -326,6 +349,9 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
   double         corient_error[N_CART+1];
   double         cref[N_ENDEFFS*6+1];
   static double  cref_integral[N_ENDEFFS*6+1];
+  double         q_rel[N_QUAT+1];
+  double         q_rel_angle;
+  double         log_q_mult;
 
   int            i,j,n,m;
   int            nr = 0;
@@ -357,39 +383,51 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
     bzero((char *)&cref_integral,sizeof(cref_integral));
 
   // compute orientation error term for quaterion feedback control
-  quatErrorVector(cdes_orient[HAND].q,cart_orient[HAND].q,corient_error);
+  quatRelative(cart_orient[HAND].q,cdes_orient[HAND].q,q_rel);
+  for (i=1; i<=N_CART; ++i)
+    corient_error[i] = q_rel[_Q1_+i-1];
+
+  q_rel_angle = acos(q_rel[_Q0_]);
+  log_q_mult = q_rel_angle/(sqrt(vec_mult_inner_size(corient_error,corient_error,N_CART))+1.e-6);
   
   // prepare the impdance controller, i.e., compute operational
   // space force command
   
-  for (j= _X_; j<= _Z_; ++j) {
+  for (j= _X_; j<= _Z_; ++j) {  /* translation */
     
     if (status[j]) {
       ++count;
-      
+
       cref_integral[count] += gain_integral * (cdes[HAND].x[j]  - cart_state[HAND].x[j]);
-      
-      cref[count] = cref_integral[count] +
-	(cdes[HAND].xd[j]  - cart_state[HAND].xd[j]) * 2.*sqrt(default_gain) * gain_xd_scale[j] +
-	(cdes[HAND].x[j]  - cart_state[HAND].x[j]) * default_gain * gain_x_scale[j];
+      if (cref_integral[count] > MAX_INTEGRAL_FORCE)
+	cref_integral[count] = MAX_INTEGRAL_FORCE;
+
+      cref[count] = cref_integral[count];
+      for (n= _X_; n<= _Z_; ++n)      
+	cref[count] += 
+	  (cdes[HAND].xd[n]  - cart_state[HAND].xd[n]) * 2.*sqrt(default_gain) * gain_xd_scale[j][n] +
+	  (cdes[HAND].x[n]  - cart_state[HAND].x[n]) * default_gain * gain_x_scale[j][n];
     }
   }
   
-
   for (j= _A_; j<= _G_ ; ++j) { /* orientation */
+
     if (status[N_CART + j]) {
       ++count;
-      
-      cref_integral[count] +=  - corient_error[j] * gain_integral;
-      
-      cref[count] = cref_integral[count] +
-	(cdes_orient[HAND].ad[j] - cart_orient[HAND].ad[j]) *0.025 * 2.0 * sqrt(default_gain_orient) * gain_ad_scale[j] - 
-	corient_error[j] * default_gain_orient * gain_a_scale[j]; 
+
+      cref_integral[count] +=  0.1 * log_q_mult * corient_error[j] * gain_integral;
+      if (cref_integral[count] > MAX_INTEGRAL_MOMENT)
+	cref_integral[count] = MAX_INTEGRAL_MOMENT;
+
+      cref[count] = cref_integral[count];
+      for (n= _A_; n<= _G_ ; ++n) 
+	cref[count] += 
+	  (cdes_orient[HAND].ad[n] - cart_orient[HAND].ad[n]) *0.025 * 2.0 * sqrt(default_gain_orient) * gain_ad_scale[j][n] + 
+	  log_q_mult * corient_error[n] * default_gain_orient * gain_a_scale[j][n]; 
     }
   }
   
-
-    // build the desired state and uff
+  // build the desired state and uff
   for (i=1; i<=N_DOFS; ++i) {
     state[i].th   = joint_state[i].th;  // zeros out P control on motor_servo
     state[i].thd  = joint_state[i].thd; // zeros out D control on motor_servo
