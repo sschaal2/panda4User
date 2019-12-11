@@ -96,7 +96,7 @@ pose_x        	   rel 0.0 0.0 0.10
 pose_q        	   1 rel 1 0 0 0
 gripper_start 	   abs 0.0  100
 gripper_end   	   abs 0.0  100
-max_wrench    	   cont 20 20 40 5 5 5 
+max_wrench    	   cont 20 20 50 5 5 5 
 }
 
 
@@ -201,7 +201,7 @@ manipulation_frame ref
 duration      	   2
 pose_x        	   abs 0.0 0.00 0.018
 pose_q        	   1 abs 1 0 0 0
-gripper_start 	   abs 0.025 0
+gripper_start 	   abs 0.02 0
 gripper_end   	   abs 0.0  100
 cart_gain_x_scale  1.4 1.4 1.4 1.4 1.4 1.4
 cart_gain_a_scale  1.4 1.4 1.4 1.4 1.4 1.4
@@ -218,7 +218,7 @@ pose_x        	   abs 0.0 0.0 -0.10
 pose_q        	   1 abs 1 0 0 0
 gripper_start 	   abs 0.0  100
 gripper_end   	   abs 0.0  100
-max_wrench    	   cont 20 20 40 5 5 5 
+max_wrench    	   cont 20 20 50 5 5 5 
 }
 {
 name               move_away

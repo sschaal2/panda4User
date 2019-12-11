@@ -415,6 +415,8 @@ init_sm_task(void)
     addVarToCollect((char *)&(pos_error),string,"m", DOUBLE,FALSE);
     sprintf(string,"sm_orient_error");
     addVarToCollect((char *)&(orient_error),string,"rad", DOUBLE,FALSE);
+    sprintf(string,"sm_state_id");
+    addVarToCollect((char *)&(current_state_sm),string,"-", INT,FALSE);
     
     updateDataCollectScript();
     

@@ -121,6 +121,25 @@ init_sm_controllers( void )
 		    controller_gain_thd, controller_gain_int))
       return;
 
+    // add variables to data collection
+    for (i=1; i<=N_ENDEFFS; ++i) {
+      sprintf(string,"%s_fi_x",cart_names[i]);
+      addVarToCollect((char *)&(cref_integral[(i-1)*N_ENDEFFS+_X_]),string,"N", DOUBLE,FALSE);
+      sprintf(string,"%s_fi_y",cart_names[i]);
+      addVarToCollect((char *)&(cref_integral[(i-1)*N_ENDEFFS+_Y_]),string,"N", DOUBLE,FALSE);      
+      sprintf(string,"%s_fi_z",cart_names[i]);
+      addVarToCollect((char *)&(cref_integral[(i-1)*N_ENDEFFS+_Z_]),string,"N", DOUBLE,FALSE);            
+
+      sprintf(string,"%s_ti_x",cart_names[i]);
+      addVarToCollect((char *)&(cref_integral[(i-1)*N_ENDEFFS+_A_+N_CART]),string,"Nm", DOUBLE,FALSE);
+      sprintf(string,"%s_ti_y",cart_names[i]);
+      addVarToCollect((char *)&(cref_integral[(i-1)*N_ENDEFFS+_B_+N_CART]),string,"Nm", DOUBLE,FALSE);      
+      sprintf(string,"%s_ti_z",cart_names[i]);
+      addVarToCollect((char *)&(cref_integral[(i-1)*N_ENDEFFS+_G_+N_CART]),string,"Nm", DOUBLE,FALSE);            
+    }
+    
+    updateDataCollectScript();
+
     sm_controllers_initialized = TRUE;
     
   }
