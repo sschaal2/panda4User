@@ -526,6 +526,8 @@ init_sm_task(void)
     target[i] = joint_default_state[i];
     last_target[i] = joint_default_state[i];
   }
+
+  /*
   target[J1].th  = -0.023;
   target[J2].th  =  0.29;
   target[J3].th  =  0.029;
@@ -533,6 +535,7 @@ init_sm_task(void)
   target[J5].th  = 0.092;
   target[J6].th  = 2.237;
   target[J7].th  = -0.867;
+  */
 
   des_gripper_width = 0.05;
   sendGripperMoveCommand(des_gripper_width,0.1);
@@ -832,6 +835,7 @@ run_sm_task(void)
       for (i=1; i<=N_CART; ++i) {
 	min_jerk_next_step(cdes[HAND].x[i],
 			   cdes[HAND].xd[i],
+
 			   cdes[HAND].xdd[i],
 			   ctarget[HAND].x[i],
 			   ctarget[HAND].xd[i],
@@ -868,7 +872,7 @@ run_sm_task(void)
     // check whether there is an exit condtion which overules progressing 
     // to the next state
     
-    if (time_to_go < 0 && current_target_sm.exit_condition) {
+    if (time_to_go < 0 && current_target_sm.exit_condition && !ft_exception_flag) {
       int    exit_flag = TRUE;
       
       switch(current_target_sm.exit_condition)
@@ -1212,8 +1216,8 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
 		    double *x_next, double *xd_next, double *xdd_next)
 
 {
-  double t1,t2,t3,t4,t5;
-  double tau,tau1,tau2,tau3,tau4,tau5;
+  long double t1,t2,t3,t4,t5;
+  long double tau,tau1,tau2,tau3,tau4,tau5;
   int    i,j;
 
   // a safety check
@@ -1234,27 +1238,29 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
   tau5 = tau4 * tau;
 
   // calculate the constants
-  const double dist   = t - x;
-  const double p1     = t;
-  const double p0     = x;
-  const double a1t2   = tdd;
-  const double a0t2   = xdd;
-  const double v1t1   = td;
-  const double v0t1   = xd;
+  long double dist   = t - x;
+  long double p1     = t;
+  long double p0     = x;
+  long double a1t2   = tdd*tau2;
+  long double a0t2   = xdd*tau2;
+  long double v1t1   = td*tau1;
+  long double v0t1   = xd*tau1;
+
+  // guards against numerical drift for large tau
+  if (fabs(dist) < 1.e-5)
+    dist = 0.0;
+
+  long double c1 = (6.*dist + (a1t2 - a0t2)/2. - 3.*(v0t1 + v1t1));
+  long double c2 = (-15.*dist + (3.*a0t2 - 2.*a1t2)/2. + (8.*v0t1 + 7.*v1t1))*tau1; 
+  long double c3 = (10.*dist + (a1t2 - 3.*a0t2)/2. - (6.*v0t1 + 4.*v1t1))*tau2; 
+  long double c4 = xdd/2.;
+  long double c5 = xd;
+  long double c6 = x;
   
-  const double c1 = 6.*dist/tau5 + (a1t2 - a0t2)/(2.*tau3) - 
-    3.*(v0t1 + v1t1)/tau4;
-  const double c2 = -15.*dist/tau4 + (3.*a0t2 - 2.*a1t2)/(2.*tau2) +
-    (8.*v0t1 + 7.*v1t1)/tau3; 
-  const double c3 = 10.*dist/tau3+ (a1t2 - 3.*a0t2)/(2.*tau) -
-    (6.*v0t1 + 4.*v1t1)/tau2; 
-  const double c4 = xdd/2.;
-  const double c5 = xd;
-  const double c6 = x;
-  
-  *x_next   = c1*t5 + c2*t4 + c3*t3 + c4*t2 + c5*t1 + c6;
-  *xd_next  = 5.*c1*t4 + 4*c2*t3 + 3*c3*t2 + 2*c4*t1 + c5;
-  *xdd_next = 20.*c1*t3 + 12.*c2*t2 + 6.*c3*t1 + 2.*c4;
+  *x_next   = (c1*t5 + c2*t4 + c3*t3)/tau5 + c4*t2 + c5*t1 + c6;
+  *xd_next  = (5.*c1*t4 + 4*c2*t3 + 3*c3*t2)/tau5 + 2.*c4*t1 + c5;
+  *xdd_next = (20.*c1*t3 + 12.*c2*t2 + 6.*c3*t1)/tau5 + 2.*c4;
+
   
   return TRUE;
 }
@@ -2149,7 +2155,9 @@ assignCurrentSMTarget(StateMachineTarget smt,
     }
   }
 
-  // print_vec_size("ctarget",ct[HAND].x,N_CART);
+  //print_vec_size("ctarget",ct[HAND].x,N_CART);
+  // print_vec_size("ctarget",ct[HAND].xd,N_CART);
+  //print_vec_size("ctarget",ct[HAND].xdd,N_CART);
   
   // assign the target orientation if needed
   if (smc->use_orient) {
@@ -2168,12 +2176,12 @@ assignCurrentSMTarget(StateMachineTarget smt,
       quatMult(reference_state_pose_q,smc->pose_q,cto[HAND].q);
       //print_vec_size("after",cto[HAND].q,4);
     } else if (smc->pose_q_is_relative == REL && smc->manipulation_frame == REF_FRAME) {	
-      print_vec_size("before",cto[HAND].q,4);
-      print_vec_size("desired change",smt.pose_q,4);
+      //print_vec_size("before",cto[HAND].q,4);
+      //print_vec_size("desired change",smt.pose_q,4);
       mat_vec_mult_size(R,N_CART,N_CART,&(smt.pose_q[_Q0_]),N_CART,&(smc->pose_q[_Q0_]));
-      print_vec_size("rotated desired change",smc->pose_q,4);      
+      //print_vec_size("rotated desired change",smc->pose_q,4);      
       quatMult(cto[HAND].q,smc->pose_q,cto[HAND].q);
-      print_vec_size("after",cto[HAND].q,4);
+      //print_vec_size("after",cto[HAND].q,4);
     } else {
       for (i=1; i<=N_QUAT; ++i) {
 	cto[HAND].q[i] = smc->pose_q[i];
