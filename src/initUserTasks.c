@@ -60,7 +60,7 @@ initUserTasks(void)
   //sprintf(initial_user_command,"go0");
 
   char cwd[PATH_MAX];
-  //getcwd(cwd, sizeof(cwd));
+  getcwd(cwd, sizeof(cwd));
   printf("Current working dir: %s\n", cwd);  
 }
 
