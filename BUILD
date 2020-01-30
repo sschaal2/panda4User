@@ -1,10 +1,14 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
+exports_files(["LICENSE"])
+
 # Every SL directory has a symbolic link to config/bazel to access the config files as local path.
 # While not pretty, this allows BUILD files to be independt of the SL_ROOT workspace path, and only
 # SL.bzl needs to be adjusted
 
-load(":bazel/SL.bzl", "SL_ROOT","SL_ROOT_WS")
+load(":bazel/SL.bzl", "SL_ROOT", "SL_ROOT_WS")
 
 # the name of this robot: various rules use the NAME such that BUILD files are easy to adapt to another robot
 NAME = "panda"
@@ -16,30 +20,31 @@ NAME = "panda"
 # See genrules below if you want to modify.
 config_setting(
     name = "x86_64mac",
-    define_values = {"MACHTYPE": "x86_64mac"}
+    define_values = {"MACHTYPE": "x86_64mac"},
 )
-  
+
 config_setting(
     name = "x86_64",
-    define_values = {"MACHTYPE": "x86_64"}
+    define_values = {"MACHTYPE": "x86_64"},
 )
-  
+
 # SL builds several binaries, which are started by the x<NAME> binary
 cc_binary(
-    name = "x"+NAME,
+    name = "x" + NAME,
     srcs = [
-    	 SL_ROOT+NAME+":main_srcs"
+        SL_ROOT + NAME + ":main_srcs",
     ],
     includes = [
-    	"include",
+        "include",
     ],
     deps = [
-        SL_ROOT+NAME+":"+NAME,
-        SL_ROOT+"SL:SLcommon",
-        SL_ROOT+"utilities:utility",
-        "//third_party/freeglut:freeglut_base",
-        "//third_party/glu:native",
+        SL_ROOT + NAME + ":" + NAME,
+        SL_ROOT + "SL:SLcommon",
+        SL_ROOT + "utilities:utility",
         "//third_party/Xorg:libX11",
+        "//third_party/freeglut:headers",
+        "//third_party/freeglut:native",
+        "//third_party/glu:native",
     ],
 )
 
@@ -61,11 +66,11 @@ cc_binary(
         "include",
     ],
     deps = [
-        SL_ROOT+"SL:SLcommon",
-        SL_ROOT+"SL:SLtask",
-        SL_ROOT+NAME+":"+NAME,
-        SL_ROOT+NAME+":"+NAME+"_task",
-        SL_ROOT+"utilities:utility",
+        SL_ROOT + "SL:SLcommon",
+        SL_ROOT + "SL:SLtask",
+        SL_ROOT + NAME + ":" + NAME,
+        SL_ROOT + NAME + ":" + NAME + "_task",
+        SL_ROOT + "utilities:utility",
     ],
 )
 
@@ -73,16 +78,16 @@ cc_binary(
 cc_binary(
     name = "xmotor",
     srcs = [
-    	 SL_ROOT+"panda:motor_srcs"    
+        SL_ROOT + "panda:motor_srcs",
     ],
     includes = [
-        "include",    
+        "include",
     ],
     deps = [
-        SL_ROOT+NAME+":"+NAME,
-        SL_ROOT+"SL:SLcommon",
-        SL_ROOT+"SL:SLmotor",
-        SL_ROOT+"utilities:utility",
+        SL_ROOT + NAME + ":" + NAME,
+        SL_ROOT + "SL:SLcommon",
+        SL_ROOT + "SL:SLmotor",
+        SL_ROOT + "utilities:utility",
     ],
 )
 
@@ -96,14 +101,15 @@ cc_binary(
         "include",
     ],
     deps = [
-        SL_ROOT+"SL:SLcommon",
-        SL_ROOT+"SL:SLopenGL",
-        SL_ROOT+NAME+":"+NAME,
-        SL_ROOT+NAME+":"+NAME+"_openGL",
-        SL_ROOT+"utilities:utility",
-        "//third_party/freeglut:freeglut_base",
+        SL_ROOT + "SL:SLcommon",
+        SL_ROOT + "SL:SLopenGL",
+        SL_ROOT + NAME + ":" + NAME,
+        SL_ROOT + NAME + ":" + NAME + "_openGL",
+        SL_ROOT + "utilities:utility",
+        "//third_party/Xorg:libX11",
+        "//third_party/freeglut:headers",
+        "//third_party/freeglut:native",
         "//third_party/glu:native",
-        "//third_party/Xorg:libX11",	
     ],
 )
 
@@ -117,11 +123,11 @@ cc_binary(
         "include",
     ],
     deps = [
-        SL_ROOT+"SL:SLcommon",
-        SL_ROOT+"SL:SLsimulation",
-        SL_ROOT+NAME+":"+NAME,
-        SL_ROOT+NAME+":"+NAME+"_simulation",
-        SL_ROOT+"utilities:utility",
+        SL_ROOT + "SL:SLcommon",
+        SL_ROOT + "SL:SLsimulation",
+        SL_ROOT + NAME + ":" + NAME,
+        SL_ROOT + NAME + ":" + NAME + "_simulation",
+        SL_ROOT + "utilities:utility",
     ],
 )
 
@@ -129,97 +135,108 @@ cc_binary(
 cc_binary(
     name = "xpest",
     srcs = [
-        SL_ROOT+"SL:parm_est_srcs",
+        SL_ROOT + "SL:parm_est_srcs",
     ],
     includes = [
         "include",
     ],
     deps = [
-        SL_ROOT+NAME+":"+NAME,
-        SL_ROOT+"SL:SLcommon",
-        SL_ROOT+"utilities:utility",
+        SL_ROOT + NAME + ":" + NAME,
+        SL_ROOT + "SL:SLcommon",
+        SL_ROOT + "utilities:utility",
     ],
 )
-
 
 # the following genrules just copy binaries to the MACHTYPE directory. To avoid errors in genrule, the official output $@ needs
 # to be written (by touch). Note that it is not the BAZEL way to modify a source directory by copying
 # executable files into it. This could be changed, but it is the easiest compatibility with the CMAKE build.
 
-CMD_X86_64MAC_1 = "mkdir -p "+SL_ROOT_WS+"pandaUser/x86_64mac && touch $@ && mv -f $(BINDIR)/"+SL_ROOT_WS+"pandaUser/"
-CMD_X86_64MAC_2 = " "+SL_ROOT_WS+"pandaUser/x86_64mac/"
-CMD_X86_64_1    = "mkdir -p "+SL_ROOT_WS+"pandaUser/x86_64 && touch $@ && mv -f $(BINDIR)/"+SL_ROOT_WS+"pandaUser/"
-CMD_X86_64_2    = " "+SL_ROOT_WS+"pandaUser/x86_64/"
+CMD_X86_64MAC_1 = "mkdir -p " + SL_ROOT_WS + "pandaUser/x86_64mac && touch $@ && mv -f $(BINDIR)/" + SL_ROOT_WS + "pandaUser/"
+
+CMD_X86_64MAC_2 = " " + SL_ROOT_WS + "pandaUser/x86_64mac/"
+
+CMD_X86_64_1 = "mkdir -p " + SL_ROOT_WS + "pandaUser/x86_64 && touch $@ && mv -f $(BINDIR)/" + SL_ROOT_WS + "pandaUser/"
+
+CMD_X86_64_2 = " " + SL_ROOT_WS + "pandaUser/x86_64/"
 
 genrule(
     name = "install_xtask",
     srcs = [":xtask"],
-    outs = ["tmp/xtask"],    
-    cmd =  select({
-    	":x86_64mac": CMD_X86_64MAC_1+"xtask"+CMD_X86_64MAC_2,
-    	":x86_64": CMD_X86_64_1+"xtask"+CMD_X86_64_2,
-	"//conditions:default": CMD_X86_64_1+"xtask"+CMD_X86_64_2,
-	}),
+    outs = ["tmp/xtask"],
+    cmd = select({
+        ":x86_64mac": CMD_X86_64MAC_1 + "xtask" + CMD_X86_64MAC_2,
+        ":x86_64": CMD_X86_64_1 + "xtask" + CMD_X86_64_2,
+        "//conditions:default": CMD_X86_64_1 + "xtask" + CMD_X86_64_2,
+    }),
     local = 1,
 )
 
 genrule(
     name = "install_xmotor",
     srcs = [":xmotor"],
-    outs = [SL_ROOT_WS+"pandaUser/x86_64/xmotor"],    
-    cmd =  select({
-    	":x86_64mac": CMD_X86_64MAC_1+"xmotor"+CMD_X86_64MAC_2,
-    	":x86_64": CMD_X86_64_1+"xmotor"+CMD_X86_64_2,
-	"//conditions:default": CMD_X86_64_1+"xmotor"+CMD_X86_64_2,
-	}),
+    outs = [SL_ROOT_WS + "pandaUser/x86_64/xmotor"],
+    cmd = select({
+        ":x86_64mac": CMD_X86_64MAC_1 + "xmotor" + CMD_X86_64MAC_2,
+        ":x86_64": CMD_X86_64_1 + "xmotor" + CMD_X86_64_2,
+        "//conditions:default": CMD_X86_64_1 + "xmotor" + CMD_X86_64_2,
+    }),
     local = 1,
 )
 
 genrule(
     name = "install_xsimulation",
     srcs = [":xsimulation"],
-    outs = [SL_ROOT_WS+"pandaUser/x86_64/xsimulation"],    
-    cmd =  select({
-    	":x86_64mac": CMD_X86_64MAC_1+"xsimulation"+CMD_X86_64MAC_2,
-    	":x86_64": CMD_X86_64_1+"xsimulation"+CMD_X86_64_2,
-	"//conditions:default": CMD_X86_64_1+"xtask"+CMD_X86_64_2,
-	}),
+    outs = [SL_ROOT_WS + "pandaUser/x86_64/xsimulation"],
+    cmd = select({
+        ":x86_64mac": CMD_X86_64MAC_1 + "xsimulation" + CMD_X86_64MAC_2,
+        ":x86_64": CMD_X86_64_1 + "xsimulation" + CMD_X86_64_2,
+        "//conditions:default": CMD_X86_64_1 + "xtask" + CMD_X86_64_2,
+    }),
     local = 1,
 )
 
 genrule(
     name = "install_xopengl",
     srcs = [":xopengl"],
-    outs = [SL_ROOT_WS+"pandaUser/x86_64/xopengl"],    
-    cmd =  select({
-    	":x86_64mac": CMD_X86_64MAC_1+"xopengl"+CMD_X86_64MAC_2,
-    	":x86_64": CMD_X86_64_1+"xopengl"+CMD_X86_64_2,
-	"//conditions:default": CMD_X86_64_1+"xtask"+CMD_X86_64_2,
-	}),
+    outs = [SL_ROOT_WS + "pandaUser/x86_64/xopengl"],
+    cmd = select({
+        ":x86_64mac": CMD_X86_64MAC_1 + "xopengl" + CMD_X86_64MAC_2,
+        ":x86_64": CMD_X86_64_1 + "xopengl" + CMD_X86_64_2,
+        "//conditions:default": CMD_X86_64_1 + "xtask" + CMD_X86_64_2,
+    }),
     local = 1,
 )
 
 genrule(
     name = "install_xpanda",
     srcs = [":xpanda"],
-    outs = [SL_ROOT_WS+"pandaUser/x86_64/xpanda"],    
-    cmd =  select({
-    	":x86_64mac": CMD_X86_64MAC_1+"xpanda"+CMD_X86_64MAC_2,
-    	":x86_64": CMD_X86_64_1+"xpanda"+CMD_X86_64_2,
-	"//conditions:default": CMD_X86_64_1+"xtask"+CMD_X86_64_2,
-	}),
+    outs = [SL_ROOT_WS + "pandaUser/x86_64/xpanda"],
+    cmd = select({
+        ":x86_64mac": CMD_X86_64MAC_1 + "xpanda" + CMD_X86_64MAC_2,
+        ":x86_64": CMD_X86_64_1 + "xpanda" + CMD_X86_64_2,
+        "//conditions:default": CMD_X86_64_1 + "xtask" + CMD_X86_64_2,
+    }),
     local = 1,
 )
 
 genrule(
     name = "install_xpest",
     srcs = [":xpest"],
-    outs = [SL_ROOT_WS+"pandaUser/x86_64/xpest"],    
-    cmd =  select({
-    	":x86_64mac": CMD_X86_64MAC_1+"xpest"+CMD_X86_64MAC_2,
-    	":x86_64": CMD_X86_64_1+"xpest"+CMD_X86_64_2,
-	"//conditions:default": CMD_X86_64_1+"xtask"+CMD_X86_64_2,
-	}),
+    outs = [SL_ROOT_WS + "pandaUser/x86_64/xpest"],
+    cmd = select({
+        ":x86_64mac": CMD_X86_64MAC_1 + "xpest" + CMD_X86_64MAC_2,
+        ":x86_64": CMD_X86_64_1 + "xpest" + CMD_X86_64_2,
+        "//conditions:default": CMD_X86_64_1 + "xtask" + CMD_X86_64_2,
+    }),
     local = 1,
 )
 
+cc_library(
+    name = "src/qfsp_task",
+    srcs = ["src/qfsp_task.c"],
+)
+
+cc_library(
+    name = "src/vision_calibration_task",
+    srcs = ["src/vision_calibration_task.c"],
+)

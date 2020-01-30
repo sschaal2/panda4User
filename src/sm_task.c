@@ -1339,7 +1339,7 @@ read_state_machine(char *fname) {
   int    found_start = FALSE;
   int    count = 0;
   char  *c;
-  char   cr;
+  int    cr;
   char   saux[MAX_BIG_STRING+1];
   double aux;
     
