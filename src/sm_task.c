@@ -1247,7 +1247,7 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
   long double v0t1   = xd*tau1;
 
   // guards against numerical drift for large tau
-  if (fabs(dist) < 1.e-5)
+  if (fabsl(dist) < 1.e-5)
     dist = 0.0;
 
   long double c1 = (6.*dist + (a1t2 - a0t2)/2. - 3.*(v0t1 + v1t1));
@@ -1339,7 +1339,7 @@ read_state_machine(char *fname) {
   int    found_start = FALSE;
   int    count = 0;
   char  *c;
-  char   cr;
+  int    cr;
   char   saux[MAX_BIG_STRING+1];
   double aux;
     
