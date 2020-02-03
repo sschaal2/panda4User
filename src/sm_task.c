@@ -996,15 +996,44 @@ run_sm_task(void)
 
   // add force control if the controllers has force gains 
   double force_world[N_CART+1], torque_world[N_CART+1];
+  double force_local[N_CART+1], torque_local[N_CART+1];  
+  double offset[N_CART+1];
+  double torque_correction[N_CART+1];
+
+  for (j=1; j<=N_CART; ++j) {
+    force_local[j]  = misc_sensor[C_FX-1+j];
+    torque_local[j] = misc_sensor[C_MX-1+j];
+  }
+
+  // convert the F/T sensor into the compliance frame, which could be at the top of the
+  // endeffector tool (e.g., connector) but also further down. Currently, only Z direction
+  // is taking into account for shifting the compliance frame
+
+  vec_zero_size(offset,N_CART);
+  offset[_Z_] = endeff[HAND].x[_Z_]-(FL+FT_OFF_Z);
+  vec_mult_outer_size(offset, force_local, N_CART, torque_correction);
+  
+  for (i=1; i<=N_CART; ++i) {
+    torque_local[i] -= torque_correction[i];
+  }
 
   // need F/T signals in world coordinates
   for (i=1; i<=N_CART; ++i) {
     force_world[i] = torque_world[i] = 0;
     for (j=1; j<=N_CART; ++j) {
-      force_world[i]  += Alink[FLANGE][i][j] * misc_sensor[C_FX-1+j];
-      torque_world[i] += Alink[FLANGE][i][j] * misc_sensor[C_MX-1+j];
+      force_world[i]  += Alink[FLANGE][i][j] * force_local[j];
+      torque_world[i] += Alink[FLANGE][i][j] * torque_local[j];
     }
   }
+
+  // send to visualization
+  float data[3*N_CART+1];
+  for (i=1; i<=N_CART; ++i) {
+    data[i]           = force_world[i];
+    data[i+N_CART]    = torque_world[i];
+    data[i+2*N_CART]  = cart_state[HAND].x[i];
+  }
+  sendUserGraphics("displayFTVector",&(data[1]),3*N_CART*sizeof(float));
 
   for (i=1; i<=N_DOFS; ++i) {
     for (j=1; j<=N_CART; ++j) {
