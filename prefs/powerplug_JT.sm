@@ -41,17 +41,19 @@
 // such that the connector needs to push beyond this surface, for 0.035m
 
 //reference_state_pose_x	0.562 0.184 0.134        // 1.1 slot
-//reference_state_pose_x	0.562 0.129 0.134        // 1.2 slot
-reference_state_pose_x	0.562 0.019 0.134        // 1.4 slot
+reference_state_pose_x	0.562 0.129 0.134        // 1.2 slot
+//reference_state_pose_x	0.562 0.019 0.134        // 1.4 slot
+
+
 reference_state_pose_q	0.0 -0.7071 0.7071 0.0  // vertical down aligned with Z
 
-// the table of reference state perturbations
-reference_state_pose_delta_table prefs/all_powerplug_slots.txt
-//reference_state_pose_delta_table prefs/half_range_delta_pose.txt
+// the table of reference state perturbations//
+//reference_state_pose_delta_table prefs/all_powerplug_slots.txt
+reference_state_pose_delta_table prefs/half_range_delta_pose.txt
 //reference_state_pose_delta_table prefs/full_range_delta_pose.txt
 
-// endeffector modification: QSFP connect length + flange+finger+gripper PowerPlug=0.035m
-endeffector   0.1  0 0 0  0 0 0.26  0 0 2.356
+// endeffector modification: QSFP connect length + flange+finger+gripper PowerPlug=0.035m + Robotiq finger: +0.025
+endeffector   0.1  0 0 0  0 0 0.285  0 0 2.356
 
 // default gains
 default_cart_gain_x_scale	1 1 1 1 1 1
@@ -66,7 +68,7 @@ default_controller ModelImpedanceJt
 name               move_to_grasp
 manipulation_frame abs
 duration      	   2
-pose_x        	   abs 0.562 0.019 0.14
+pose_x        	   abs 0.562 0.018 0.14
 pose_q        	   1 abs 0.0 -0.7071 0.7071 0.0
 gripper_start 	   abs 0.05 0
 gripper_end        abs 0.05 0
@@ -167,8 +169,8 @@ pose_q        	   1 rel 1 0 0 0
 gripper_start 	   abs 0.0  100
 gripper_end   	   abs 0.0  100
 cart_gain_x_scale  1.2 1.2 1.2 1.2 1.2 1.2
-force_desired      1 0 0 -60
-moment_desired     1.5 0 0 0
+force_desired      1 0 0 -40
+moment_desired     -0.5 0 0 0
 max_wrench    	   last 30 30 70 10 10 10
 exit_condition	   pos 10 0.01 0.0 0 0
 }
@@ -200,12 +202,12 @@ manipulation_frame ref
 duration      	   2
 pose_x        	   abs 0.0 0.00 0.018
 pose_q        	   1 abs 1 0 0 0
-gripper_start 	   abs 0.02 0
+gripper_start 	   abs 0.025 0
 gripper_end   	   abs 0.0  100
 cart_gain_x_scale  1.4 1.4 1.4 1.4 1.4 1.4
 cart_gain_a_scale  1.4 1.4 1.4 1.4 1.4 1.4
 cart_gain_integral 0.5
-max_wrench   	   last 10 10 10 5 5 5
+max_wrench   	   last 10 10 10 7 7 7
 exit_condition	   pos_orient 10 0.0025 0.01 0 0
 }
 {
