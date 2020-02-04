@@ -15,6 +15,8 @@ Remarks:
 #include "SL_user.h"
 #include "SL_man.h"
 #include "SL_task_servo.h"
+#include "unistd.h"
+#include "limits.h"
 
 /* global variables */
 
@@ -48,6 +50,7 @@ initUserTasks(void)
   extern void add_impedance_test_task();
   extern void add_cilantro_track_task();
 
+
   add_gravcomp_task();
   add_sm_task();
   add_test_task();
@@ -55,5 +58,10 @@ initUserTasks(void)
   add_cilantro_track_task();
 
   //sprintf(initial_user_command,"go0");
+
+  char cwd[PATH_MAX];
+  getcwd(cwd, sizeof(cwd));
+  printf("Current working dir: %s\n", cwd);  
 }
 
+ 

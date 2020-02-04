@@ -2546,7 +2546,7 @@ init_filters(void)
   if (filterfile == NULL) {
     
     printf("Cannot find filter file >%s<\n",string);
-    beep(1); 
+    my_beep(1); 
     
     return FALSE;
     

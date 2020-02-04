@@ -87,7 +87,8 @@ enum ExitOption
 enum ManipulationFrame
   {
     ABS_FRAME=0,
-    REF_FRAME
+    REF_FRAME,
+    BASE_REF_FRAME    
   };
 		 
 enum FunctionCalls
@@ -149,6 +150,7 @@ static double reference_state_pose_x_base[N_CART+1];
 static double reference_state_pose_q_base[N_QUAT+1];
 static double reference_state_pose_delta_x_table[MAX_STATES_SM+1][N_CART+1];
 static double reference_state_pose_delta_q_table[MAX_STATES_SM+1][N_QUAT+1];
+static int    allow_base_reference_frame=FALSE;
 static int    n_states_sm = 0;
 static int    n_states_pose_delta = 0;
 static int    current_state_pose_delta = 0;
@@ -666,12 +668,21 @@ run_sm_task(void)
       }
 
       // assign to simpler variable and take into account the reference frame of the state
-      assignCurrentSMTarget(targets_sm[current_state_sm],
-			    reference_state_pose_x,
-			    reference_state_pose_q,
-			    ctarget,
-			    ctarget_orient,
-			    &current_target_sm);
+      if (targets_sm[current_state_sm].manipulation_frame == BASE_REF_FRAME && allow_base_reference_frame) {
+	assignCurrentSMTarget(targets_sm[current_state_sm],
+			      reference_state_pose_x_base,
+			      reference_state_pose_q_base,
+			      ctarget,
+			      ctarget_orient,
+			      &current_target_sm);
+      } else {
+	assignCurrentSMTarget(targets_sm[current_state_sm],
+			      reference_state_pose_x,
+			      reference_state_pose_q,
+			      ctarget,
+			      ctarget_orient,
+			      &current_target_sm);
+      }
       
       if (current_target_sm.cart_gain_integral != 0) 
 	sprintf(msg,"    %d.%-30s with %sInt\n",
@@ -998,15 +1009,44 @@ run_sm_task(void)
 
   // add force control if the controllers has force gains 
   double force_world[N_CART+1], torque_world[N_CART+1];
+  double force_local[N_CART+1], torque_local[N_CART+1];  
+  double offset[N_CART+1];
+  double torque_correction[N_CART+1];
+
+  for (j=1; j<=N_CART; ++j) {
+    force_local[j]  = misc_sensor[C_FX-1+j];
+    torque_local[j] = misc_sensor[C_MX-1+j];
+  }
+
+  // convert the F/T sensor into the compliance frame, which could be at the top of the
+  // endeffector tool (e.g., connector) but also further down. Currently, only Z direction
+  // is taking into account for shifting the compliance frame
+
+  vec_zero_size(offset,N_CART);
+  offset[_Z_] = endeff[HAND].x[_Z_]-(FL+FT_OFF_Z);
+  vec_mult_outer_size(offset, force_local, N_CART, torque_correction);
+  
+  for (i=1; i<=N_CART; ++i) {
+    torque_local[i] -= torque_correction[i];
+  }
 
   // need F/T signals in world coordinates
   for (i=1; i<=N_CART; ++i) {
     force_world[i] = torque_world[i] = 0;
     for (j=1; j<=N_CART; ++j) {
-      force_world[i]  += Alink[FLANGE][i][j] * misc_sensor[C_FX-1+j];
-      torque_world[i] += Alink[FLANGE][i][j] * misc_sensor[C_MX-1+j];
+      force_world[i]  += Alink[FLANGE][i][j] * force_local[j];
+      torque_world[i] += Alink[FLANGE][i][j] * torque_local[j];
     }
   }
+
+  // send to visualization
+  float data[3*N_CART+1];
+  for (i=1; i<=N_CART; ++i) {
+    data[i]           = force_world[i];
+    data[i+N_CART]    = torque_world[i];
+    data[i+2*N_CART]  = cart_state[HAND].x[i];
+  }
+  sendUserGraphics("displayFTVector",&(data[1]),3*N_CART*sizeof(float));
 
   for (i=1; i<=N_DOFS; ++i) {
     for (j=1; j<=N_CART; ++j) {
@@ -1249,7 +1289,7 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
   long double v0t1   = xd*tau1;
 
   // guards against numerical drift for large tau
-  if (fabs(dist) < 1.e-5)
+  if (fabsl(dist) < 1.e-5)
     dist = 0.0;
 
   long double c1 = (6.*dist + (a1t2 - a0t2)/2. - 3.*(v0t1 + v1t1));
@@ -1288,7 +1328,7 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
    "name" state_name
    "name_next" next_state_name
    "duration" movement_duration
-   "manipulation_frame" ["abs" | "ref"]
+   "manipulation_frame" ["abs" | "ref" | "bref"]
    "func_call" "...." (arbitrary name of implemented function to be called at this state)
    "pose_x" ["abs" | "rel" | "refref"] pose_x_X pose_x_Y pose_x_Z
    "pose_q" use_orient ["abs" | "rel | relref"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
@@ -1341,7 +1381,7 @@ read_state_machine(char *fname) {
   int    found_start = FALSE;
   int    count = 0;
   char  *c;
-  char   cr;
+  int    cr;
   char   saux[MAX_BIG_STRING+1];
   double aux;
     
@@ -1462,8 +1502,18 @@ read_state_machine(char *fname) {
     double aux;
 
     rc=fscanf(in,"%s",fname);
-    fp = fopen(fname,"r");
+    fp = fopen_strip(fname);
     if (fp != NULL) {
+      char allow_base_reference[100];
+
+      rc = fscanf(fp,"%s %d",allow_base_reference,&allow_base_reference_frame);
+      if (rc != 2 || strcmp(allow_base_reference,"allow_base_reference")!=0 ) {
+	printf("Table should have >allow_base_reference = 0 or 1< in first line!\n");
+	printf("Assume >allow_base_reference = 0< \n");
+	allow_base_reference_frame = FALSE;
+	rewind(fp);
+      }
+      
       while (TRUE) {
 	rc = fscanf(fp,"%lf %lf %lf %lf %lf %lf %lf",&aux,&aux,&aux,&aux,&aux,&aux,&aux);
 	if (rc == 7 && n_states_pose_delta < MAX_STATES_SM) {
@@ -1473,6 +1523,16 @@ read_state_machine(char *fname) {
 	}
       }
       rewind(fp);
+
+      rc = fscanf(fp,"%s %d",allow_base_reference,&allow_base_reference_frame);
+      if (rc != 2 && strcmp(allow_base_reference,"allow_base_reference")!=0 ) {
+	allow_base_reference_frame = FALSE;
+	rewind(fp);
+      }
+
+      if (allow_base_reference_frame < 0 || allow_base_reference_frame > 1)
+	allow_base_reference_frame = FALSE;
+      
       for (i=1; i<=n_states_pose_delta; ++i) {
 	rc = fscanf(fp,"%lf %lf %lf %lf %lf %lf %lf",
 		    &reference_state_pose_delta_x_table[i][_X_],
@@ -1571,6 +1631,8 @@ read_state_machine(char *fname) {
 	  }
 	  if (strcmp(saux,"ref")==0)
 	    sm_temp.manipulation_frame = REF_FRAME;
+	  else if (strcmp(saux,"bref")==0)
+	    sm_temp.manipulation_frame = BASE_REF_FRAME;
 	  else
 	    sm_temp.manipulation_frame = ABS_FRAME;	    	  
 	}
@@ -2125,11 +2187,13 @@ assignCurrentSMTarget(StateMachineTarget smt,
   // to get started, simply copy the target to the current target, and this what needs
   // to be fixed.
   *smc = smt;
+  if (smt.manipulation_frame == BASE_REF_FRAME)
+    smc->manipulation_frame = REF_FRAME;
 
   // the rotation matrix relative to the reference frame
   // assign to temp quaternion structure
   for (r=1; r<=N_QUAT; ++r)
-    temp_q.q[r] = reference_state_pose_q[r];
+    temp_q.q[r] = ref_q[r];
 
   // compute rotation matrix
   quatToRotMatInv(&temp_q,R);
@@ -2144,7 +2208,7 @@ assignCurrentSMTarget(StateMachineTarget smt,
   } else if (smc->pose_x_is_relative == ABS && smc->manipulation_frame == REF_FRAME) {
     mat_vec_mult_size(R,N_CART,N_CART,smt.pose_x,N_CART,smc->pose_x);
     for (i=1; i<=N_CART; ++i) {
-      ct[HAND].x[i] = reference_state_pose_x[i] + smc->pose_x[i];
+      ct[HAND].x[i] = ref_x[i] + smc->pose_x[i];
     }
   } else if (smc->pose_x_is_relative == REL && smc->manipulation_frame == REF_FRAME) {
     mat_vec_mult_size(R,N_CART,N_CART,smt.pose_x,N_CART,smc->pose_x);
@@ -2173,9 +2237,9 @@ assignCurrentSMTarget(StateMachineTarget smt,
       //print_vec_size("after",cto[HAND].q,4);
     } else if (smc->pose_q_is_relative == ABS && smc->manipulation_frame == REF_FRAME) {	
       //print_vec_size("before",cto[HAND].q,4);
-      //print_vec_size("ref_state_pose",reference_state_pose_q,4);
+      //print_vec_size("ref_state_pose",ref_q,4);
       mat_vec_mult_size(R,N_CART,N_CART,&(smt.pose_q[_Q0_]),N_CART,&(smc->pose_q[_Q0_]));
-      quatMult(reference_state_pose_q,smc->pose_q,cto[HAND].q);
+      quatMult(ref_q,smc->pose_q,cto[HAND].q);
       //print_vec_size("after",cto[HAND].q,4);
     } else if (smc->pose_q_is_relative == REL && smc->manipulation_frame == REF_FRAME) {	
       //print_vec_size("before",cto[HAND].q,4);
