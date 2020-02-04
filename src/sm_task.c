@@ -87,7 +87,8 @@ enum ExitOption
 enum ManipulationFrame
   {
     ABS_FRAME=0,
-    REF_FRAME
+    REF_FRAME,
+    BASE_REF_FRAME    
   };
 		 
 enum FunctionCalls
@@ -149,6 +150,7 @@ static double reference_state_pose_x_base[N_CART+1];
 static double reference_state_pose_q_base[N_QUAT+1];
 static double reference_state_pose_delta_x_table[MAX_STATES_SM+1][N_CART+1];
 static double reference_state_pose_delta_q_table[MAX_STATES_SM+1][N_QUAT+1];
+static int    allow_base_reference_frame=FALSE;
 static int    n_states_sm = 0;
 static int    n_states_pose_delta = 0;
 static int    current_state_pose_delta = 0;
@@ -664,12 +666,21 @@ run_sm_task(void)
       }
 
       // assign to simpler variable and take into account the reference frame of the state
-      assignCurrentSMTarget(targets_sm[current_state_sm],
-			    reference_state_pose_x,
-			    reference_state_pose_q,
-			    ctarget,
-			    ctarget_orient,
-			    &current_target_sm);
+      if (targets_sm[current_state_sm].manipulation_frame == BASE_REF_FRAME && allow_base_reference_frame) {
+	assignCurrentSMTarget(targets_sm[current_state_sm],
+			      reference_state_pose_x_base,
+			      reference_state_pose_q_base,
+			      ctarget,
+			      ctarget_orient,
+			      &current_target_sm);
+      } else {
+	assignCurrentSMTarget(targets_sm[current_state_sm],
+			      reference_state_pose_x,
+			      reference_state_pose_q,
+			      ctarget,
+			      ctarget_orient,
+			      &current_target_sm);
+      }
       
       if (current_target_sm.cart_gain_integral != 0) 
 	sprintf(msg,"    %d.%-30s with %sInt\n",
@@ -1315,7 +1326,7 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
    "name" state_name
    "name_next" next_state_name
    "duration" movement_duration
-   "manipulation_frame" ["abs" | "ref"]
+   "manipulation_frame" ["abs" | "ref" | "bref"]
    "func_call" "...." (arbitrary name of implemented function to be called at this state)
    "pose_x" ["abs" | "rel" | "refref"] pose_x_X pose_x_Y pose_x_Z
    "pose_q" use_orient ["abs" | "rel | relref"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
@@ -1489,8 +1500,18 @@ read_state_machine(char *fname) {
     double aux;
 
     rc=fscanf(in,"%s",fname);
-    fp = fopen(fname,"r");
+    fp = fopen_strip(fname);
     if (fp != NULL) {
+      char allow_base_reference[100];
+
+      rc = fscanf(fp,"%s %d",allow_base_reference,&allow_base_reference_frame);
+      if (rc != 2 || strcmp(allow_base_reference,"allow_base_reference")!=0 ) {
+	printf("Table should have >allow_base_reference = 0 or 1< in first line!\n");
+	printf("Assume >allow_base_reference = 0< \n");
+	allow_base_reference_frame = FALSE;
+	rewind(fp);
+      }
+      
       while (TRUE) {
 	rc = fscanf(fp,"%lf %lf %lf %lf %lf %lf %lf",&aux,&aux,&aux,&aux,&aux,&aux,&aux);
 	if (rc == 7 && n_states_pose_delta < MAX_STATES_SM) {
@@ -1500,6 +1521,16 @@ read_state_machine(char *fname) {
 	}
       }
       rewind(fp);
+
+      rc = fscanf(fp,"%s %d",allow_base_reference,&allow_base_reference_frame);
+      if (rc != 2 && strcmp(allow_base_reference,"allow_base_reference")!=0 ) {
+	allow_base_reference_frame = FALSE;
+	rewind(fp);
+      }
+
+      if (allow_base_reference_frame < 0 || allow_base_reference_frame > 1)
+	allow_base_reference_frame = FALSE;
+      
       for (i=1; i<=n_states_pose_delta; ++i) {
 	rc = fscanf(fp,"%lf %lf %lf %lf %lf %lf %lf",
 		    &reference_state_pose_delta_x_table[i][_X_],
@@ -1598,6 +1629,8 @@ read_state_machine(char *fname) {
 	  }
 	  if (strcmp(saux,"ref")==0)
 	    sm_temp.manipulation_frame = REF_FRAME;
+	  else if (strcmp(saux,"bref")==0)
+	    sm_temp.manipulation_frame = BASE_REF_FRAME;
 	  else
 	    sm_temp.manipulation_frame = ABS_FRAME;	    	  
 	}
@@ -2152,11 +2185,13 @@ assignCurrentSMTarget(StateMachineTarget smt,
   // to get started, simply copy the target to the current target, and this what needs
   // to be fixed.
   *smc = smt;
+  if (smt.manipulation_frame == BASE_REF_FRAME)
+    smc->manipulation_frame = REF_FRAME;
 
   // the rotation matrix relative to the reference frame
   // assign to temp quaternion structure
   for (r=1; r<=N_QUAT; ++r)
-    temp_q.q[r] = reference_state_pose_q[r];
+    temp_q.q[r] = ref_q[r];
 
   // compute rotation matrix
   quatToRotMatInv(&temp_q,R);
@@ -2171,7 +2206,7 @@ assignCurrentSMTarget(StateMachineTarget smt,
   } else if (smc->pose_x_is_relative == ABS && smc->manipulation_frame == REF_FRAME) {
     mat_vec_mult_size(R,N_CART,N_CART,smt.pose_x,N_CART,smc->pose_x);
     for (i=1; i<=N_CART; ++i) {
-      ct[HAND].x[i] = reference_state_pose_x[i] + smc->pose_x[i];
+      ct[HAND].x[i] = ref_x[i] + smc->pose_x[i];
     }
   } else if (smc->pose_x_is_relative == REL && smc->manipulation_frame == REF_FRAME) {
     mat_vec_mult_size(R,N_CART,N_CART,smt.pose_x,N_CART,smc->pose_x);
@@ -2200,9 +2235,9 @@ assignCurrentSMTarget(StateMachineTarget smt,
       //print_vec_size("after",cto[HAND].q,4);
     } else if (smc->pose_q_is_relative == ABS && smc->manipulation_frame == REF_FRAME) {	
       //print_vec_size("before",cto[HAND].q,4);
-      //print_vec_size("ref_state_pose",reference_state_pose_q,4);
+      //print_vec_size("ref_state_pose",ref_q,4);
       mat_vec_mult_size(R,N_CART,N_CART,&(smt.pose_q[_Q0_]),N_CART,&(smc->pose_q[_Q0_]));
-      quatMult(reference_state_pose_q,smc->pose_q,cto[HAND].q);
+      quatMult(ref_q,smc->pose_q,cto[HAND].q);
       //print_vec_size("after",cto[HAND].q,4);
     } else if (smc->pose_q_is_relative == REL && smc->manipulation_frame == REF_FRAME) {	
       //print_vec_size("before",cto[HAND].q,4);

@@ -196,7 +196,7 @@ max_wrench    	   cont 15 15 15 5 5 5
 }
 {
 name               prepare_regrasp
-manipulation_frame ref
+manipulation_frame bref
 duration      	   2
 pose_x        	   abs 0.0 0.00 0.018
 pose_q        	   1 abs 1 0 0 0
@@ -211,7 +211,7 @@ exit_condition	   pos_orient 10 0.0025 0.01 0 0
 {
 name               re_extract_powerplug
 name_next          approach_tilted
-manipulation_frame ref
+manipulation_frame bref
 duration      	   3
 pose_x        	   abs 0.0 0.0 -0.10
 pose_q        	   1 abs 1 0 0 0
