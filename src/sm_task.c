@@ -81,7 +81,8 @@ enum ExitOption
    POS_ORIENT_EXIT,
    FORCE_EXIT,
    MOMENT_EXIT,
-   FORCE_MOMENT_EXIT
+   FORCE_MOMENT_EXIT,
+   EXIT_AFTER_TABLE
   };
 
 enum ManipulationFrame
@@ -94,7 +95,8 @@ enum ManipulationFrame
 enum FunctionCalls
   {
     NO_FUNC = 0,
-    ZERO_FT
+    ZERO_FT,
+    NEXT_TABLE_DELTA
   };
 		 
 
@@ -203,6 +205,11 @@ static double     default_cart_gain_a_scale[2*N_CART+1];
 static double pos_error;
 static double orient_error;
 
+// for no_user_interaction_flag
+char   sm_file_name[200];
+int    sm_run_table = FALSE;
+extern int no_user_interaction_flag;
+
 /* global functions */
 void add_sm_task(void);
 extern void init_sm_controllers(void);
@@ -267,6 +274,145 @@ add_sm_task( void )
 
   addToMan("print_sm_state","prints the current state suitable for state machine",print_sm_state); 
 
+  // add variables to data collection
+  for (i=1; i<=N_ENDEFFS; ++i) {
+    sprintf(string,"%s_ct_x",cart_names[i]);
+    addVarToCollect((char *)&(ctarget[i].x[_X_]),string,"m", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_y",cart_names[i]);
+    addVarToCollect((char *)&(ctarget[i].x[_Y_]),string,"m", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_z",cart_names[i]);
+    addVarToCollect((char *)&(ctarget[i].x[_Z_]),string,"m", DOUBLE,FALSE);
+      
+    sprintf(string,"%s_ct_xd",cart_names[i]);
+    addVarToCollect((char *)&(ctarget[i].xd[_X_]),string,"m/s", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_yd",cart_names[i]);
+    addVarToCollect((char *)&(ctarget[i].xd[_Y_]),string,"m/s", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_zd",cart_names[i]);
+    addVarToCollect((char *)&(ctarget[i].xd[_Z_]),string,"m/s", DOUBLE,FALSE);
+
+    sprintf(string,"%s_ct_xdd",cart_names[i]);
+    addVarToCollect((char *)&(ctarget[i].xdd[_X_]),string,"m/s^2", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_ydd",cart_names[i]);
+    addVarToCollect((char *)&(ctarget[i].xdd[_Y_]),string,"m/s^2", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_zdd",cart_names[i]);
+    addVarToCollect((char *)&(ctarget[i].xdd[_Z_]),string,"m/s^2", DOUBLE,FALSE);
+
+    /* orientation variables */
+    sprintf(string,"%s_ct_q0",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].q[_Q0_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_q1",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].q[_Q1_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_q2",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].q[_Q2_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_q3",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].q[_Q3_]),string,"-", DOUBLE,FALSE);
+
+    sprintf(string,"%s_ct_q0d",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].qd[_Q0_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_q1d",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].qd[_Q1_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_q2d",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].qd[_Q2_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_q3d",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].qd[_Q3_]),string,"-", DOUBLE,FALSE);
+
+    sprintf(string,"%s_ct_q0dd",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].qdd[_Q0_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_q1dd",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].qdd[_Q1_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_q2dd",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].qdd[_Q2_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_q3dd",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].qdd[_Q3_]),string,"-", DOUBLE,FALSE);
+
+    sprintf(string,"%s_cdes_q0",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].q[_Q0_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_q1",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].q[_Q1_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_q2",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].q[_Q2_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_q3",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].q[_Q3_]),string,"-", DOUBLE,FALSE);
+
+    sprintf(string,"%s_cdes_q0d",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].qd[_Q0_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_q1d",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].qd[_Q1_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_q2d",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].qd[_Q2_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_q3d",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].qd[_Q3_]),string,"-", DOUBLE,FALSE);
+
+    sprintf(string,"%s_cdes_q0dd",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].qdd[_Q0_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_q1dd",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].qdd[_Q1_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_q2dd",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].qdd[_Q2_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_q3dd",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].qdd[_Q3_]),string,"-", DOUBLE,FALSE);
+
+    sprintf(string,"%s_ct_ad",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].ad[_A_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_bd",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].ad[_B_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_gd",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].ad[_G_]),string,"-", DOUBLE,FALSE);
+
+    sprintf(string,"%s_ct_add",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].add[_A_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_bdd",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].add[_B_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_ct_gdd",cart_names[i]);
+    addVarToCollect((char *)&(ctarget_orient[i].add[_G_]),string,"-", DOUBLE,FALSE);
+
+    sprintf(string,"%s_corient_e1",cart_names[i]);
+    addVarToCollect((char *)&(corient_error[(i-1)*3 + _A_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_corient_e2",cart_names[i]);
+    addVarToCollect((char *)&(corient_error[(i-1)*3 + _B_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_corient_e3",cart_names[i]);
+    addVarToCollect((char *)&(corient_error[(i-1)*3 + _G_]),string,"-", DOUBLE,FALSE);
+
+    sprintf(string,"%s_cart_ref_x",cart_names[i]);
+    addVarToCollect((char *)&(cref[(i-1)*6 + 1]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cart_ref_y",cart_names[i]);
+    addVarToCollect((char *)&(cref[(i-1)*6 + 2]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cart_ref_z",cart_names[i]);
+    addVarToCollect((char *)&(cref[(i-1)*6 + 3]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cart_ref_a",cart_names[i]);
+    addVarToCollect((char *)&(cref[(i-1)*6 + 4]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cart_ref_b",cart_names[i]);
+    addVarToCollect((char *)&(cref[(i-1)*6 + 5]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cart_ref_g",cart_names[i]);
+    addVarToCollect((char *)&(cref[(i-1)*6 + 6]),string,"-", DOUBLE,FALSE);
+      
+    sprintf(string,"%s_cdes_x",cart_names[i]);
+    addVarToCollect((char *)&(cdes[i].x[_X_]),string,"m", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_y",cart_names[i]);
+    addVarToCollect((char *)&(cdes[i].x[_Y_]),string,"m", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_z",cart_names[i]);
+    addVarToCollect((char *)&(cdes[i].x[_Z_]),string,"m", DOUBLE,FALSE);
+      
+    sprintf(string,"%s_cdes_xd",cart_names[i]);
+    addVarToCollect((char *)&(cdes[i].xd[_X_]),string,"m", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_yd",cart_names[i]);
+    addVarToCollect((char *)&(cdes[i].xd[_Y_]),string,"m", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_zd",cart_names[i]);
+    addVarToCollect((char *)&(cdes[i].xd[_Z_]),string,"m", DOUBLE,FALSE);
+      
+      
+      
+  }
+    
+  sprintf(string,"sm_pos_error");
+  addVarToCollect((char *)&(pos_error),string,"m", DOUBLE,FALSE);
+  sprintf(string,"sm_orient_error");
+  addVarToCollect((char *)&(orient_error),string,"rad", DOUBLE,FALSE);
+  sprintf(string,"sm_state_id");
+  addVarToCollect((char *)&(current_state_sm),string,"-", INT,FALSE);
+    
+  updateDataCollectScript();
+    
   
 }    
 
@@ -296,11 +442,6 @@ init_sm_task(void)
   static int firsttime = TRUE;
   static int pert = 0;
 
-  double aux;
-  double q1[5]={0 , 0.0 , -0.7071 , 0.7071 ,0.0};
-  double qf[5]={0 , 0.9423 , 0.2634 , 0.1219 , -0.1678};
-  double q2[5],qerr[5],qfn[5];
-  
   
   if (firsttime) {
 
@@ -316,136 +457,11 @@ init_sm_task(void)
       targets_sm[i].cart_gain_ad_scale_matrix = my_matrix(1,N_CART,1,N_CART);
     }
 
-
-    // add variables to data collection
-    for (i=1; i<=N_ENDEFFS; ++i) {
-      sprintf(string,"%s_ct_x",cart_names[i]);
-      addVarToCollect((char *)&(ctarget[i].x[_X_]),string,"m", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_y",cart_names[i]);
-      addVarToCollect((char *)&(ctarget[i].x[_Y_]),string,"m", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_z",cart_names[i]);
-      addVarToCollect((char *)&(ctarget[i].x[_Z_]),string,"m", DOUBLE,FALSE);
-      
-      sprintf(string,"%s_ct_xd",cart_names[i]);
-      addVarToCollect((char *)&(ctarget[i].xd[_X_]),string,"m/s", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_yd",cart_names[i]);
-      addVarToCollect((char *)&(ctarget[i].xd[_Y_]),string,"m/s", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_zd",cart_names[i]);
-      addVarToCollect((char *)&(ctarget[i].xd[_Z_]),string,"m/s", DOUBLE,FALSE);
-
-      sprintf(string,"%s_ct_xdd",cart_names[i]);
-      addVarToCollect((char *)&(ctarget[i].xdd[_X_]),string,"m/s^2", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_ydd",cart_names[i]);
-      addVarToCollect((char *)&(ctarget[i].xdd[_Y_]),string,"m/s^2", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_zdd",cart_names[i]);
-      addVarToCollect((char *)&(ctarget[i].xdd[_Z_]),string,"m/s^2", DOUBLE,FALSE);
-
-      /* orientation variables */
-      sprintf(string,"%s_ct_q0",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].q[_Q0_]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_q1",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].q[_Q1_]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_q2",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].q[_Q2_]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_q3",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].q[_Q3_]),string,"-", DOUBLE,FALSE);
-
-      sprintf(string,"%s_ct_q0d",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].qd[_Q0_]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_q1d",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].qd[_Q1_]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_q2d",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].qd[_Q2_]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_q3d",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].qd[_Q3_]),string,"-", DOUBLE,FALSE);
-
-      sprintf(string,"%s_ct_q0dd",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].qdd[_Q0_]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_q1dd",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].qdd[_Q1_]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_q2dd",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].qdd[_Q2_]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_q3dd",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].qdd[_Q3_]),string,"-", DOUBLE,FALSE);
-
-      sprintf(string,"%s_ct_ad",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].ad[_A_]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_bd",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].ad[_B_]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_gd",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].ad[_G_]),string,"-", DOUBLE,FALSE);
-
-      sprintf(string,"%s_ct_add",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].add[_A_]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_bdd",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].add[_B_]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_ct_gdd",cart_names[i]);
-      addVarToCollect((char *)&(ctarget_orient[i].add[_G_]),string,"-", DOUBLE,FALSE);
-
-      sprintf(string,"%s_corient_e1",cart_names[i]);
-      addVarToCollect((char *)&(corient_error[(i-1)*3 + _A_]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_corient_e2",cart_names[i]);
-      addVarToCollect((char *)&(corient_error[(i-1)*3 + _B_]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_corient_e3",cart_names[i]);
-      addVarToCollect((char *)&(corient_error[(i-1)*3 + _G_]),string,"-", DOUBLE,FALSE);
-
-      sprintf(string,"%s_cart_ref_x",cart_names[i]);
-      addVarToCollect((char *)&(cref[(i-1)*6 + 1]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_cart_ref_y",cart_names[i]);
-      addVarToCollect((char *)&(cref[(i-1)*6 + 2]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_cart_ref_z",cart_names[i]);
-      addVarToCollect((char *)&(cref[(i-1)*6 + 3]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_cart_ref_a",cart_names[i]);
-      addVarToCollect((char *)&(cref[(i-1)*6 + 4]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_cart_ref_b",cart_names[i]);
-      addVarToCollect((char *)&(cref[(i-1)*6 + 5]),string,"-", DOUBLE,FALSE);
-      sprintf(string,"%s_cart_ref_g",cart_names[i]);
-      addVarToCollect((char *)&(cref[(i-1)*6 + 6]),string,"-", DOUBLE,FALSE);
-      
-      sprintf(string,"%s_cdes_x",cart_names[i]);
-      addVarToCollect((char *)&(cdes[i].x[_X_]),string,"m", DOUBLE,FALSE);
-      sprintf(string,"%s_cdes_y",cart_names[i]);
-      addVarToCollect((char *)&(cdes[i].x[_Y_]),string,"m", DOUBLE,FALSE);
-      sprintf(string,"%s_cdes_z",cart_names[i]);
-      addVarToCollect((char *)&(cdes[i].x[_Z_]),string,"m", DOUBLE,FALSE);
-      
-      
-      
-    }
+    firsttime = FALSE;
     
-    sprintf(string,"sm_pos_error");
-    addVarToCollect((char *)&(pos_error),string,"m", DOUBLE,FALSE);
-    sprintf(string,"sm_orient_error");
-    addVarToCollect((char *)&(orient_error),string,"rad", DOUBLE,FALSE);
-    sprintf(string,"sm_state_id");
-    addVarToCollect((char *)&(current_state_sm),string,"-", INT,FALSE);
-    
-    updateDataCollectScript();
-    
-    
-  } else { // not firstime
-    
-    ;
-
   }
 
-  // hack
-  /*
-  aux = sqrt(vec_mult_inner_size(q1,q1,4));
-  vec_mult_scalar_size(q1,4,1./aux,q1);
-  aux = sqrt(vec_mult_inner_size(qf,qf,4));
-  vec_mult_scalar_size(qf,4,1./aux,qf);
-  quatRelative(q1, qf, q2);
-  print_vec_size("q1",q1,4);
-  print_vec_size("qf",qf,4);
-  print_vec_size("q2",q2,4);
-  quatMult(q1,q2,qfn);
-  print_vec_size("qf-next",qfn,4);
-  vec_sub_size(qf,qfn,4,qerr);
-  print_vec_size("qerr",qerr,4);
-  */
-
-    // the sm_controllers
+  // the sm_controllers
   init_sm_controllers();
 
   // zero the delta command from controller switches
@@ -458,18 +474,31 @@ init_sm_task(void)
     printf("Task can only be started if no other task is running!\n");
     return FALSE;
   }
-  
-  // speed change?
-  get_double("Speed multiplier?",speed_mult,&speed_mult);
-  if (speed_mult <= 0 || speed_mult > 2)
-    speed_mult = 1.0;
 
+  // speed change?
+  if (!no_user_interaction_flag ) { // no interactive input
+    get_double("Speed multiplier?",speed_mult,&speed_mult);
+    if (speed_mult <= 0 || speed_mult > 2)
+      speed_mult = 1.0;
+  }
+  
   // read state machine
-  ans = TRUE;
-  get_int("Read state machine from file?",ans,&ans);
+  if (!no_user_interaction_flag ) { // no interactive input
+    ans = TRUE;
+    get_int("Read state machine from file?",ans,&ans);
+  } else {
+    strcpy(fname,sm_file_name);
+    ans = TRUE;
+  }
   if (ans) {
-    if (get_string("File name of state machine in prefs/",fname,fname)) {
-      read_state_machine(fname);
+    if (no_user_interaction_flag ) { // no interactive input
+      if (!read_state_machine(fname))
+	return FALSE;
+    } else {
+      if (get_string("File name of state machine in prefs/",fname,fname)) {
+	if (!read_state_machine(fname))
+	  return FALSE;
+      }
     }
   }
   if (n_states_sm <= 0) {
@@ -477,15 +506,19 @@ init_sm_task(void)
     return FALSE;
   }
   if (found_recurrance && n_states_pose_delta > 0) {
-    get_int("Run table of reference perturbations?",run_table,&run_table);
+    if (no_user_interaction_flag) {
+      run_table = sm_run_table;
+    } else {
+      get_int("Run table of reference perturbations?",run_table,&run_table);
+    }
   } else {
     run_table = FALSE;
   }
-
+  
   // check whether systematic variations should be run
 
   // perturb reference?
-  if (!run_table) {
+  if (!run_table && !no_user_interaction_flag) {
     get_int("Perturb reference?",pert,&pert);
     if (pert == 1) {
       double dx[N_CART+1];
@@ -566,17 +599,17 @@ init_sm_task(void)
     cdes_orient[HAND].q[j] = ctarget_orient[HAND].q[j] = cart_des_orient[HAND].q[j];
   }
 
-
   // ready to go
-  ans = 999;
-  while (ans == 999) {
-    if (!get_int("Enter 1 to start or anthing else to abort ...",ans,&ans))
-      return FALSE;
-  }
-  
-  if (ans != 1) 
-    return FALSE;
+  if (!no_user_interaction_flag) {
+    ans = 999;
+    while (ans == 999) {
+      if (!get_int("Enter 1 to start or anthing else to abort ...",ans,&ans))
+	return FALSE;
+    }
 
+    if (ans != 1) 
+      return FALSE;
+  }  
 
   // reclibrate the gripper offsets
   sendCalibrateFTCommand();
@@ -588,6 +621,7 @@ init_sm_task(void)
   current_state_pose_delta = 0;
   current_state_sm = 0;
   current_target_sm = targets_sm[current_state_sm];
+  no_user_interaction_flag = FALSE;
   
   scd();
   
@@ -636,6 +670,13 @@ run_sm_task(void)
     
     // check whether to end state machine
 
+    if (current_target_sm.exit_condition == EXIT_AFTER_TABLE && run_table && current_state_pose_delta == n_states_pose_delta) {
+      sprintf(msg,"All done with table!\n");
+      logMsg(msg,0,0,0,0,0,0);
+      freeze();
+      return TRUE;
+    }
+
     // a special adjustment for an explicit jump to a a next_state out of sequence
     if (current_state_sm != 0 && current_target_sm.next_state_id != 0) {
 
@@ -683,6 +724,7 @@ run_sm_task(void)
 			      ctarget_orient,
 			      &current_target_sm);
       }
+
       
       if (current_target_sm.cart_gain_integral != 0) 
 	sprintf(msg,"    %d.%-30s with %sInt\n",
@@ -905,12 +947,12 @@ run_sm_task(void)
 	      orient_error > current_target_sm.err_orient)
 	    exit_flag = FALSE;
 	  break;
-	  
+
 	}
 
       if (!exit_flag && fabs(time_to_go) < current_target_sm.exit_timeout)
 	break;
-      else if (fabs(time_to_go) >= current_target_sm.exit_timeout) {
+      else if (fabs(time_to_go) >= current_target_sm.exit_timeout && current_target_sm.exit_condition != EXIT_AFTER_TABLE) {
 	sprintf(msg,"Time out at  %f e_pos=%f e_orient=%f\n",time_to_go,pos_error,orient_error);
 	logMsg(msg,0,0,0,0,0,0);
       }
@@ -1075,7 +1117,7 @@ run_sm_task(void)
     }
 
     joint_des_state[i].uff   += u_delta_switch[i]; // transient to avoid jumps from controller switch
-    u_delta_switch[i] *= 0.99;
+    u_delta_switch[i] *= 0.995;
   }
 
 
@@ -1094,6 +1136,7 @@ run_sm_task(void)
   b[7] = .1;
   b[8] = 0.05;
   b[9] = 0.01;
+
 
   sendUserGraphics("RectCuboid",&(b[1]), (N_CART*3)*sizeof(float));  
   */
@@ -1651,6 +1694,8 @@ read_state_machine(char *fname) {
 	  }
 	  if (strcmp(saux,"zero_ft")==0)
 	    sm_temp.function_call = ZERO_FT;
+	  else if (strcmp(saux,"next_table_delta")==0)
+	    sm_temp.function_call = NEXT_TABLE_DELTA;
 	  else
 	    sm_temp.function_call = NO_FUNC;
 	}
@@ -1933,6 +1978,8 @@ read_state_machine(char *fname) {
 	    sm_temp.exit_condition = MOMENT_EXIT;
 	  else if (strcmp(saux,"force_moment")==0)
 	    sm_temp.exit_condition = FORCE_MOMENT_EXIT;
+	  else if (strcmp(saux,"table")==0)
+	    sm_temp.exit_condition = EXIT_AFTER_TABLE;
 	  else
 	    sm_temp.exit_condition = NO_EXIT;
 
@@ -2076,12 +2123,15 @@ print_sm_state(void)
  If we vary u from 0 to 1 as a min jerk trajectory, the entire orientation
  trajectory will be smooth as well (although not perfectly min jerk). In matlab,
  it was tested that even updating theta on every time step works and creates
- nice smooth unit norm quaternions
+ nice smooth unit norm quaternions.
+
+ Note: the start quaternion is needed, and thus, this implementation depends
+ at every time step on the start and target quaternion
 
  *******************************************************************************
  Function Parameters: [in]=input,[out]=output
 
- \param[in]          q_current: the current orientation as quaterion
+ \param[in]          q_start  : the start orientation as quaterion
  \param[in]          q_target : the target orientation as quaterion
  \param[in,out]      s        : vector of s,sd,sdd which does min jerk from 1 to zero
  \param[in]          t_togo   : time to go until target is reached
@@ -2090,32 +2140,37 @@ print_sm_state(void)
 
  ******************************************************************************/
 static int
-min_jerk_next_step_quat (SL_quat q_current, SL_quat q_target, double *s,
+min_jerk_next_step_quat (SL_quat q_start, SL_quat q_target, double *s,
 			 double t_togo, double dt, SL_quat *q_next)
 
 {
   int    i,j;
-  double theta; // angle between current and target quaternion
+  double theta; // angle between start and target quaternion
   double aux;
   double ridge = 1e-10;
+  SL_quat q_last;
 
-  // adjust the target to be in the same solution space as the current
-  aux = vec_mult_inner_size(q_current.q,q_target.q,N_QUAT);
-  if (aux < 0)
+  // adjust the target to be in the same solution space as the start
+  aux = vec_mult_inner_size(q_start.q,q_target.q,N_QUAT);
+  if (aux < 0) {
+    //printf("aux = %f\n",aux);
+    //print_vec_size("q_start",q_start.q,4);
+    //print_vec_size("target",q_target.q,4);  
     vec_mult_scalar_size(q_target.q,N_QUAT,-1.0,q_target.q);
+  }
 
   // make sure numerical issues of quaternion inner product cannot bother us
-  aux = vec_mult_inner_size(q_current.q,q_target.q,N_QUAT);
+  aux = vec_mult_inner_size(q_start.q,q_target.q,N_QUAT);
   if (aux > 1)
     aux = 1;
   else if (aux < -1)
     aux = -1;
   theta = acos( aux );
 
-  // current and target are identical
-  if (theta == 0){
+  // start and target are numerically essentially identical
+  if (fabs(theta) <= 1.e-6){
     for (i=1; i<=N_QUAT; ++i) {
-      q_next->q[i] = q_current.q[i];
+      q_next->q[i] = q_start.q[i];
       q_next->qd[i] = 0.0;
       q_next->qdd[i] = 0.0;
     }
@@ -2132,15 +2187,19 @@ min_jerk_next_step_quat (SL_quat q_current, SL_quat q_target, double *s,
     aux = ridge;
   else
     aux = sin(theta);
-  
+
+  // store last quaternion
+  q_last = *q_next;
+
+  // interpolate
   for (i=1; i<=N_QUAT; ++i) {
-    q_next->q[i] = sin(theta*(1.0-s[1]))/aux*q_current.q[i] + sin(theta*s[1])/aux*q_target.q[i];
+     q_next->q[i] = sin(theta*(1.0-s[1]))/aux*q_start.q[i] + sin(theta*s[1])/aux*q_target.q[i];
   }
 
   // fill in derivatives from numerical differentiation
   for (j=1; j<=N_QUAT; ++j){
-    q_next->qd[j]  =  (q_next->q[j] - q_current.q[j]) / dt;
-    q_next->qdd[j] =  (q_next->qd[j] - q_current.qd[j]) / dt;
+    q_next->qd[j]  =  (q_next->q[j] - q_last.q[j]) / dt;
+    q_next->qdd[j] =  (q_next->qd[j] - q_last.qd[j]) / dt;
   }
 
   //  fprintf(fp,"%f %f %f   %f %f %f %f\n",s[1],s[2],s[3],q_next->q[1],q_next->q[2],q_next->q[3],q_next->q[4]);

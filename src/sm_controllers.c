@@ -304,13 +304,14 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
 
   // compute the PD term for the Null space  */
   for (i=1; i<=N_DOFS; ++i) {
-    double fac=1.0;
+    double fac=0.5;
     e[i] = rest[i].w*(
       fac*controller_gain_th[i]*(rest[i].th - state[i].th) - 
       sqrt(fac)*controller_gain_thd[i] *state[i].thd);
     //printf("%d.%f (w=%f)\n",i,e[i],rest[i].w);    
   }
   mat_vec_mult(Nproj,e,en);
+
 
   /* add this as a PD command to uff */
   for (i=1; i<=N_DOFS; ++i) {
