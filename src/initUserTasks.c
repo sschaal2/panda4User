@@ -105,12 +105,20 @@ runInsertions(void) {
 
     no_user_interaction_flag = TRUE;
     sm_run_table = TRUE;
-    if (i==1)
-      strcpy(sm_file_name,"powerplug_JT.sm");
-    if (i==2)
-      strcpy(sm_file_name,"hdmi_JT.sm");
-    if (i==3)
-      strcpy(sm_file_name,"usb_JT.sm");
+    if (i%6 == 1)
+      strcpy(sm_file_name,"powerplug_JT_1.sm");
+    else if (i%6 == 2)
+      strcpy(sm_file_name,"hdmi_JT_1.sm");
+    else if (i%6 == 3)
+      strcpy(sm_file_name,"usb_JT_1.sm");
+    else if (i%6 == 4)
+      strcpy(sm_file_name,"hdmi_JT_2.sm");
+    else if (i%6 == 5)
+      strcpy(sm_file_name,"usb_JT_2.sm");
+    else if (i%6 == 0)
+      strcpy(sm_file_name,"powerplug_JT_2.sm");
+
+
     setTaskByName("State Machine Task");
 
     while (strcmp(current_task_name,NO_TASK) == 0)

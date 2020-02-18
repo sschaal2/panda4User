@@ -686,8 +686,18 @@ run_sm_task(void)
 	scd();
       }
 
+    }
+
+
+    if (current_state_sm < n_states_sm) {
+      
+      ++current_state_sm;
+      if (current_state_sm == 1) { // just for clearer print-outs
+	logMsg("\n",0,0,0,0,0,0);
+      }
+
       // are we running through the table of reference pertubations?
-      if (run_table && current_state_pose_delta < n_states_pose_delta) {
+      if (run_table && current_state_pose_delta < n_states_pose_delta && targets_sm[current_state_sm].function_call == NEXT_TABLE_DELTA) {
 	++current_state_pose_delta;
 	sprintf(msg,"\nRunning perturbation %d\n",current_state_pose_delta);
 	logMsg(msg,0,0,0,0,0,0);
@@ -697,15 +707,6 @@ run_sm_task(void)
 	}
 	quatMult(reference_state_pose_q_base,reference_state_pose_delta_q_table[current_state_pose_delta],
 		 reference_state_pose_q);
-      }
-
-    }
-
-    if (current_state_sm < n_states_sm) {
-      
-      ++current_state_sm;
-      if (current_state_sm == 1) { // just for clearer print-outs
-	logMsg("\n",0,0,0,0,0,0);
       }
 
       // assign to simpler variable and take into account the reference frame of the state
