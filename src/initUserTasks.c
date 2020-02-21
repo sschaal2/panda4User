@@ -124,7 +124,7 @@ runInsertions(void) {
     while (strcmp(current_task_name,NO_TASK) == 0)
       sleep(1);
     
-    printf("========= Restart %d ==========\n",n_iterations);
+    printf("========= Restart %d ==========\n",i);
 
   }
 
