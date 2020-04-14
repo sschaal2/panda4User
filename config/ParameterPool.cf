@@ -19,7 +19,7 @@ task_servo_geometry		90x40-60+486
 
 
 
-main_window_geometry		30%x50%+20+20
+main_window_geometry		30%x50%+0+20
 main_window_camera_pos		0.7 2.0 1.
 
 
@@ -44,7 +44,7 @@ osc_time_window_vars		5.0
 osc_vars_task_file		task_default.osc
 osc_vars_motor_file		motor_default.osc
 osc_vars_vision_file		vision_default.osc
-osc_window_geometry		600x700+35%+0
+osc_window_geometry		600x700+35%+20
 
 
 // base setting
