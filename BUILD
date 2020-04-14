@@ -12,6 +12,9 @@ exports_files(["LICENSE"])
 # the name of this robot: various rules use the NAME such that BUILD files are easy to adapt to another robot
 NAME = "panda"
 
+# the root directory of this robot user implementation
+ROBOT_DIR = "pandaUser/"
+
 # the configs are to accommodate the SL cmake out-of-source naming of build directories on
 # different operating systems. The definition of MACHTYPE is passed as --define in bazel build command.
 # See bazel/bazelrc directory. By default, SL looks for the binaries in this <NAME>/MACHTYPE local directory
@@ -150,18 +153,18 @@ cc_binary(
 # to be written (by touch). Note that it is not the BAZEL way to modify a source directory by copying
 # executable files into it. This could be changed, but it is the easiest compatibility with the CMAKE build.
 
-CMD_X86_64MAC_1 = "mkdir -p " + SL_ROOT_WS + "pandaUser/x86_64mac && touch $@ && mv -f $(BINDIR)/" + SL_ROOT_WS + "pandaUser/"
+CMD_X86_64MAC_1 = "mkdir -p " + ROBOT_DIR + "x86_64mac && touch $@ && mv -f $(BINDIR)/" + ROBOT_DIR
 
-CMD_X86_64MAC_2 = " " + SL_ROOT_WS + "pandaUser/x86_64mac/"
+CMD_X86_64MAC_2 = " " + ROBOT_DIR + "x86_64mac/"
 
-CMD_X86_64_1 = "mkdir -p " + SL_ROOT_WS + "pandaUser/x86_64 && touch $@ && mv -f $(BINDIR)/" + SL_ROOT_WS + "pandaUser/"
+CMD_X86_64_1 = "mkdir -p " + ROBOT_DIR + "x86_64 && touch $@ && mv -f $(BINDIR)/" + ROBOT_DIR
 
-CMD_X86_64_2 = " " + SL_ROOT_WS + "pandaUser/x86_64/"
+CMD_X86_64_2 = " " + ROBOT_DIR + "x86_64/"
 
 genrule(
     name = "install_xtask",
     srcs = [":xtask"],
-    outs = ["tmp/xtask"],
+    outs = [ROBOT_DIR + "x86_64/xtask"],
     cmd = select({
         ":x86_64mac": CMD_X86_64MAC_1 + "xtask" + CMD_X86_64MAC_2,
         ":x86_64": CMD_X86_64_1 + "xtask" + CMD_X86_64_2,
@@ -173,7 +176,7 @@ genrule(
 genrule(
     name = "install_xmotor",
     srcs = [":xmotor"],
-    outs = [SL_ROOT_WS + "pandaUser/x86_64/xmotor"],
+    outs = [ROBOT_DIR + "x86_64/xmotor"],
     cmd = select({
         ":x86_64mac": CMD_X86_64MAC_1 + "xmotor" + CMD_X86_64MAC_2,
         ":x86_64": CMD_X86_64_1 + "xmotor" + CMD_X86_64_2,
@@ -185,11 +188,11 @@ genrule(
 genrule(
     name = "install_xsimulation",
     srcs = [":xsimulation"],
-    outs = [SL_ROOT_WS + "pandaUser/x86_64/xsimulation"],
+    outs = [ROBOT_DIR + "x86_64/xsimulation"],
     cmd = select({
         ":x86_64mac": CMD_X86_64MAC_1 + "xsimulation" + CMD_X86_64MAC_2,
         ":x86_64": CMD_X86_64_1 + "xsimulation" + CMD_X86_64_2,
-        "//conditions:default": CMD_X86_64_1 + "xtask" + CMD_X86_64_2,
+        "//conditions:default": CMD_X86_64_1 + "xsimulation" + CMD_X86_64_2,
     }),
     local = 1,
 )
@@ -197,7 +200,7 @@ genrule(
 genrule(
     name = "install_xopengl",
     srcs = [":xopengl"],
-    outs = [SL_ROOT_WS + "pandaUser/x86_64/xopengl"],
+    outs = [ROBOT_DIR + "x86_64/xopengl"],
     cmd = select({
         ":x86_64mac": CMD_X86_64MAC_1 + "xopengl" + CMD_X86_64MAC_2,
         ":x86_64": CMD_X86_64_1 + "xopengl" + CMD_X86_64_2,
@@ -209,11 +212,11 @@ genrule(
 genrule(
     name = "install_xpanda",
     srcs = [":xpanda"],
-    outs = [SL_ROOT_WS + "pandaUser/x86_64/xpanda"],
+    outs = [ROBOT_DIR + "x86_64/xpanda"],
     cmd = select({
         ":x86_64mac": CMD_X86_64MAC_1 + "xpanda" + CMD_X86_64MAC_2,
         ":x86_64": CMD_X86_64_1 + "xpanda" + CMD_X86_64_2,
-        "//conditions:default": CMD_X86_64_1 + "xtask" + CMD_X86_64_2,
+        "//conditions:default": CMD_X86_64_1 + "xpanda" + CMD_X86_64_2,
     }),
     local = 1,
 )
@@ -221,11 +224,11 @@ genrule(
 genrule(
     name = "install_xpest",
     srcs = [":xpest"],
-    outs = [SL_ROOT_WS + "pandaUser/x86_64/xpest"],
+    outs = [ROBOT_DIR + "x86_64/xpest"],
     cmd = select({
         ":x86_64mac": CMD_X86_64MAC_1 + "xpest" + CMD_X86_64MAC_2,
         ":x86_64": CMD_X86_64_1 + "xpest" + CMD_X86_64_2,
-        "//conditions:default": CMD_X86_64_1 + "xtask" + CMD_X86_64_2,
+        "//conditions:default": CMD_X86_64_1 + "xpest" + CMD_X86_64_2,
     }),
     local = 1,
 )
