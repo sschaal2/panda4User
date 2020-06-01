@@ -43,6 +43,7 @@ cc_binary(
         SL_ROOT + NAME + ":" + NAME,
         SL_ROOT + "SL:SLcommon",
         SL_ROOT + "utilities:utility",
+        "//third_party/Xorg:X11headers",	
         # "//third_party/Xorg:libX11",
         # "//third_party/freeglut:headers",
         # "//third_party/freeglut:native",
