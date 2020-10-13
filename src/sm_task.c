@@ -82,7 +82,8 @@ enum ExitOption
    FORCE_EXIT,
    MOMENT_EXIT,
    FORCE_MOMENT_EXIT,
-   EXIT_AFTER_TABLE
+   EXIT_AFTER_TABLE,
+   EXIT_AFTER_FUNCTION_CALL_SUCCESS
   };
 
 enum ManipulationFrame
