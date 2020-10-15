@@ -82,7 +82,8 @@ enum ExitOption
    FORCE_EXIT,
    MOMENT_EXIT,
    FORCE_MOMENT_EXIT,
-   EXIT_AFTER_TABLE
+   EXIT_AFTER_TABLE,
+   EXIT_AFTER_FUNCTION_CALL_SUCCESS
   };
 
 enum ManipulationFrame
@@ -782,7 +783,7 @@ run_sm_task(void)
 				0.08);
 	
       }
-      wait_ticks = 50; // need to give non-real-time gripper thread a moment to get started
+      wait_ticks = 100; // need to give non-real-time gripper thread a moment to get started
       state_machine_state = GRIPPER_START;
     } else {
       state_machine_state = MOVE_TO_TARGET;
@@ -985,7 +986,7 @@ run_sm_task(void)
 				  0.08,
 				  0.08);
 	}
-	wait_ticks = 50; // need to give non-real-time gripper thread a moment to get started
+	wait_ticks = 100; // need to give non-real-time gripper thread a moment to get started
 	state_machine_state = GRIPPER_END;
       } else {
 	state_machine_state = INIT_SM_TARGET;
