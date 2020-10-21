@@ -97,23 +97,30 @@ enum FunctionCalls
   {
     NO_FUNC = 0,
     ZERO_FT,
-    NEXT_TABLE_DELTA
+    NEXT_TABLE_DELTA,
+    GRIPPER,
+    SEND_POSE_EST_DATA,
+    RECEIVE_POSE_CORRECTION,
   };
 		 
 
-
+#define MAX_FUNCTION_ARGS 10
 typedef struct StateMachineTarget {
   char   state_name[100];
   char   next_state_name[100];
   int    next_state_id;
   int    manipulation_frame;
   int    function_call;
+  int    n_function_args;
+  double function_args[MAX_FUNCTION_ARGS+1];
   double movement_duration;
   int    pose_x_is_relative;
   double pose_x[N_CART+1];
   int    use_orient;
   int    pose_q_is_relative;
   double pose_q[N_QUAT+1];
+  int    gripper_start_active;
+  int    gripper_end_active;  
   int    gripper_width_start_is_relative;
   double gripper_width_start;
   int    gripper_width_end_is_relative;  
@@ -161,6 +168,7 @@ static int    current_state_sm = 0;
 static double speed_mult = 1.0;
 static int    current_controller = SIMPLE_IMPEDANCE_JT;
 static int    default_controller = SIMPLE_IMPEDANCE_JT;
+static int    function_call_success;
 
 /* Cartesian orientation representation with a rotation around an axis */
 typedef struct { 
@@ -248,6 +256,8 @@ static void   assignCurrentSMTarget(StateMachineTarget smt,
 				    SL_Cstate *ct,
 				    SL_quat   *cto,
 				    StateMachineTarget *smc);
+static int    functionCall(int id, int initial_call, int *success) ;
+
 
 
 /*****************************************************************************
@@ -612,7 +622,7 @@ init_sm_task(void)
       return FALSE;
   }  
 
-  // reclibrate the gripper offsets
+  // reclibrate the gripper F/T offsets
   sendCalibrateFTCommand();
   taskDelay(100);
 
@@ -697,17 +707,13 @@ run_sm_task(void)
 	logMsg("\n",0,0,0,0,0,0);
       }
 
-      // are we running through the table of reference pertubations?
-      if (run_table && current_state_pose_delta < n_states_pose_delta && targets_sm[current_state_sm].function_call == NEXT_TABLE_DELTA) {
-	++current_state_pose_delta;
-	sprintf(msg,"\nRunning perturbation %d\n",current_state_pose_delta);
-	logMsg(msg,0,0,0,0,0,0);
-	for (i=1; i<=N_CART; ++i) {
-	  reference_state_pose_x[i] = reference_state_pose_x_base[i] +
-	    reference_state_pose_delta_x_table[current_state_pose_delta][i];
-	}
-	quatMult(reference_state_pose_q_base,reference_state_pose_delta_q_table[current_state_pose_delta],
-		 reference_state_pose_q);
+      // are we running through the table of reference pertubations?: this requires functionCall to
+      // come before asssignCurrentSMTarget.
+      if (run_table && current_state_pose_delta < n_states_pose_delta &&
+	  targets_sm[current_state_sm].function_call == NEXT_TABLE_DELTA) {
+	
+	functionCall(targets_sm[current_state_sm].function_call,TRUE,&function_call_success);
+	
       }
 
       // assign to simpler variable and take into account the reference frame of the state
@@ -745,12 +751,9 @@ run_sm_task(void)
       
     }
 
-    // check whether there is a function call
-    if (current_target_sm.function_call == ZERO_FT) {
-      sprintf(msg,"Calibrate F/T offsets\n");
-      logMsg(msg,0,0,0,0,0,0);      
-      sendCalibrateFTCommand();
-    }
+    // check whether there is a function call, with special exception for NEXT_TABLE_DELTA
+    if (current_target_sm.function_call != NEXT_TABLE_DELTA)
+      functionCall(current_target_sm.function_call,TRUE,&function_call_success);
 
     // assign relevant variables from state machine state array
     time_to_go = current_target_sm.movement_duration/speed_mult;
@@ -760,11 +763,13 @@ run_sm_task(void)
 
     // gripper movement: only if gripper states have changed
     no_gripper_motion = FALSE;
-    if (current_state_sm > 1) {
+    if (current_state_sm > 1 && current_target_sm.gripper_start_active) {
       if (current_target_sm.gripper_width_start == targets_sm[current_state_sm-1].gripper_width_end &&
 	  current_target_sm.gripper_force_start == targets_sm[current_state_sm-1].gripper_force_end) {
 	no_gripper_motion=TRUE; 
       }
+    } else if (!current_target_sm.gripper_start_active) {
+	no_gripper_motion=TRUE;       
     }
 
     if (!no_gripper_motion) {
@@ -822,6 +827,21 @@ run_sm_task(void)
     
     
   case MOVE_TO_TARGET:
+
+    // check for function call success
+    functionCall(current_target_sm.function_call,FALSE,&function_call_success);
+    if (current_target_sm.exit_condition == EXIT_AFTER_FUNCTION_CALL_SUCCESS && function_call_success) {
+
+      for (i=1; i<=N_CART; ++i) {
+	cdes[HAND].xd[i]  = 0.0;
+	cdes[HAND].xdd[i] = 0.0;
+	cdes_orient[HAND].ad[i]  = 0.0;
+	cdes_orient[HAND].add[i]  = 0.0;	
+      }
+
+      time_to_go = 0;
+
+    }
 
     // check for exceeding max force/torque
     if (fabs(misc_sensor[C_FX]) > current_target_sm.max_wrench[_X_]) {
@@ -925,7 +945,7 @@ run_sm_task(void)
     orient_error = 2.0*fabs(acos(q_temp[_Q0_]));
     if (orient_error > PI)
       orient_error = 2.*PI-orient_error;
-    
+
     // check whether there is an exit condtion which overules progressing 
     // to the next state
     
@@ -968,11 +988,15 @@ run_sm_task(void)
       time_to_go = 0;
 
       no_gripper_motion = FALSE;
-      if (current_target_sm.gripper_width_end ==
-	  current_target_sm.gripper_width_start &&
-	  current_target_sm.gripper_force_end ==
-	  current_target_sm.gripper_force_start) {
-	no_gripper_motion=TRUE; 
+      if (current_target_sm.gripper_end_active) {
+	if (current_target_sm.gripper_width_end ==
+	    current_target_sm.gripper_width_start &&
+	    current_target_sm.gripper_force_end ==
+	    current_target_sm.gripper_force_start) {
+	  no_gripper_motion=TRUE; 
+	}
+      } else {
+	  no_gripper_motion=TRUE;
       }
 
       if (!no_gripper_motion) {
@@ -1411,7 +1435,7 @@ static char state_group_names[][100]=
    {"exit_condition"}
   };
 
-static int n_parms[] = {0,1,1,1,1,1,4,6,3,3,6,6,1,4,4,7,1,6};
+static int n_parms[] = {0,1,1,1,1,2,4,6,3,3,6,6,1,4,4,7,1,6};
 #define MAX_BIG_STRING 5000
 
 static int
@@ -1429,6 +1453,7 @@ read_state_machine(char *fname) {
   int    cr;
   char   saux[MAX_BIG_STRING+1];
   double aux;
+  int    iaux;
     
   // open the file and strip all comments
   sprintf(string,"%s%s",PREFS,fname);
@@ -1688,16 +1713,51 @@ read_state_machine(char *fname) {
 	if (c == NULL) {
 	  sm_temp.function_call = NO_FUNC;
 	} else {
-	  n_read = sscanf(c,"%s",saux);
+	  n_read = sscanf(c,"%s %d",saux,&iaux);
 	  if (n_read != n_parms[i]) {
-	    printf("Expected %d elements, but found only %d elements  in group %s\n",
-		   n_parms[i],n_read,state_group_names[i]);
-	    continue;
+	    if (n_read == 1) { // backward compatibility
+	      iaux = 0;
+	    } else {
+	      printf("Expected %d elements, but found only %d elements  in group %s\n",
+		     n_parms[i],n_read,state_group_names[i]);
+	      continue;
+	    }
 	  }
+
+	  sm_temp.n_function_args = iaux;
+
+	  // read arguments of function call
+	  if (iaux > 0) {
+	    n_read = sscanf(c,"%s %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf ",saux,&iaux,
+			    &sm_temp.function_args[1],
+			    &sm_temp.function_args[2],
+			    &sm_temp.function_args[3],
+			    &sm_temp.function_args[4],
+			    &sm_temp.function_args[5],			    
+			    &sm_temp.function_args[6],
+			    &sm_temp.function_args[7],
+			    &sm_temp.function_args[8],
+			    &sm_temp.function_args[9],
+			    &sm_temp.function_args[10]			    
+			    );
+	    if (n_read != n_parms[i] + iaux) {
+	      printf("Expected %d elements, but found only %d elements  in group %s\n",
+		     n_parms[i]+iaux,n_read,state_group_names[i]);
+	      continue;
+	    }
+	  }
+
+	  // determine which function call is requested
 	  if (strcmp(saux,"zero_ft")==0)
 	    sm_temp.function_call = ZERO_FT;
 	  else if (strcmp(saux,"next_table_delta")==0)
 	    sm_temp.function_call = NEXT_TABLE_DELTA;
+	  else if (strcmp(saux,"gripper")==0)
+	    sm_temp.function_call = GRIPPER;
+	  else if (strcmp(saux,"send_pose")==0)
+	    sm_temp.function_call = SEND_POSE_EST_DATA;
+	  else if (strcmp(saux,"correct_pose")==0)
+	    sm_temp.function_call = RECEIVE_POSE_CORRECTION;
 	  else
 	    sm_temp.function_call = NO_FUNC;
 	}
@@ -1765,8 +1825,9 @@ read_state_machine(char *fname) {
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
-	  printf("Could not find group %s\n",state_group_names[i]);
-	  continue;
+	  sm_temp.gripper_start_active = FALSE;
+	  //printf("Could not find group %s\n",state_group_names[i]);
+	  //continue;
 	} else {
 	  n_read = sscanf(c,"%s %lf %lf",saux,&(sm_temp.gripper_width_start), &(sm_temp.gripper_force_start));
 	  if (n_read != n_parms[i]) {
@@ -1774,6 +1835,7 @@ read_state_machine(char *fname) {
 		   n_parms[i],n_read,state_group_names[i]);
 	    continue;
 	  }
+	  sm_temp.gripper_start_active = TRUE;	  
 	  if (strcmp(saux,"rel")==0)
 	    sm_temp.gripper_width_start_is_relative = TRUE;
 	  else
@@ -1785,14 +1847,16 @@ read_state_machine(char *fname) {
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
-	  printf("Could not find group %s\n",state_group_names[i]);
-	  continue;
+	  sm_temp.gripper_end_active = FALSE;	  
+	  //printf("Could not find group %s\n",state_group_names[i]);
+	  //continue;
 	} else {
 	  n_read = sscanf(c,"%s %lf %lf",saux,&(sm_temp.gripper_width_end), &(sm_temp.gripper_force_end));
 	  if (n_read != n_parms[i]) {
 	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
 	    continue;
 	  }
+	  sm_temp.gripper_end_active = TRUE;	  	  
 	  if (strcmp(saux,"rel")==0)
 	    sm_temp.gripper_width_end_is_relative = TRUE;
 	  else
@@ -2379,10 +2443,134 @@ assignCurrentSMTarget(StateMachineTarget smt,
   
 }
 
+/*!*****************************************************************************
+ *******************************************************************************
+\note  functionCall
+\date  Oct 2020
+   
+\remarks 
+
+ A switch statement to manage function calls and a possible success feedback.
+ The first call at the initialization phasee of a sm state sets the initial_call
+ flag to TRUE. During execution of the state, at every timestep, the functionCalls
+ is called with initial_call = FALSE, such that only the success termination
+ of the function call is checked.
+ 
+
+ *******************************************************************************
+ Function Parameters: [in]=input,[out]=output
 
 
+ \param[in]          id           : functionCalls ID as in ENUM statement
+ \param[in]          initial_call : TRUE/FALSE for first call at state
+                                    initialization.
+ \param[out]         success      : TRUE or FALSE for function_call terminated
+                                    successfully
 
+ returns FALSE when error happens, otherwise TRUE
 
+ ******************************************************************************/
+static int
+functionCall(int id, int initial_call, int *success) 
+{
+  static int count =0;
+  char   msg[1000];
+  
+  // counts how often this function was called after the last initial_call=TRUE
+  if (initial_call)
+    count=0;
+  else
+    ++count;
 
+  switch (id) {
+    
+    // zero the force torque cell 
+  case ZERO_FT:
+    if  (initial_call) {
+      sprintf(msg,"Calibrate F/T offsets\n");
+      logMsg(msg,0,0,0,0,0,0);      
+      sendCalibrateFTCommand();
+      *success = FALSE;
+    } else {
+      // calibration takes  100 ticks, plus 10 safety ticks
+      if (count > 100+10)
+	*success = TRUE;
+      else
+	*success = FALSE;
+    }
+    break;
 
+    // assign a new delta pose pertubration    
+  case NEXT_TABLE_DELTA:
+    if  (initial_call) {
 
+      if (current_state_pose_delta < n_states_pose_delta) {
+	++current_state_pose_delta;
+	sprintf(msg,"\nRunning perturbation %d\n",current_state_pose_delta);
+	logMsg(msg,0,0,0,0,0,0);
+	for (int i=1; i<=N_CART; ++i) {
+	  reference_state_pose_x[i] = reference_state_pose_x_base[i] +
+	    reference_state_pose_delta_x_table[current_state_pose_delta][i];
+	}
+	quatMult(reference_state_pose_q_base,reference_state_pose_delta_q_table[current_state_pose_delta],
+		 reference_state_pose_q);
+	*success = TRUE;
+      } else {
+	*success = FALSE;	
+	return FALSE;
+      }
+
+    } else {
+      *success = TRUE;      
+    }
+    break;
+
+    // gripper motion: move or grasp
+  case GRIPPER:
+    if  (initial_call) {
+      double des_gripper_width = current_target_sm.function_args[2];
+      double des_gripper_width_tolerance = current_target_sm.function_args[3];
+      double des_gripper_speed = current_target_sm.function_args[4];
+      double des_gripper_force = current_target_sm.function_args[5];
+
+      // give move command to gripper to desired position if width is larger than current width
+      if (des_gripper_width > misc_sensor[G_WIDTH] || des_gripper_force == 0) {
+	
+	sendGripperMoveCommand(des_gripper_width,des_gripper_speed);
+	
+      } else { // or close gripper with force control otherwise
+	
+	sendGripperGraspCommand(des_gripper_width,
+				des_gripper_speed,
+				des_gripper_force,
+				des_gripper_width_tolerance,
+				des_gripper_width_tolerance);		
+      }
+      *success = FALSE;
+    } else {
+      // 10 safety tick before allowing success -- some communication delay may exist
+      if (count > 10 && misc_sensor[G_MOTION] == 0.0)
+	*success = TRUE;
+      else
+	*success = FALSE;
+    }
+    break;
+    
+  case SEND_POSE_EST_DATA:
+    if  (initial_call) {
+    } else {
+    }
+    break;
+    
+  case  RECEIVE_POSE_CORRECTION:
+    if  (initial_call) {
+    } else {
+    }
+    break;
+    
+  default: // this is NO_FUNC by default
+    *success = TRUE;
+  }
+
+  return TRUE;
+}
