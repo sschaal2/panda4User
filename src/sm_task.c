@@ -1826,8 +1826,6 @@ read_state_machine(char *fname) {
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
 	  sm_temp.gripper_start_active = FALSE;
-	  //printf("Could not find group %s\n",state_group_names[i]);
-	  //continue;
 	} else {
 	  n_read = sscanf(c,"%s %lf %lf",saux,&(sm_temp.gripper_width_start), &(sm_temp.gripper_force_start));
 	  if (n_read != n_parms[i]) {
@@ -1848,8 +1846,6 @@ read_state_machine(char *fname) {
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
 	  sm_temp.gripper_end_active = FALSE;	  
-	  //printf("Could not find group %s\n",state_group_names[i]);
-	  //continue;
 	} else {
 	  n_read = sscanf(c,"%s %lf %lf",saux,&(sm_temp.gripper_width_end), &(sm_temp.gripper_force_end));
 	  if (n_read != n_parms[i]) {
