@@ -507,6 +507,9 @@ init_sm_task(void)
 	return FALSE;
     } else {
       if (get_string("File name of state machine in prefs/",fname,fname)) {
+	int sl = strlen(fname);
+	if (strcmp(&(fname[sl-3]),".sm") != 0)
+	  strcat(fname,".sm");
 	if (!read_state_machine(fname))
 	  return FALSE;
       }
@@ -2026,7 +2029,7 @@ read_state_machine(char *fname) {
 	    continue;
 	  }
 
-	  //   "exit_condition" ["none" | "pos" | "orient" | "pos_orient" | "force" | "moment" | "force_moment"] err_pos err_orient err_force err_moment
+	  //   "exit_condition" ["none" | "pos" | "orient" | "pos_orient" | "force" | "moment" | "force_moment" | "func_success" ] tiime_out err_pos err_orient err_force err_moment
 
 	  if (strcmp(saux,"pos")==0)
 	    sm_temp.exit_condition = POS_EXIT;
@@ -2042,6 +2045,8 @@ read_state_machine(char *fname) {
 	    sm_temp.exit_condition = FORCE_MOMENT_EXIT;
 	  else if (strcmp(saux,"table")==0)
 	    sm_temp.exit_condition = EXIT_AFTER_TABLE;
+	  else if (strcmp(saux,"func_success")==0)
+	    sm_temp.exit_condition = EXIT_AFTER_FUNCTION_CALL_SUCCESS;
 	  else
 	    sm_temp.exit_condition = NO_EXIT;
 
@@ -2524,10 +2529,10 @@ functionCall(int id, int initial_call, int *success)
     // gripper motion: move or grasp
   case GRIPPER:
     if  (initial_call) {
-      double des_gripper_width = current_target_sm.function_args[2];
-      double des_gripper_width_tolerance = current_target_sm.function_args[3];
-      double des_gripper_speed = current_target_sm.function_args[4];
-      double des_gripper_force = current_target_sm.function_args[5];
+      double des_gripper_width = current_target_sm.function_args[1];
+      double des_gripper_width_tolerance = current_target_sm.function_args[2];
+      double des_gripper_speed = current_target_sm.function_args[3];
+      double des_gripper_force = current_target_sm.function_args[4];
 
       // give move command to gripper to desired position if width is larger than current width
       if (des_gripper_width > misc_sensor[G_WIDTH] || des_gripper_force == 0) {
@@ -2545,9 +2550,9 @@ functionCall(int id, int initial_call, int *success)
       *success = FALSE;
     } else {
       // 10 safety tick before allowing success -- some communication delay may exist
-      if (count > 10 && misc_sensor[G_MOTION] == 0.0)
+      if (count > 100 && misc_sensor[G_MOTION] == 0.0) {
 	*success = TRUE;
-      else
+      } else
 	*success = FALSE;
     }
     break;
