@@ -9,7 +9,7 @@ max_orient_degree = 5/2.5;
 
 max_x_mm = 12;
 max_y_mm = 12;
-max_z_mm = 5;
+max_z_mm = 4;
 max_orient_degree = 6;
 
 X = [];
