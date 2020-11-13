@@ -25,6 +25,7 @@ Remarks:
 #include "SL_man.h"
 #include "SL_common.h"
 #include "utility_macros.h"
+#include "data_collection_lib.h"
 
 // defines
 enum StateMachineStates
@@ -101,6 +102,7 @@ enum FunctionCalls
     GRIPPER,
     SEND_POSE_EST_DATA,
     RECEIVE_POSE_CORRECTION,
+    RESET_TO_BASE_POSE,
   };
 		 
 
@@ -154,16 +156,21 @@ typedef struct StateMachineTarget {
 #define MAX_STATES_SM 1000
 static StateMachineTarget targets_sm[MAX_STATES_SM+1];
 static StateMachineTarget current_target_sm;
-static double reference_state_pose_x[N_CART+1];
-static double reference_state_pose_q[N_QUAT+1];
-static double reference_state_pose_x_base[N_CART+1];
-static double reference_state_pose_q_base[N_QUAT+1];
-static double reference_state_pose_delta_x_table[MAX_STATES_SM+1][N_CART+1];
-static double reference_state_pose_delta_q_table[MAX_STATES_SM+1][N_QUAT+1];
+
+// these stats need to be accessible to data collection
+// TODO: communicate them rather than shareing in global variables
+double reference_state_pose_x[N_CART+1];
+double reference_state_pose_q[N_QUAT+1];
+double reference_state_pose_x_base[N_CART+1];
+double reference_state_pose_q_base[N_QUAT+1];
+double reference_state_pose_delta_x_table[MAX_STATES_SM+1][N_CART+1];
+double reference_state_pose_delta_q_table[MAX_STATES_SM+1][N_QUAT+1];
+int    current_state_pose_delta = 0;
+extern int        global_sample_id;
+
 static int    allow_base_reference_frame=FALSE;
 static int    n_states_sm = 0;
 static int    n_states_pose_delta = 0;
-static int    current_state_pose_delta = 0;
 static int    current_state_sm = 0;
 static double speed_mult = 1.0;
 static int    current_controller = SIMPLE_IMPEDANCE_JT;
@@ -447,7 +454,7 @@ init_sm_task(void)
 {
   int    j, i;
   char   string[100];
-  static char   fname[100] = "powerplug_JT.sm";
+  static char   fname[100] = "qsfp_vl_collection.sm";
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;
@@ -713,7 +720,8 @@ run_sm_task(void)
       // are we running through the table of reference pertubations?: this requires functionCall to
       // come before asssignCurrentSMTarget.
       if (run_table && current_state_pose_delta < n_states_pose_delta &&
-	  targets_sm[current_state_sm].function_call == NEXT_TABLE_DELTA) {
+	  targets_sm[current_state_sm].function_call == NEXT_TABLE_DELTA ||
+	  targets_sm[current_state_sm].function_call == RESET_TO_BASE_POSE) {
 	
 	functionCall(targets_sm[current_state_sm].function_call,TRUE,&function_call_success);
 	
@@ -755,7 +763,7 @@ run_sm_task(void)
     }
 
     // check whether there is a function call, with special exception for NEXT_TABLE_DELTA
-    if (current_target_sm.function_call != NEXT_TABLE_DELTA)
+    if (current_target_sm.function_call != NEXT_TABLE_DELTA && current_target_sm.function_call != RESET_TO_BASE_POSE)
       functionCall(current_target_sm.function_call,TRUE,&function_call_success);
 
     // assign relevant variables from state machine state array
@@ -970,6 +978,11 @@ run_sm_task(void)
 	case POS_ORIENT_EXIT:
 	  if (pos_error > current_target_sm.err_pos ||
 	      orient_error > current_target_sm.err_orient)
+	    exit_flag = FALSE;
+	  break;
+
+	case EXIT_AFTER_FUNCTION_CALL_SUCCESS:
+	  if (!function_call_success)
 	    exit_flag = FALSE;
 	  break;
 
@@ -1757,10 +1770,23 @@ read_state_machine(char *fname) {
 	    sm_temp.function_call = NEXT_TABLE_DELTA;
 	  else if (strcmp(saux,"gripper")==0)
 	    sm_temp.function_call = GRIPPER;
-	  else if (strcmp(saux,"send_pose")==0)
-	    sm_temp.function_call = SEND_POSE_EST_DATA;
+	  else if (strcmp(saux,"send_pose")==0) {
+	    if (initDataCollection()) {
+	      sm_temp.function_call = SEND_POSE_EST_DATA;
+	    } else {
+	      printf("Could not start data collection\n");	      
+	      sm_temp.function_call = NO_FUNC;
+	    }
+	  }
 	  else if (strcmp(saux,"correct_pose")==0)
-	    sm_temp.function_call = RECEIVE_POSE_CORRECTION;
+	    if (initDataCollection()) {	    
+	      sm_temp.function_call = RECEIVE_POSE_CORRECTION;
+	    } else {
+	      printf("Could not start data collection\n");
+	      sm_temp.function_call = NO_FUNC;	      
+	    }
+	  else if (strcmp(saux,"reset_base_pose")==0)
+	    sm_temp.function_call = RESET_TO_BASE_POSE;
 	  else
 	    sm_temp.function_call = NO_FUNC;
 	}
@@ -1926,7 +1952,8 @@ read_state_machine(char *fname) {
 
 	// simulator does not like high integral gains
 	if (!real_robot_flag)
-	  sm_temp.cart_gain_integral /= 10.0;
+	  if (sm_temp.cart_gain_integral > 0.01)
+	    sm_temp.cart_gain_integral = 0.01;
 
 	// force_desired (optional)
 	++i;
@@ -2047,7 +2074,7 @@ read_state_machine(char *fname) {
 	    sm_temp.exit_condition = EXIT_AFTER_TABLE;
 	  else if (strcmp(saux,"func_success")==0)
 	    sm_temp.exit_condition = EXIT_AFTER_FUNCTION_CALL_SUCCESS;
-	  else
+	  else 
 	    sm_temp.exit_condition = NO_EXIT;
 
 
@@ -2323,9 +2350,7 @@ assignCurrentSMTarget(StateMachineTarget smt,
 
   // compute rotation matrix
   quatToRotMatInv(&temp_q,R);
-  
 
-  
   // assign the target position
   if (smc->pose_x_is_relative == REL && smc->manipulation_frame == ABS_FRAME) {
     for (i=1; i<=N_CART; ++i) {
@@ -2476,7 +2501,7 @@ functionCall(int id, int initial_call, int *success)
 {
   static int count =0;
   char   msg[1000];
-  
+
   // counts how often this function was called after the last initial_call=TRUE
   if (initial_call)
     count=0;
@@ -2493,8 +2518,8 @@ functionCall(int id, int initial_call, int *success)
       sendCalibrateFTCommand();
       *success = FALSE;
     } else {
-      // calibration takes  100 ticks, plus 10 safety ticks
-      if (count > 100+10)
+      // calibration takes  100 ticks, plus extra safety ticks
+      if (count > 100+100)
 	*success = TRUE;
       else
 	*success = FALSE;
@@ -2559,16 +2584,46 @@ functionCall(int id, int initial_call, int *success)
     
   case SEND_POSE_EST_DATA:
     if  (initial_call) {
+      triggerDataCollection();
+      *success = FALSE;      
     } else {
+      if (checkDataCollection()) {
+	*success = TRUE;
+	++global_sample_id;
+      } else
+	*success = FALSE;
     }
     break;
     
   case  RECEIVE_POSE_CORRECTION:
     if  (initial_call) {
+      --global_sample_id;
+      triggerPoseDeltaPrediction();
+      *success = FALSE;      
     } else {
+      if (checkPoseDeltaPrediction()) {
+	*success = TRUE;
+	++global_sample_id;
+      } else
+	*success = FALSE;
     }
     break;
     
+    // simply resets the reference pose to the base reference pose
+  case RESET_TO_BASE_POSE:
+    if  (initial_call) {
+      for (int i=1; i<=N_CART; ++i) {
+	reference_state_pose_x[i] = reference_state_pose_x_base[i];
+      }
+      for (int i=1; i<=N_QUAT; ++i) {
+	reference_state_pose_q[i] = reference_state_pose_q_base[i];
+      }
+      *success = TRUE;
+    } else {
+      *success = TRUE;      
+    }
+    break;
+
   default: // this is NO_FUNC by default
     *success = TRUE;
   }

@@ -67,39 +67,29 @@ default_controller ModelImpedanceJt
 
 {
 name               move_to_grasp
-func_call 	   gripper 4 0.05 0.1 0.1 0.0
 manipulation_frame bref
 duration      	   2
 pose_x        	   abs 0.0 0.0 0.02
 pose_q        	   1 abs 1 0 0 0
+gripper_start 	   abs 0.05 0
+gripper_end        abs 0.03 0
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 max_wrench    	   last 10 10 10 5 5 5
 }
 {
 name               prepare_grasp
-func_call 	   gripper 4 0.03 0.1 0.1 0.0
 manipulation_frame bref
 duration      	   2
 pose_x        	   abs 0.0 0.00 0.048
 pose_q        	   1 abs 1 0 0 0
+gripper_start 	   abs 0.03 0
+gripper_end   	   abs 0.0  100
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
-exit_condition	   pos_orient 10 0.0015 0.01 0 0
-}
-{
-name               grasp_connector
-func_call 	   gripper 4 0.0 0.1 0.1 100.0
-manipulation_frame bref
-duration      	   1
-pose_x        	   abs 0.0 0.00 0.048
-pose_q        	   1 abs 1 0 0 0
-cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
-cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
-cart_gain_integral 0.5
-max_wrench   	   last 20 20 20 5 5 5
-exit_condition	   fun_success 10 0 0 0 0
+max_wrench   	   last 10 10 10 5 5 5
+exit_condition	   pos_orient 10 0.002 0.02 0 0
 }
 {
 name               extract_qfsp
@@ -107,6 +97,8 @@ manipulation_frame bref
 duration      	   1
 pose_x        	   abs 0.0 0.0 -0.05
 pose_q        	   1 abs 1 0 0 0
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
 max_wrench    	   cont 20 20 40 5 5 5 
 }
 
@@ -119,11 +111,13 @@ func_call	   next_table_delta
 duration      	   3
 pose_x        	   abs -0.002 -0.005 -0.01 
 pose_q        	   1 rel  0.9423 -0.1219 -0.2634 0.1678
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
 max_wrench    	   cont 10 10 10 5 5 5
-exit_condition	   pos_orient 10 0.0015 0.01 0 0
+exit_condition	   pos_orient 10 0.002 0.02 0 0
 }
 {
 name               zero_force_torque_offsets
@@ -132,6 +126,8 @@ func_call	   zero_ft
 duration      	   0.5
 pose_x        	   rel 0 0 0
 pose_q        	   1 rel  1 0 0 0 
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
@@ -143,6 +139,8 @@ manipulation_frame ref
 duration      	   2
 pose_x        	   rel 0.0 0.0 0.01 
 pose_q        	   1 rel  1 0 0 0
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.25
@@ -156,6 +154,8 @@ manipulation_frame ref
 duration      	   2
 pose_x        	   abs 0.0 0.0 0.0
 pose_q        	   1 abs 1 0 0 0
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
 cart_gain_x_scale  1.4 1.4 1.4 1.4 1.4 1.4
 cart_gain_a_scale  1.6 1.6 1.6 1.6 1.6 1.6
 cart_gain_integral 0.0
@@ -169,10 +169,12 @@ manipulation_frame ref
 duration      	   2
 pose_x       	   abs 0 0 .053 
 pose_q        	   1 rel 1 0 0 0
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.0  100
 cart_gain_x_scale  1.4 1.4 1.4 1.4 1.4 1.4
 cart_gain_a_scale  1.6 1.6 1.6 1.6 1.6 1.6
 force_desired      0.9 0 0 -50
-moment_desired     -0.0 0 0 0
+moment_desired     -0.9 0 0 0
 max_wrench    	   last 30 30 80 10 10 10
 exit_condition	   pos 10 0.01 0.0 0 0
 }
@@ -182,17 +184,9 @@ manipulation_frame ref
 duration      	   1
 pose_x        	   abs 0 0 0.050
 pose_q        	   1 rel 1 0 0 0
+gripper_start 	   abs 0.0  100
+gripper_end   	   abs 0.03 0
 max_wrench    	   cont 30 30 100 10 10 10
-}
-{
-name		   release_connector
-func_call	   gripper 4 0.03 0.1 0.1 0.0
-manipulation_frame ref
-duration      	   1
-pose_x        	   rel 0 0 0
-pose_q        	   1 rel 1 0 0 0
-max_wrench    	   cont 30 30 100 10 10 10
-exit_condition	   fun_success 10 0 0 0 0
 }
 {
 name               move_above_socket
@@ -201,6 +195,10 @@ manipulation_frame ref
 duration      	   2
 pose_x        	   abs 0.0 0.0 -0.05
 pose_q        	   1 abs 1 0 0 0
+//gripper_start    abs 0.0  100
+//gripper_end      abs 0.0  100
+gripper_start 	   abs 0.025 0
+gripper_end   	   abs 0.025 0
 max_wrench    	   cont 15 15 15 5 5 5 
 }
 {
@@ -209,5 +207,9 @@ manipulation_frame ref
 duration      	   1.5
 pose_x        	   abs 0.0 0.0 -0.1
 pose_q        	   1 abs 1 0 0 0
+//gripper_start    abs 0.0  100
+//gripper_end      abs 0.0  100
+gripper_start 	   abs 0.05 0
+gripper_end   	   abs 0.05 0
 max_wrench    	   cont 15 15 15 5 5 5 
 }
