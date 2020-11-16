@@ -139,18 +139,6 @@ max_wrench    	   cont 12 12 12 5 5 5
 exit_condition	   pos_orient 10 0.0015 0.01 0 0
 }
 {
-name               send_pose_to_data_collection
-manipulation_frame abs
-func_call	   send_pose
-duration      	   60
-pose_x        	   rel 0 0 0
-pose_q        	   1 rel  1 0 0 0 
-cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
-cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
-cart_gain_integral 0.5
-exit_condition	   func_success 60 0 0 0 0 
-}
-{
 name               run_pose_correction
 func_call	   correct_pose
 manipulation_frame ref

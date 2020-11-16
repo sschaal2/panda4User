@@ -2597,7 +2597,7 @@ functionCall(int id, int initial_call, int *success)
     
   case  RECEIVE_POSE_CORRECTION:
     if  (initial_call) {
-      --global_sample_id;
+      //      --global_sample_id;
       triggerPoseDeltaPrediction();
       *success = FALSE;      
     } else {

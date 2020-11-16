@@ -189,6 +189,8 @@ void
 triggerPoseDeltaPrediction(void)
 {
 
+  robot_ready_for_data_col_image = TRUE;
+  robot_ready_for_data_col_state = TRUE;
   sm_ready_for_pose_delta_prediction = TRUE;
 
 }
@@ -212,7 +214,8 @@ int
 checkPoseDeltaPrediction(void)
 {
 
-  if (!sm_ready_for_pose_delta_prediction)
+  if (!sm_ready_for_pose_delta_prediction && !robot_ready_for_data_col_image
+      && !robot_ready_for_data_col_state)
     return TRUE;
 
   return FALSE;
@@ -580,8 +583,10 @@ ComThread(void *)
 
       // position compensation
       for (i=1; i<=N_CART; ++i) {
+	
         predicted_reference_state_pose_delta_x_inverse[i] = -std::atof(pose_delta_string[i-1].c_str());
-        diff = std::abs(std::abs(predicted_reference_state_pose_delta_x_inverse[i]) - std::abs(reference_state_pose_delta_x_table[current_state_pose_delta][i]));
+        diff = std::abs(std::abs(predicted_reference_state_pose_delta_x_inverse[i]) -
+			std::abs(reference_state_pose_delta_x_table[current_state_pose_delta][i]));
         if(diff > max_abs_diff_predicted_reference_state_pose_delta_x){
           max_abs_diff_predicted_reference_state_pose_delta_x = diff;
         }
@@ -595,7 +600,9 @@ ComThread(void *)
       predicted_reference_state_pose_delta_q_inverse[4] = -std::atof(pose_delta_string[N_CART+2].c_str());
 
       for (i=1; i<=N_QUAT; ++i) {
-        diff = std::abs(std::abs(predicted_reference_state_pose_delta_q_inverse[i]) - std::abs(reference_state_pose_delta_q_table[current_state_pose_delta][i]));
+	
+        diff = std::abs(std::abs(predicted_reference_state_pose_delta_q_inverse[i]) -
+			std::abs(reference_state_pose_delta_q_table[current_state_pose_delta][i]));
         if(diff > max_abs_diff_predicted_reference_state_pose_delta_q){
           max_abs_diff_predicted_reference_state_pose_delta_q = diff;
         }
