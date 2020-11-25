@@ -48,8 +48,9 @@ reference_state_pose_x	0.596 0.014 0.063  // 1.1 slot
 //reference_state_pose_x	0.615 -0.023 0.07  // 2.3 slot
 reference_state_pose_q		0.0 -0.7071 0.7071 0.0  // vertical down aligned with Z
 
-// the table of reference state perturbations
-reference_state_pose_delta_table prefs/qsfp_vl_more.txt
+// the table of reference state perturbation
+reference_state_pose_delta_table prefs/qsfp_vl_fine.txt
+//reference_state_pose_delta_table prefs/qsfp_vl_more.txt
 //reference_state_pose_delta_table prefs/all_slots.txt
 //reference_state_pose_delta_table prefs/half_range_delta_pose.txt
 
@@ -88,7 +89,7 @@ cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
 max_wrench   	   last 10 10 10 5 5 5
-exit_condition	   pos_orient 10 0.002 0.02 0 0
+exit_condition	   pos_orient 10 0.0015 0.01 0 0
 }
 {
 name               grasp_connector
@@ -131,7 +132,7 @@ manipulation_frame ref
 func_call	   next_table_delta
 duration      	   3
 pose_x        	   abs -0.002 -0.005 -0.01 
-pose_q        	   1 rel  0.9423 -0.1219 -0.2634 0.1678
+pose_q        	   1 abs  0.9423 -0.1219 -0.2634 0.1678
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5

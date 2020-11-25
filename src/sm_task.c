@@ -188,7 +188,7 @@ static double     time_step;
 static double     cref[N_ENDEFFS*6+1];
 static SL_Cstate  ctarget[N_ENDEFFS+1];
 static SL_Cstate  cdes[N_ENDEFFS+1];
-static SL_quat    ctarget_orient[N_ENDEFFS+1];
+SL_quat    ctarget_orient[N_ENDEFFS+1];
 static My_Crot    ctarget_rot[N_ENDEFFS+1];  
 static SL_quat    cdes_orient[N_ENDEFFS+1];
 static SL_quat    cdes_start_orient[N_ENDEFFS+1];
@@ -220,6 +220,9 @@ static double     default_cart_gain_a_scale[2*N_CART+1];
 
 static double pos_error;
 static double orient_error;
+
+double pos_error_vector[N_CART+1];
+double orient_error_quat[N_QUAT+1];
 
 // for no_user_interaction_flag
 char   sm_file_name[200];
@@ -454,7 +457,8 @@ init_sm_task(void)
 {
   int    j, i;
   char   string[100];
-  static char   fname[100] = "qsfp_vl_collection.sm";
+  //static char   fname[100] = "qsfp_vl_collection.sm";
+  static char   fname[100] = "qsfp_vl_correction.sm";  
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;
@@ -683,7 +687,6 @@ run_sm_task(void)
   int    ft_exception_flag = FALSE;
   char   string[200];
   float  b[N_CART*3+1];
-  double q_temp[N_QUAT+1];
   
   switch (state_machine_state) {
 
@@ -744,7 +747,6 @@ run_sm_task(void)
 			      &current_target_sm);
       }
 
-      
       if (current_target_sm.cart_gain_integral != 0) 
 	sprintf(msg,"    %d.%-30s with %sInt\n",
 		current_state_sm,current_target_sm.state_name,current_target_sm.controller_name);
@@ -923,7 +925,6 @@ run_sm_task(void)
       for (i=1; i<=N_CART; ++i) {
 	min_jerk_next_step(cdes[HAND].x[i],
 			   cdes[HAND].xd[i],
-
 			   cdes[HAND].xdd[i],
 			   ctarget[HAND].x[i],
 			   ctarget[HAND].xd[i],
@@ -945,15 +946,17 @@ run_sm_task(void)
 
     // logging of position and orientation error
 
-    // position error
+    // position error relative to target
     pos_error = 0.0;
-    for (i=1; i<=N_CART; ++i)
+    for (i=1; i<=N_CART; ++i) {
+      pos_error_vector[i] = cart_state[HAND].x[i] - ctarget[HAND].x[i];
       pos_error += sqr(ctarget[HAND].x[i]-cart_state[HAND].x[i]);
+    }
     pos_error = sqrt(pos_error);
     
-    // orientation error
-    quatRelative(ctarget_orient[HAND].q, cart_orient[HAND].q, q_temp);
-    orient_error = 2.0*fabs(acos(q_temp[_Q0_]));
+    // orientation error relative to target
+    quatRelative(ctarget_orient[HAND].q, cart_orient[HAND].q, orient_error_quat);
+    orient_error = 2.0*fabs(acos(orient_error_quat[_Q0_]));
     if (orient_error > PI)
       orient_error = 2.*PI-orient_error;
 
