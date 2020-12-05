@@ -46,6 +46,8 @@ int    robot_ready_for_data_col_state = FALSE;
 int    robot_ready_for_data_col_label = FALSE;
 int    sm_ready_for_pose_delta_prediction = FALSE;
 int    global_sample_id = 0;
+double reference_state_pose_delta_x_adjusted[N_CART+1];
+double reference_state_pose_delta_q_adjusted[N_QUAT+1];
 double predicted_reference_state_pose_delta_x_inverse[N_CART+1];
 double predicted_reference_state_pose_delta_q_inverse[N_QUAT+1];
 double max_allowed_abs_diff_predicted_reference_state_pose_delta_x = 0.005; // meters
@@ -64,6 +66,7 @@ extern double reference_state_pose_delta_q_table[][N_QUAT+1];
 extern int    current_state_pose_delta;
 extern double pos_error_vector[];
 extern double orient_error_quat[];
+extern SL_Cstate ctarget[];
 extern SL_quat ctarget_orient[];
 
 // local functions
@@ -535,6 +538,15 @@ ComThread(void *)
       
       // handshake for getting the pose delta estimation
     }else if (req.std::string::find(receive_pose_delta_pred_request) != std::string::npos){
+
+      // reset the compensation
+      for (int i=1; i<=N_CART; ++i) {
+	predicted_reference_state_pose_delta_x_inverse[i] = 0.0;
+      }
+      for (int i=1; i<=N_QUAT; ++i) {
+	predicted_reference_state_pose_delta_q_inverse[i] = 0.0;
+      }
+
       // extract the sample id
       std::string sample_id = req.substr (receive_pose_delta_pred_request.length(),
                                           req.length());
@@ -612,14 +624,14 @@ ComThread(void *)
       double diff;
       max_abs_diff_predicted_reference_state_pose_delta_x = 0.00;
       max_abs_diff_predicted_reference_state_pose_delta_q = 0.00;
+      double diff_predicted_reference_state_pose_delta_x[N_CART+1];
 
       // position compensation
       for (i=1; i<=N_CART; ++i) {
-	
         predicted_reference_state_pose_delta_x_inverse[i] = -std::atof(pose_delta_string[i-1].c_str());
-	//printf("%d: %f (%f)\n",i,predicted_reference_state_pose_delta_x_inverse[i],reference_state_pose_delta_x_table[current_state_pose_delta][i]);
         diff = std::abs(predicted_reference_state_pose_delta_x_inverse[i] +
-			reference_state_pose_delta_x_table[current_state_pose_delta][i]);
+			reference_state_pose_x[i] - reference_state_pose_x_base[i]);
+	diff_predicted_reference_state_pose_delta_x[i] = diff;
         if(diff > max_abs_diff_predicted_reference_state_pose_delta_x){
           max_abs_diff_predicted_reference_state_pose_delta_x = diff;
         }
@@ -632,20 +644,40 @@ ComThread(void *)
       predicted_reference_state_pose_delta_q_inverse[_Q2_] = -std::atof(pose_delta_string[N_CART+1].c_str());
       predicted_reference_state_pose_delta_q_inverse[_Q3_] = -std::atof(pose_delta_string[N_CART+2].c_str());
 
+      // ensure unit length
       double q_norm;
       q_norm = sqrt(vec_mult_inner_size(predicted_reference_state_pose_delta_q_inverse,predicted_reference_state_pose_delta_q_inverse,N_QUAT));
-      for (i=1; i<=N_QUAT; ++i)
+      for (i=1; i<=N_QUAT; ++i) {
 	predicted_reference_state_pose_delta_q_inverse[i] /= q_norm;
+      }
 
       double q_diff[N_QUAT+1];
-      quatMult(reference_state_pose_delta_q_table[current_state_pose_delta],predicted_reference_state_pose_delta_q_inverse,q_diff);
-      printf("Angle [deg] relative to ground truth delta quaternion = %f\n",acos(q_diff[_Q0_])*2/PI*180.);
+      quatRelative(reference_state_pose_q_base,reference_state_pose_q,q_diff);
+      quatMult(q_diff,predicted_reference_state_pose_delta_q_inverse,q_diff);
 
+      // norm of vector component of q_diff
+      double q_diff_norm = sqrt(vec_mult_inner_size(&(q_diff[_Q0_]),&(q_diff[_Q0_]),N_CART));
+      double so3_q_diff[N_CART+1];
+      for (int i=1; i<=N_CART; ++i) {
+	so3_q_diff[i] = 2.* acos(q_diff[_Q0_]) * q_diff[_Q0_+i] / (q_diff_norm + 1.e-10);
+      }
+
+      printf("\n----------------------------------------------------------------------------------\n");
+      printf("Total pos error [m]: %f\n",sqrt(sqr(diff_predicted_reference_state_pose_delta_x[_X_])+
+					      sqr(diff_predicted_reference_state_pose_delta_x[_Y_])+
+					      sqr(diff_predicted_reference_state_pose_delta_x[_Z_])));
+      printf("Pos [m] error      : %f %f %f\n",diff_predicted_reference_state_pose_delta_x[_X_],
+	     diff_predicted_reference_state_pose_delta_x[_Y_],
+	     diff_predicted_reference_state_pose_delta_x[_Z_]);
+
+      printf("Angle err [deg]    : %f\n",acos(q_diff[_Q0_])*2/PI*180.);
+      printf("SO3 error          : %f (%f)  %f (%f)  %f (%f)\n",so3_q_diff[_X_],so3_q_diff[_X_]/PI*180.,so3_q_diff[_Y_],so3_q_diff[_Y_]/PI*180.,so3_q_diff[_Z_],so3_q_diff[_Z_]/PI*180.);
+      printf("----------------------------------------------------------------------------------\n\n");
       max_abs_diff_predicted_reference_state_pose_delta_q = acos(q_diff[_Q0_])*2/PI*180.0;
 
-      std::cout << "Maximum absolute deviation between prediction and groundtruth: x=" <<
-	max_abs_diff_predicted_reference_state_pose_delta_x <<
-	" alpha=" << max_abs_diff_predicted_reference_state_pose_delta_q  << std::endl;
+      //      std::cout << "Maximum absolute deviation between prediction and groundtruth: x=" <<
+      //	max_abs_diff_predicted_reference_state_pose_delta_x <<
+      //" alpha=" << max_abs_diff_predicted_reference_state_pose_delta_q  << std::endl;
       
       if(max_abs_diff_predicted_reference_state_pose_delta_x > max_allowed_abs_diff_predicted_reference_state_pose_delta_x ||
 	 max_abs_diff_predicted_reference_state_pose_delta_q > max_allowed_abs_diff_predicted_reference_state_pose_delta_q){
@@ -656,11 +688,11 @@ ComThread(void *)
 	std::cout << "\nYou have 10 seconds to run cc command to execute correction" << std::endl;
 	
         continue_pose_correction = FALSE;
-	
+
+	int count = task_servo_calls;
         while (!continue_pose_correction) {
-	  int count = 0;
 	  sleep(1);
-	  if (++count > 10)
+	  if (task_servo_calls - count > 10000)
 	    break;
         }
 
@@ -681,14 +713,6 @@ ComThread(void *)
 	// orientation compensation
 	quatMult(reference_state_pose_q, predicted_reference_state_pose_delta_q_inverse,
 		 reference_state_pose_q);
-	
-	// reset the compensation
-	for (i=1; i<=N_CART; ++i) {
-	  predicted_reference_state_pose_delta_x_inverse[i] = 0.0;
-	}
-	for (i=1; i<=N_QUAT; ++i) {
-	  predicted_reference_state_pose_delta_q_inverse[i] = 0.0;
-	}
 	
       }
 
@@ -880,16 +904,15 @@ add_experiment_data(Json::Value &state)
   Json::Value pos_q_delta(Json::arrayValue);
   Json::Value pos_q_target(Json::arrayValue);
 
-  double reference_state_pose_delta_x_adjusted[N_CART+1];
-  double reference_state_pose_delta_q_adjusted[N_QUAT+1];
   double reference_state_pose_q_base_inverse[N_QUAT+1];
   double q_tilted_inverse[N_QUAT+1];    // the special tilt approach for insertion
 
-  // add the tracking errot to the pose_delta to make image and robot state
+  // add the tracking error to the pose_delta to make image and robot state
   // maximaly consistent
 
   // translation offset is easy as addition is commutative
-  vec_add_size(reference_state_pose_delta_x_table[current_state_pose_delta],
+  vec_sub_size(reference_state_pose_x,reference_state_pose_x_base,N_CART,reference_state_pose_delta_x_adjusted);
+  vec_add_size(reference_state_pose_delta_x_adjusted,
 	       pos_error_vector,
 	       N_CART,
 	       reference_state_pose_delta_x_adjusted);
@@ -906,7 +929,6 @@ add_experiment_data(Json::Value &state)
       reference_state_pose_q_base_inverse[i] *= -1.;
     
   }
-  //quatMult(reference_state_pose_q_base_inverse,cart_orient[HAND].q,reference_state_pose_delta_q_adjusted);
   
   quatMult(reference_state_pose_q_base_inverse,ctarget_orient[HAND].q,reference_state_pose_delta_q_adjusted);  
   quatMult(reference_state_pose_delta_q_adjusted,q_tilted_inverse,reference_state_pose_delta_q_adjusted);

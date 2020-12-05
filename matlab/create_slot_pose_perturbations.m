@@ -7,7 +7,7 @@ max_y_mm = 2/2;
 max_z_mm = 4/2;
 max_orient_degree = 5/2.5;
 
-% qsfp large purtubation
+% qsfp large purtubation, coarse
 max_x_mm = 12;
 max_y_mm = 12;
 max_z_mm = 4;
@@ -29,6 +29,18 @@ min_z_mm = -4;
 s_x = 2;
 s_y = 2;
 s_z = 4;
+max_orient_degree = 6;
+
+% qsfp large purtubation, fine
+max_x_mm = 12;
+max_y_mm = 12;
+max_z_mm = 4;
+min_x_mm = -12;
+min_y_mm = -12;
+min_z_mm = -4;
+s_x = 2;
+s_y = 2;
+s_z = 2;
 max_orient_degree = 6;
 
 X = [];
