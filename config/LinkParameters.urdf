@@ -1,0 +1,56 @@
+<link name="BASE">
+	<inertial>
+	<origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+	<mass value="1.000000"/>
+	<inertia ixx="0.000000" ixy="0.000000" ixz="0.000000" iyy="0.000000" iyz="0.000000" izz="0.000000"/>
+	</inertial>
+	</link>
+<link name="J1">
+	<inertial>
+	<origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+	<mass value="1.000000"/>
+	<inertia ixx="0.000000" ixy="0.000000" ixz="0.000000" iyy="0.000000" iyz="0.000000" izz="0.072500"/>
+	</inertial>
+	</link>
+<link name="J2">
+	<inertial>
+	<origin xyz="-0.020625 -0.139069 0.000000" rpy="0 0 0"/>
+	<mass value="0.339400"/>
+	<inertia ixx="0.005660" ixy="-0.002332" ixz="0.028700" iyy="0.063275" iyz="0.002600" izz="0.032834"/>
+	</inertial>
+	</link>
+<link name="J3">
+	<inertial>
+	<origin xyz="0.041688 0.010971 -0.050529" rpy="0 0 0"/>
+	<mass value="3.099200"/>
+	<inertia ixx="0.017526" ixy="-0.001743" ixz="0.001794" iyy="0.020509" iyz="-0.002154" izz="0.005542"/>
+	</inertial>
+	</link>
+<link name="J4">
+	<inertial>
+	<origin xyz="-0.006968 -0.017545 0.004533" rpy="0 0 0"/>
+	<mass value="1.191200"/>
+	<inertia ixx="0.009172" ixy="0.002822" ixz="0.006268" iyy="0.012831" iyz="-0.003380" izz="0.006844"/>
+	</inertial>
+	</link>
+<link name="J5">
+	<inertial>
+	<origin xyz="-0.004355 0.028600 -0.215066" rpy="0 0 0"/>
+	<mass value="2.388100"/>
+	<inertia ixx="0.078528" ixy="-0.002125" ixz="-0.004863" iyy="0.075027" iyz="0.002549" izz="0.006263"/>
+	</inertial>
+	</link>
+<link name="J6">
+	<inertial>
+	<origin xyz="0.016957 -0.009208 -0.005183" rpy="0 0 0"/>
+	<mass value="1.987400"/>
+	<inertia ixx="0.003388" ixy="-0.000556" ixz="0.000312" iyy="0.000786" iyz="0.000848" izz="0.003528"/>
+	</inertial>
+	</link>
+<link name="J7">
+	<inertial>
+	<origin xyz="0.004369 -0.000067 0.033073" rpy="0 0 0"/>
+	<mass value="1.487600"/>
+	<inertia ixx="0.005706" ixy="0.000800" ixz="0.001845" iyy="0.007087" iyz="-0.000502" izz="0.002281"/>
+	</inertial>
+	</link>
