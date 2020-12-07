@@ -45,16 +45,38 @@ err_q = zeros(size(base_ref_q));
 err_log_q = zeros(size(base_ref_x));
 
 for i=1:length(err_x)
+    % remaining error after vl correction
     err_x(i,:) = base_ref_x(i,:) - (ref_x(i,:)+vl_delta_x(i,:));
+    % recover the delta pose perturbation: must be identical to pertubation
+    % table
     delta_x(i,:) = ref_x(i,:) - base_ref_x(i,:);
+    % recover the perfect target before insertation after tilted move:
+    % this must be expressed in the ref system:
+    R=quatToRotMat(ref_q(i,:)');
+    temp = R*(target_x(i,:)-ref_x(i,:))';
+    R=quatToRotMat(base_ref_q(i,:)');
+    opt_target_x(i,:) = (R'*temp)'+base_ref_x(i,:);
 end
 
 for i=1:length(err_q)
+    % the vl correction applied to perturbed reference posse
     q_adj = quatMult(ref_q(i,:)',vl_delta_q(i,:)');
+    % recover the delta pose pertubation: must be identical to purturbation
+    % table
     delta_q(i,:) = quatRel(ref_q(i,:)',base_ref_q(i,:)')';
     log_delta_q(i,:) = quatLog(delta_q(i,:)')';
-    err_q(i,:) = quatRel(q_adj,base_ref_q(i,:)')';
+    % the remaining orientation error after vl correction
+    err_q(i,:) = quatRel(base_ref_q(i,:)',q_adj)';
     err_log_q(i,:) = quatLog(err_q(i,:)')';
+    % recover the perfect target before insertation after tilted move: this
+    % must be expressed in ref system:tbd
+    R=quatToRotMat(ref_q(i,:)');
+    temp = quatRel(target_q(i,:)',ref_q(i,:)');
+    temp(2:4) = R*temp(2:4);
+    opt_target_q(i,:) = temp';
+    R=quatToRotMat(base_ref_q(i,:)');
+    temp(2:4) = R'*temp(2:4);
+    opt_target_q(i,:) = quatMult(base_ref_q(i,:)',temp)';
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -261,6 +283,54 @@ ylabel('total error[rad]');
 title('Residual Plots Orientation');
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% the fith figure is about the error relative to the optimal pose
+% before inseration (pose without socket perturbation)
+fig5 = figure(5);
+clf;
+sgtitle({fname,'Position/Orientation Error Relative to Optimal Pose'},'Interpreter','none');
+
+% boxplots of errors
+subplot(221);
+pos_track_err = corrected_current_x - opt_target_x;
+boxplot(pos_track_err,'labels',{'p_err_x','p_err_y','p_err_z'});
+title({'Position Error to Optimal','after correction'});
+ylabel('error[m]');
+
+% 3D plot of position error
+subplot(222);
+plot3D(pos_track_err,'.');
+title({'Position Error to Optimal','after correction'});
+grid on;
+axis('equal');
+xlabel('x[m]');
+ylabel('y[m]');
+zlabel('z[m]');
+hold on;
+plot3(0,0,0,'ro');
+hold off;
+
+subplot(223);
+for i=1:length(corrected_current_q),
+    corrected_orient_track_err(i,:) = quatLog(quatRel(corrected_current_q(i,:)',opt_target_q(i,:)'))';
+end
+boxplot(corrected_orient_track_err/pi*180,'labels',{'o_err_wx','o_err_wy','o_err_wz'});
+title({'Orientation Error to Optimal','after correction'});
+ylabel('error[deg]');
+
+% 3D plot of position error
+subplot(224);
+plot3D(corrected_orient_track_err/pi*180,'.');
+title({'Orientation Error to Optimal','after correction'});
+axis('equal');
+grid on;
+xlabel('x[rad]');
+ylabel('y[rad]');
+zlabel('z[rad]');
+hold on;
+plot3(0,0,0,'ro');
+hold off;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % create nice output pdf file
 outfname = [fname,'.pdf'];
 delete(outfname);
@@ -268,6 +338,7 @@ print(fig1,'-dpdf','-fillpage','/tmp/t1');
 print(fig2,'-dpdf','-fillpage','/tmp/t2');
 print(fig3,'-dpdf','-fillpage','/tmp/t3');
 print(fig4,'-dpdf','-fillpage','/tmp/t4');
-append_pdfs(outfname,'/tmp/t1.pdf','/tmp/t2.pdf','/tmp/t3.pdf','/tmp/t4.pdf');
+print(fig5,'-dpdf','-fillpage','/tmp/t5');
+append_pdfs(outfname,'/tmp/t1.pdf','/tmp/t4.pdf','/tmp/t2.pdf','/tmp/t3.pdf','/tmp/t5.pdf');
 
 
