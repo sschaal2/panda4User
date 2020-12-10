@@ -155,7 +155,7 @@ typedef struct StateMachineTarget {
   double err_moment; // abs error in moment
 } StateMachineTarget;
 
-#define MAX_STATES_SM 1000
+#define MAX_STATES_SM 10000
 static StateMachineTarget targets_sm[MAX_STATES_SM+1];
 static StateMachineTarget current_target_sm;
 
