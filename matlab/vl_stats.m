@@ -339,6 +339,6 @@ print(fig2,'-dpdf','-fillpage','/tmp/t2');
 print(fig3,'-dpdf','-fillpage','/tmp/t3');
 print(fig4,'-dpdf','-fillpage','/tmp/t4');
 print(fig5,'-dpdf','-fillpage','/tmp/t5');
-append_pdfs(outfname,'/tmp/t1.pdf','/tmp/t4.pdf','/tmp/t2.pdf','/tmp/t3.pdf','/tmp/t5.pdf');
+append_pdfs(outfname,'/tmp/t1.pdf','/tmp/t4.pdf','/tmp/t5.pdf','/tmp/t3.pdf','/tmp/t4.pdf');
 
 
