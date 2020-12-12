@@ -167,13 +167,13 @@ subplot(222);
 plot3D(pos_track_err,'.');
 title({'Tracking Error','before correction'});
 grid on;
-axis('equal');
 xlabel('x[m]');
 ylabel('y[m]');
 zlabel('z[m]');
 hold on;
 plot3(0,0,0,'ro');
 hold off;
+axis('equal');
 
 subplot(223);
 corrected_pos_track_err = corrected_current_x - corrected_target_x;
@@ -185,7 +185,6 @@ ylabel('error[m]');
 subplot(224);
 plot3D(corrected_pos_track_err,'.');
 title({'Tracking Error','after correction'});
-axis('equal');
 grid on;
 xlabel('x[m]');
 ylabel('y[m]');
@@ -193,6 +192,7 @@ zlabel('z[m]');
 hold on;
 plot3(0,0,0,'ro');
 hold off;
+axis('equal');
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % the third figure is about orient tracking errors

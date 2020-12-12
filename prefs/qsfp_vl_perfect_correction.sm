@@ -143,6 +143,18 @@ exit_condition	   pos_orient 10 0.0015 0.01 0 0
 {
 name               move_above_socket_corrected
 func_call	   reset_base_pose
+manipulation_frame bref
+duration      	   2
+pose_x        	   abs 0.0 0.0 -0.05
+pose_q        	   1 abs 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+}
+/*
+{
+name               move_above_socket_corrected
+func_call	   reset_base_pose
 manipulation_frame ref
 duration      	   1
 pose_x        	   rel 0.0 0.0 -0.03
@@ -151,10 +163,11 @@ cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
 }
+*/
 {
 name               approach_tilted_corrected
 manipulation_frame ref
-duration      	   1
+duration      	   3
 pose_x        	   abs -0.002 -0.005 -0.01 
 pose_q        	   1 abs  0.9423 -0.1219 -0.2634 0.1678
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
