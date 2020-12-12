@@ -307,6 +307,18 @@ ylabel('y[m]');
 zlabel('z[m]');
 hold on;
 plot3(0,0,0,'ro');
+
+% draw cube
+center = -[1 1 1]*0.002;
+cubesize = 0.004;
+X = [0 0 1 1 0 0 1 1 1 1 1 1 0 0 0 0 0]';
+Y = [0 1 1 0 0 0 0 0 0 1 1 1 1 1 1 0 0]';
+Z = [0 0 0 0 0 1 1 0 1 1 0 1 1 0 1 1 0]';
+X1 = [X*cubesize+center(1)];
+Y1 = [Y*cubesize+center(2)];
+Z1 = [Z*cubesize+center(3)];
+plot3(X1,Y1,Z1);
+
 hold off;
 
 subplot(223);
@@ -328,6 +340,19 @@ ylabel('y[rad]');
 zlabel('z[rad]');
 hold on;
 plot3(0,0,0,'ro');
+
+
+% draw cube
+center = -[1 1 1]*1;
+cubesize = 2;
+X = [0 0 1 1 0 0 1 1 1 1 1 1 0 0 0 0 0]';
+Y = [0 1 1 0 0 0 0 0 0 1 1 1 1 1 1 0 0]';
+Z = [0 0 0 0 0 1 1 0 1 1 0 1 1 0 1 1 0]';
+X1 = [X*cubesize+center(1)];
+Y1 = [Y*cubesize+center(2)];
+Z1 = [Z*cubesize+center(3)];
+plot3(X1,Y1,Z1);
+
 hold off;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -339,6 +364,6 @@ print(fig2,'-dpdf','-fillpage','/tmp/t2');
 print(fig3,'-dpdf','-fillpage','/tmp/t3');
 print(fig4,'-dpdf','-fillpage','/tmp/t4');
 print(fig5,'-dpdf','-fillpage','/tmp/t5');
-append_pdfs(outfname,'/tmp/t1.pdf','/tmp/t4.pdf','/tmp/t5.pdf','/tmp/t3.pdf','/tmp/t4.pdf');
+append_pdfs(outfname,'/tmp/t1.pdf','/tmp/t4.pdf','/tmp/t5.pdf','/tmp/t2.pdf','/tmp/t3.pdf');
 
 
