@@ -2251,7 +2251,7 @@ save_statistics_matrix(void)
   
   time(&rawtime);
   tptr = localtime(&rawtime);
-  sprintf(fname,"stat_matrix_%s_%d-%d-%d-%d:%d:%d.txt",string,tptr->tm_year+1900,tptr->tm_mon,tptr->tm_mday,tptr->tm_hour,tptr->tm_min,tptr->tm_sec);
+  sprintf(fname,"stat_matrix_%s_%d-%d-%d-%d:%d:%d.txt",string,tptr->tm_year+1900,tptr->tm_mon+1,tptr->tm_mday,tptr->tm_hour,tptr->tm_min,tptr->tm_sec);
 
   // open file
   fp = fopen(fname,"w");
