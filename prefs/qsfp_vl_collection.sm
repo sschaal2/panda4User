@@ -52,6 +52,9 @@ reference_state_pose_q		0.0 -0.7071 0.7071 0.0  // vertical down aligned with Z
 //reference_state_pose_delta_table prefs/qsfp_vl_fine.txt
 //reference_state_pose_delta_table prefs/qsfp_vl_fine_large.txt
 reference_state_pose_delta_table prefs/qsfp_vl_gaussian.txt
+//reference_state_pose_delta_table prefs/qsfp_vl_orthogonal.txt
+//reference_state_pose_delta_table prefs/qsfp_vl_orth_orient.txt
+//reference_state_pose_delta_table prefs/qsfp_vl_coarse.txt
 //reference_state_pose_delta_table prefs/qsfp_vl_more.txt
 //reference_state_pose_delta_table prefs/all_slots.txt
 //reference_state_pose_delta_table prefs/half_range_delta_pose.txt
@@ -85,7 +88,7 @@ name               prepare_grasp
 func_call 	   gripper 4 0.03 0.1 0.1 0.0
 manipulation_frame bref
 duration      	   2
-pose_x        	   abs 0.0 0.00 0.048
+pose_x        	   abs -0.00 0.00 0.048 
 pose_q        	   1 abs 1 0 0 0
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
@@ -98,8 +101,8 @@ name               grasp_connector
 func_call 	   gripper 4 0.0 0.1 0.1 100.0
 manipulation_frame bref
 duration      	   1
-pose_x        	   abs 0.0 0.00 0.048
-pose_q        	   1 abs 1 0 0 0
+pose_x        	   rel 0 0 0 
+pose_q        	   1 rel 1 0 0 0
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5

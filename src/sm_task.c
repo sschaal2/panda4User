@@ -226,9 +226,22 @@ static double     default_cart_gain_a_scale[2*N_CART+1];
 
 static double pos_error;
 static double orient_error;
+static double pos_tracking_error;
+static double orient_tracking_error;
 
 double pos_error_vector[N_CART+1];
 double orient_error_quat[N_QUAT+1];
+
+double pos_tracking_error_vector[N_CART+1];
+double orient_tracking_error_quat[N_QUAT+1];
+
+double max_pos_tracking_error;
+double min_pos_tracking_error;
+double mean_pos_tracking_error;
+
+double max_orient_tracking_error;
+double min_orient_tracking_error;
+double mean_orient_tracking_error;
 
 // for no_user_interaction_flag
 char   sm_file_name[200];
@@ -267,6 +280,7 @@ static int    min_jerk_next_step_quat (SL_quat q_current, SL_quat q_target, doub
 static int    read_state_machine(char *fname);
 static void   print_sm_state(void);
 static void   save_statistics_matrix(void);
+static void   print_sm_stats(void);
 static void   assignCurrentSMTarget(StateMachineTarget smt,
 				    double *ref_x,
 				    double *ref_q,
@@ -301,7 +315,8 @@ add_sm_task( void )
 	  run_sm_task, change_sm_task);
 
   addToMan("print_sm_state","prints the current state suitable for state machine",print_sm_state);
-  addToMan("save_statistics","saves statistics matrix to file",save_statistics_matrix);   
+  addToMan("save_statistics","saves statistics matrix to file",save_statistics_matrix);
+  addToMan("sm_stats","prints some stats of state machine",print_sm_stats);     
 
   // add variables to data collection
   for (i=1; i<=N_ENDEFFS; ++i) {
@@ -690,6 +705,7 @@ run_sm_task(void)
   double dist;
   double aux;
   static double time_to_go;
+  static int n_mean = 0;
   float pos[N_CART+1+1]; // one extra element for radius
   double gripper_move_threshold = 1e-8;
   static int wait_ticks=0;
@@ -817,6 +833,7 @@ run_sm_task(void)
       state_machine_state = GRIPPER_START;
     } else {
       state_machine_state = MOVE_TO_TARGET;
+      n_mean = 0;
     }
     
     // prepare min jerk for orientation space: s is an interpolation variable 
@@ -845,6 +862,7 @@ run_sm_task(void)
     if (--wait_ticks < 0) {
       if (misc_sensor[G_MOTION] == 0) {
 	state_machine_state = MOVE_TO_TARGET;
+	n_mean = 0;	
       }
     }
     
@@ -962,15 +980,49 @@ run_sm_task(void)
     pos_error = 0.0;
     for (i=1; i<=N_CART; ++i) {
       pos_error_vector[i] = cart_state[HAND].x[i] - ctarget[HAND].x[i];
-      pos_error += sqr(ctarget[HAND].x[i]-cart_state[HAND].x[i]);
+      pos_error += sqr(pos_error_vector[i]);
     }
     pos_error = sqrt(pos_error);
     
+    // position tracking
+    pos_tracking_error = 0.0;
+    for (i=1; i<=N_CART; ++i) {
+      pos_tracking_error_vector[i] = cdes[HAND].x[i] - cart_state[HAND].x[i];
+      pos_tracking_error += sqr(pos_tracking_error_vector[i]);
+    }
+    pos_tracking_error = sqrt(pos_tracking_error);
+    
+    if (pos_tracking_error > max_pos_tracking_error)
+      max_pos_tracking_error = pos_tracking_error;
+
+    if (pos_tracking_error < min_pos_tracking_error)
+      min_pos_tracking_error = pos_tracking_error;
+
+    mean_pos_tracking_error = (mean_pos_tracking_error*(double)n_mean + pos_tracking_error)/(double)(n_mean+1);
+    
+
     // orientation error relative to target
     quatRelative(ctarget_orient[HAND].q, cart_orient[HAND].q, orient_error_quat);
     orient_error = 2.0*fabs(acos(orient_error_quat[_Q0_]));
     if (orient_error > PI)
       orient_error = 2.*PI-orient_error;
+
+    // orientation tracking error 
+    quatRelative(cart_orient[HAND].q, cdes_orient[HAND].q, orient_tracking_error_quat);
+    orient_tracking_error = 2.0*fabs(acos(orient_tracking_error_quat[_Q0_]));
+    if (orient_tracking_error > PI)
+      orient_tracking_error = 2.*PI-orient_tracking_error;
+
+    if (orient_tracking_error > max_orient_tracking_error)
+      max_orient_tracking_error = orient_tracking_error;
+    
+    if (orient_tracking_error < min_orient_tracking_error)
+      min_orient_tracking_error = orient_tracking_error;
+
+    mean_orient_tracking_error = (mean_orient_tracking_error*(double)n_mean + orient_tracking_error)/(double)(n_mean+1);
+
+    n_mean += 1;
+    
 
     // check whether there is an exit condtion which overules progressing 
     // to the next state
@@ -1011,7 +1063,7 @@ run_sm_task(void)
       }
 
       
-    } // end check exit condiitons
+    } // end check exit conditions
     
 
     // at this point we know that we will exit this state of the state machine    
@@ -1044,6 +1096,7 @@ run_sm_task(void)
 	wait_ticks = 100; // need to give non-real-time gripper thread a moment to get started
 	state_machine_state = GRIPPER_END;
       } else {
+	//print_sm_stats();
 	state_machine_state = INIT_SM_TARGET;
       }
     } // end time_to_go < 0
@@ -2263,6 +2316,56 @@ print_sm_state(void)
   printf("0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 "); // gains
 
   printf("%s",controller_names[SIMPLE_IMPEDANCE_JT]);
+  printf("\n");
+
+}
+/*!*****************************************************************************
+ *******************************************************************************
+\note  print_sm_stats
+\date  Dec. 2020
+   
+\remarks 
+
+       prints current statistics/info of state machine state
+
+ *******************************************************************************
+ Function Parameters: [in]=input,[out]=output
+
+  none
+
+ ******************************************************************************/
+static void 
+print_sm_stats(void)
+{
+  int i;
+
+  printf("StateName             : %s\n",current_target_sm.state_name);
+
+  printf("Reference State Pos   : %f %f %f\n",
+	 reference_state_pose_x[_X_],
+	 reference_state_pose_x[_Y_],
+	 reference_state_pose_x[_Z_]);
+
+  printf("Reference State Orient: %f %f %f %f\n",
+	 reference_state_pose_q[_Q0_],
+	 reference_state_pose_q[_Q1_],
+	 reference_state_pose_q[_Q2_],
+	 reference_state_pose_q[_Q3_],	 
+	 reference_state_pose_x[_Y_]);
+
+  printf("Target Pos Error      : %f (%f %f %f)\n",
+	 pos_error, pos_error_vector[_X_], pos_error_vector[_Y_], pos_error_vector[_Z_]);
+
+  printf("Target Orient Error   : %f (%f %f %f %f)\n",
+	 orient_error, orient_error_quat[_Q0_], orient_error_quat[_Q1_],
+	 orient_error_quat[_Q2_], orient_error_quat[_Q3_]);
+
+  printf("Tracking Pos Stats    : %f < %f < %f\n",min_pos_tracking_error,
+	 mean_pos_tracking_error, max_pos_tracking_error);
+
+  printf("Tracking Orient Stats : %f < %f < %f\n",min_orient_tracking_error,
+	 mean_orient_tracking_error, max_orient_tracking_error);
+
   printf("\n");
 
 }

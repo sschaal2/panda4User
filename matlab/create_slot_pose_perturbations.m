@@ -50,52 +50,80 @@ s_y = 2;
 s_z = 2;
 max_orient_degree = 6;
 
+% qsfp large purtubation, fine, one axis at a time
+max_x_mm = 12;
+max_y_mm = 12;
+max_z_mm = 6;
+min_x_mm = -12;
+min_y_mm = -12;
+min_z_mm = -4;
+s_x = 0.25;
+s_y = 0.25;
+s_z = 0.1;
+max_orient_degree = 0;
+
 
 X = [];
 
 for x=min_x_mm:s_x:max_x_mm
     for y=min_y_mm:s_y:max_y_mm
         for z=min_z_mm:s_z:max_z_mm
-            pose_x = [x y z]/1000;
-            angle = randi([-max_orient_degree max_orient_degree],1)/180*pi;
-            vec = rand(3,1)*2-1;
-            vec = vec/norm(vec);
-            pose_q = [cos(angle/2) vec'*sin(angle/2)];
-            X = [X; [pose_x pose_q]];
+            if x==0 && y==0 || x==0 && z==0 || y==0 && z==0,
+                pose_x = [x y z]/1000;
+                angle = randi([-max_orient_degree max_orient_degree],1)/180*pi;
+                vec = rand(3,1)*2-1;
+                vec = vec/norm(vec);
+                pose_q = [cos(angle/2) vec'*sin(angle/2)];
+                X = [X; [pose_x pose_q]];
+            end
         end
     end
 end
 
-X = [];
 
-scalar = 2;
-while length(X) < 1000;
-    while 1
-        x = randn/scalar * (max_x_mm - min_x_mm);
-        if x<=max_x_mm && x >= min_x_mm
-            break
+if 0,
+    X = [];
+    
+    scalar = 2;
+    while length(X) < 1000;
+        while 1
+            x = randn/scalar * (max_x_mm - min_x_mm);
+            if x<=max_x_mm && x >= min_x_mm
+                break
+            end
         end
-    end
-    while 1
-        y = randn/scalar * (max_y_mm - min_y_mm);
-        if y<=max_y_mm && y >= min_y_mm
-            break
+        while 1
+            y = randn/scalar * (max_y_mm - min_y_mm);
+            if y<=max_y_mm && y >= min_y_mm
+                break
+            end
         end
-    end
-    while 1
-        z = randn/scalar * (max_z_mm - min_z_mm);
-        if z<=max_z_mm && z >= min_z_mm
-            break
+        while 1
+            z = randn/scalar * (max_z_mm - min_z_mm);
+            if z<=max_z_mm && z >= min_z_mm
+                break
+            end
         end
+        pose_x = [x y z]/1000;
+        angle = randi([-max_orient_degree max_orient_degree],1)/180*pi;
+        vec = rand(3,1)*2-1;
+        vec = vec/norm(vec);
+        pose_q = [cos(angle/2) vec'*sin(angle/2)];
+        X = [X; [pose_x pose_q]];
     end
-    pose_x = [x y z]/1000;
-    angle = randi([-max_orient_degree max_orient_degree],1)/180*pi;
-    vec = rand(3,1)*2-1;
-    vec = vec/norm(vec);
-    pose_q = [cos(angle/2) vec'*sin(angle/2)];
-    X = [X; [pose_x pose_q]];
+elseif 1
+    X = [];
+    max_orient_degree = 6;
+    for i=1:3
+    for angle=-max_orient_degree:0.1:max_orient_degree,
+        vec = [0;0;0];
+        vec(i) = 1;
+        vec = vec/norm(vec);
+        pose_q = [cos(angle/180*pi/2) vec'*sin(angle/180*pi/2)];
+        X = [X; [0 0 0 pose_q]];
+    end
+    end
 end
-
 
 
 

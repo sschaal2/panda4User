@@ -50,7 +50,7 @@ double reference_state_pose_delta_x_adjusted[N_CART+1];
 double reference_state_pose_delta_q_adjusted[N_QUAT+1];
 double predicted_reference_state_pose_delta_x_inverse[N_CART+1];
 double predicted_reference_state_pose_delta_q_inverse[N_QUAT+1];
-double max_allowed_abs_diff_predicted_reference_state_pose_delta_x = 0.005; // meters
+double max_allowed_abs_diff_predicted_reference_state_pose_delta_x = 0.007; // meters
 double max_allowed_abs_diff_predicted_reference_state_pose_delta_q = 5.0;   // degree
 double max_abs_diff_predicted_reference_state_pose_delta_x = 0.0;
 double max_abs_diff_predicted_reference_state_pose_delta_q = 0.0;
@@ -916,6 +916,9 @@ add_experiment_data(Json::Value &state)
 	       pos_error_vector,
 	       N_CART,
 	       reference_state_pose_delta_x_adjusted);
+  // hack for bad grasp data collection
+  // printf("bad grasp simulation is running -- remove\n");
+  // reference_state_pose_delta_x_adjusted[_Y_] -= 0.005; // 5mm mis-grasped in y direction
 
   // orientation needs rotation matrix rules: q_adj = q_tilt_inv * q_current * q_base_inv
   quatRelative(reference_state_pose_q,ctarget_orient[HAND].q,q_tilted_inverse);
