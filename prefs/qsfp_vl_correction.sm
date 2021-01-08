@@ -268,7 +268,7 @@ max_wrench    	   cont 20 20 20 5 5 5
 exit_condition     fun_success 10 0 0 0 0
 }
 **************************************************/
-/**************include insertion******************
+/**************include insertion******************/
 {
 name               zero_force_torque_offsets_insert
 manipulation_frame abs
@@ -362,7 +362,7 @@ cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
 }
-****************************************************/
+/****************************************************/
 {
 name               move_above_socket
 name_next          zero_force_torque_offsets
