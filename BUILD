@@ -38,6 +38,7 @@ cc_binary(
     ],
     includes = [
         "include",
+        "src",        
     ],
     deps = [
         SL_ROOT + NAME + ":" + NAME,
@@ -64,10 +65,15 @@ cc_binary(
         "src/sm_controllers.c",
         "src/sm_task.c",
         "src/test_task.c",
+        "src/data_collection_lib.cpp",
+        "src/data_collection_lib.h",
+        "include/zmq.hpp",
     ],
     includes = [
         "include",
+        "src",                
     ],
+    linkopts = ["-lzmq"],
     deps = [
         SL_ROOT + "SL:SLcommon",
         SL_ROOT + "SL:SLtask",
@@ -85,6 +91,7 @@ cc_binary(
     ],
     includes = [
         "include",
+        "src",                
     ],
     deps = [
         SL_ROOT + "SL:SLcommon",
@@ -102,6 +109,7 @@ cc_binary(
     ],
     includes = [
         "include",
+        "src",                
     ],
     deps = [
         SL_ROOT + "SL:SLcommon",
@@ -124,6 +132,7 @@ cc_binary(
     ],
     includes = [
         "include",
+        "src",                
     ],
     deps = [
         SL_ROOT + "SL:SLcommon",
@@ -142,6 +151,7 @@ cc_binary(
     ],
     includes = [
         "include",
+        "src",                
     ],
     deps = [
         SL_ROOT + NAME + ":" + NAME,

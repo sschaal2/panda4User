@@ -89,7 +89,9 @@ func_call 	   gripper 4 0.03 0.1 0.1 0.0
 manipulation_frame bref
 duration      	   2
 pose_x        	   abs -0.00 0.00 0.048 
-pose_q        	   1 abs 1 0 0 0
+//pose_q        	   1 abs 1 0 0 0
+//pose_q 	   1 abs 0.9990 0 0.0436 0 // 5 degrees in bref
+pose_q 	   1 abs 0.9990 0 -0.0436 0 // -5 degrees in bref
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
