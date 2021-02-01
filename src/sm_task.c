@@ -26,6 +26,7 @@ Remarks:
 #include "SL_common.h"
 #include "utility_macros.h"
 #include "data_collection_lib.h"
+#include "time.h"
 
 // defines
 enum StateMachineStates
@@ -103,6 +104,7 @@ enum FunctionCalls
     SEND_POSE_EST_DATA,
     RECEIVE_POSE_CORRECTION,
     RESET_TO_BASE_POSE,
+    ADD_CURRENT_TO_STATISTICS,
   };
 		 
 
@@ -153,7 +155,7 @@ typedef struct StateMachineTarget {
   double err_moment; // abs error in moment
 } StateMachineTarget;
 
-#define MAX_STATES_SM 1000
+#define MAX_STATES_SM 10000
 static StateMachineTarget targets_sm[MAX_STATES_SM+1];
 static StateMachineTarget current_target_sm;
 
@@ -167,6 +169,10 @@ double reference_state_pose_delta_x_table[MAX_STATES_SM+1][N_CART+1];
 double reference_state_pose_delta_q_table[MAX_STATES_SM+1][N_QUAT+1];
 int    current_state_pose_delta = 0;
 extern int        global_sample_id;
+
+// a big matrix to collect some statistics of visual learning experiments
+// the number of rows used will be equivalent to n_states_pose_delta at most
+Matrix statistics_matrix;
 
 static int    allow_base_reference_frame=FALSE;
 static int    n_states_sm = 0;
@@ -186,9 +192,9 @@ typedef struct {
 /* local variables */
 static double     time_step;
 static double     cref[N_ENDEFFS*6+1];
-static SL_Cstate  ctarget[N_ENDEFFS+1];
+SL_Cstate  ctarget[N_ENDEFFS+1];
 static SL_Cstate  cdes[N_ENDEFFS+1];
-static SL_quat    ctarget_orient[N_ENDEFFS+1];
+SL_quat    ctarget_orient[N_ENDEFFS+1];
 static My_Crot    ctarget_rot[N_ENDEFFS+1];  
 static SL_quat    cdes_orient[N_ENDEFFS+1];
 static SL_quat    cdes_start_orient[N_ENDEFFS+1];
@@ -220,6 +226,22 @@ static double     default_cart_gain_a_scale[2*N_CART+1];
 
 static double pos_error;
 static double orient_error;
+static double pos_tracking_error;
+static double orient_tracking_error;
+
+double pos_error_vector[N_CART+1];
+double orient_error_quat[N_QUAT+1];
+
+double pos_tracking_error_vector[N_CART+1];
+double orient_tracking_error_quat[N_QUAT+1];
+
+double max_pos_tracking_error;
+double min_pos_tracking_error;
+double mean_pos_tracking_error;
+
+double max_orient_tracking_error;
+double min_orient_tracking_error;
+double mean_orient_tracking_error;
 
 // for no_user_interaction_flag
 char   sm_file_name[200];
@@ -257,6 +279,8 @@ static int    min_jerk_next_step_quat (SL_quat q_current, SL_quat q_target, doub
 				       double t_togo, double dt, SL_quat *q_next);
 static int    read_state_machine(char *fname);
 static void   print_sm_state(void);
+static void   save_statistics_matrix(void);
+static void   print_sm_stats(void);
 static void   assignCurrentSMTarget(StateMachineTarget smt,
 				    double *ref_x,
 				    double *ref_q,
@@ -290,7 +314,9 @@ add_sm_task( void )
   addTask("State Machine Task", init_sm_task, 
 	  run_sm_task, change_sm_task);
 
-  addToMan("print_sm_state","prints the current state suitable for state machine",print_sm_state); 
+  addToMan("print_sm_state","prints the current state suitable for state machine",print_sm_state);
+  addToMan("save_statistics","saves statistics matrix to file",save_statistics_matrix);
+  addToMan("sm_stats","prints some stats of state machine",print_sm_stats);     
 
   // add variables to data collection
   for (i=1; i<=N_ENDEFFS; ++i) {
@@ -454,8 +480,13 @@ init_sm_task(void)
 {
   int    j, i;
   char   string[100];
+<<<<<<< HEAD
   //  static char   fname[100] = "qsfp_vl_collection.sm";
   static char   fname[100] = "waterproof_JT.sm";  
+=======
+  //static char   fname[100] = "qsfp_vl_collection.sm";
+  static char   fname[100] = "qsfp_vl_correction.sm";  
+>>>>>>> d9bdcbf22f3d98c4e808212288c0c0702f6317d5
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;
@@ -475,6 +506,9 @@ init_sm_task(void)
       targets_sm[i].cart_gain_a_scale_matrix = my_matrix(1,N_CART,1,N_CART);
       targets_sm[i].cart_gain_ad_scale_matrix = my_matrix(1,N_CART,1,N_CART);
     }
+
+    // allocate just ample of columns to avoid thinking about how many
+    statistics_matrix = my_matrix(1, MAX_STATES_SM, 1, 100);
 
     firsttime = FALSE;
     
@@ -644,6 +678,7 @@ init_sm_task(void)
   current_state_sm = 0;
   current_target_sm = targets_sm[current_state_sm];
   no_user_interaction_flag = FALSE;
+  mat_zero(statistics_matrix);
   
   scd();
   
@@ -675,6 +710,7 @@ run_sm_task(void)
   double dist;
   double aux;
   static double time_to_go;
+  static int n_mean = 0;
   float pos[N_CART+1+1]; // one extra element for radius
   double gripper_move_threshold = 1e-8;
   static int wait_ticks=0;
@@ -684,7 +720,6 @@ run_sm_task(void)
   int    ft_exception_flag = FALSE;
   char   string[200];
   float  b[N_CART*3+1];
-  double q_temp[N_QUAT+1];
   
   switch (state_machine_state) {
 
@@ -720,8 +755,8 @@ run_sm_task(void)
 
       // are we running through the table of reference pertubations?: this requires functionCall to
       // come before asssignCurrentSMTarget.
-      if (run_table && current_state_pose_delta < n_states_pose_delta &&
-	  targets_sm[current_state_sm].function_call == NEXT_TABLE_DELTA ||
+      if ((run_table && current_state_pose_delta < n_states_pose_delta &&
+	   targets_sm[current_state_sm].function_call == NEXT_TABLE_DELTA) ||
 	  targets_sm[current_state_sm].function_call == RESET_TO_BASE_POSE) {
 	
 	functionCall(targets_sm[current_state_sm].function_call,TRUE,&function_call_success);
@@ -745,7 +780,6 @@ run_sm_task(void)
 			      &current_target_sm);
       }
 
-      
       if (current_target_sm.cart_gain_integral != 0) 
 	sprintf(msg,"    %d.%-30s with %sInt\n",
 		current_state_sm,current_target_sm.state_name,current_target_sm.controller_name);
@@ -804,6 +838,7 @@ run_sm_task(void)
       state_machine_state = GRIPPER_START;
     } else {
       state_machine_state = MOVE_TO_TARGET;
+      n_mean = 0;
     }
     
     // prepare min jerk for orientation space: s is an interpolation variable 
@@ -832,6 +867,7 @@ run_sm_task(void)
     if (--wait_ticks < 0) {
       if (misc_sensor[G_MOTION] == 0) {
 	state_machine_state = MOVE_TO_TARGET;
+	n_mean = 0;	
       }
     }
     
@@ -924,7 +960,6 @@ run_sm_task(void)
       for (i=1; i<=N_CART; ++i) {
 	min_jerk_next_step(cdes[HAND].x[i],
 			   cdes[HAND].xd[i],
-
 			   cdes[HAND].xdd[i],
 			   ctarget[HAND].x[i],
 			   ctarget[HAND].xd[i],
@@ -946,17 +981,53 @@ run_sm_task(void)
 
     // logging of position and orientation error
 
-    // position error
+    // position error relative to target
     pos_error = 0.0;
-    for (i=1; i<=N_CART; ++i)
-      pos_error += sqr(ctarget[HAND].x[i]-cart_state[HAND].x[i]);
+    for (i=1; i<=N_CART; ++i) {
+      pos_error_vector[i] = cart_state[HAND].x[i] - ctarget[HAND].x[i];
+      pos_error += sqr(pos_error_vector[i]);
+    }
     pos_error = sqrt(pos_error);
     
-    // orientation error
-    quatRelative(ctarget_orient[HAND].q, cart_orient[HAND].q, q_temp);
-    orient_error = 2.0*fabs(acos(q_temp[_Q0_]));
+    // position tracking
+    pos_tracking_error = 0.0;
+    for (i=1; i<=N_CART; ++i) {
+      pos_tracking_error_vector[i] = cdes[HAND].x[i] - cart_state[HAND].x[i];
+      pos_tracking_error += sqr(pos_tracking_error_vector[i]);
+    }
+    pos_tracking_error = sqrt(pos_tracking_error);
+    
+    if (pos_tracking_error > max_pos_tracking_error)
+      max_pos_tracking_error = pos_tracking_error;
+
+    if (pos_tracking_error < min_pos_tracking_error)
+      min_pos_tracking_error = pos_tracking_error;
+
+    mean_pos_tracking_error = (mean_pos_tracking_error*(double)n_mean + pos_tracking_error)/(double)(n_mean+1);
+    
+
+    // orientation error relative to target
+    quatRelative(ctarget_orient[HAND].q, cart_orient[HAND].q, orient_error_quat);
+    orient_error = 2.0*fabs(acos(orient_error_quat[_Q0_]));
     if (orient_error > PI)
       orient_error = 2.*PI-orient_error;
+
+    // orientation tracking error 
+    quatRelative(cart_orient[HAND].q, cdes_orient[HAND].q, orient_tracking_error_quat);
+    orient_tracking_error = 2.0*fabs(acos(orient_tracking_error_quat[_Q0_]));
+    if (orient_tracking_error > PI)
+      orient_tracking_error = 2.*PI-orient_tracking_error;
+
+    if (orient_tracking_error > max_orient_tracking_error)
+      max_orient_tracking_error = orient_tracking_error;
+    
+    if (orient_tracking_error < min_orient_tracking_error)
+      min_orient_tracking_error = orient_tracking_error;
+
+    mean_orient_tracking_error = (mean_orient_tracking_error*(double)n_mean + orient_tracking_error)/(double)(n_mean+1);
+
+    n_mean += 1;
+    
 
     // check whether there is an exit condtion which overules progressing 
     // to the next state
@@ -997,7 +1068,7 @@ run_sm_task(void)
       }
 
       
-    } // end check exit condiitons
+    } // end check exit conditions
     
 
     // at this point we know that we will exit this state of the state machine    
@@ -1030,6 +1101,7 @@ run_sm_task(void)
 	wait_ticks = 100; // need to give non-real-time gripper thread a moment to get started
 	state_machine_state = GRIPPER_END;
       } else {
+	//print_sm_stats();
 	state_machine_state = INIT_SM_TARGET;
       }
     } // end time_to_go < 0
@@ -1788,9 +1860,12 @@ read_state_machine(char *fname) {
 	    }
 	  else if (strcmp(saux,"reset_base_pose")==0)
 	    sm_temp.function_call = RESET_TO_BASE_POSE;
+	  else if (strcmp(saux,"add_statistics")==0)
+	    sm_temp.function_call = ADD_CURRENT_TO_STATISTICS;
 	  else
 	    sm_temp.function_call = NO_FUNC;
 	}
+    
 
 	// pose_x
 	++i;
@@ -2153,6 +2228,58 @@ read_state_machine(char *fname) {
 
 /*!*****************************************************************************
  *******************************************************************************
+\note  save_statistics_matrix
+\date  Nov 2020
+   
+\remarks 
+
+       just saves relevant statistics matrix to file in ascii, where file
+       name includes date/time of creation
+
+ *******************************************************************************
+ Function Parameters: [in]=input,[out]=output
+
+  none
+
+ ******************************************************************************/
+static void 
+save_statistics_matrix(void)
+{
+  int i,j;
+  FILE *fp;
+  char fname[200];
+  time_t rawtime;
+  struct tm *tptr;
+  char   string[200]="";
+  
+  get_string("Additional string in filename?",string,string);
+  
+  time(&rawtime);
+  tptr = localtime(&rawtime);
+  sprintf(fname,"stat_matrix_%s_%d-%d-%d-%d:%d:%d.txt",string,tptr->tm_year+1900,tptr->tm_mon+1,tptr->tm_mday,tptr->tm_hour,tptr->tm_min,tptr->tm_sec);
+
+  // open file
+  fp = fopen(fname,"w");
+  if (fp == NULL) {
+    printf("Cannot open file %s\n",fname);
+    return;
+  }
+
+  for (i=1; i<=n_states_pose_delta; ++i) {
+    for (j=1; j<=8*(N_CART+N_QUAT); ++j) {
+      fprintf(fp,"%f ",statistics_matrix[i][j]);
+      if (j%7 == 0)
+	fprintf(fp,"    ");
+    }
+    fprintf(fp,"\n");
+  }
+
+  fclose(fp);
+
+}
+
+/*!*****************************************************************************
+ *******************************************************************************
 \note  print_sm_state
 \date  Feb 2019
    
@@ -2194,6 +2321,56 @@ print_sm_state(void)
   printf("0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 "); // gains
 
   printf("%s",controller_names[SIMPLE_IMPEDANCE_JT]);
+  printf("\n");
+
+}
+/*!*****************************************************************************
+ *******************************************************************************
+\note  print_sm_stats
+\date  Dec. 2020
+   
+\remarks 
+
+       prints current statistics/info of state machine state
+
+ *******************************************************************************
+ Function Parameters: [in]=input,[out]=output
+
+  none
+
+ ******************************************************************************/
+static void 
+print_sm_stats(void)
+{
+  int i;
+
+  printf("StateName             : %s\n",current_target_sm.state_name);
+
+  printf("Reference State Pos   : %f %f %f\n",
+	 reference_state_pose_x[_X_],
+	 reference_state_pose_x[_Y_],
+	 reference_state_pose_x[_Z_]);
+
+  printf("Reference State Orient: %f %f %f %f\n",
+	 reference_state_pose_q[_Q0_],
+	 reference_state_pose_q[_Q1_],
+	 reference_state_pose_q[_Q2_],
+	 reference_state_pose_q[_Q3_],	 
+	 reference_state_pose_x[_Y_]);
+
+  printf("Target Pos Error      : %f (%f %f %f)\n",
+	 pos_error, pos_error_vector[_X_], pos_error_vector[_Y_], pos_error_vector[_Z_]);
+
+  printf("Target Orient Error   : %f (%f %f %f %f)\n",
+	 orient_error, orient_error_quat[_Q0_], orient_error_quat[_Q1_],
+	 orient_error_quat[_Q2_], orient_error_quat[_Q3_]);
+
+  printf("Tracking Pos Stats    : %f < %f < %f\n",min_pos_tracking_error,
+	 mean_pos_tracking_error, max_pos_tracking_error);
+
+  printf("Tracking Orient Stats : %f < %f < %f\n",min_orient_tracking_error,
+	 mean_orient_tracking_error, max_orient_tracking_error);
+
   printf("\n");
 
 }
@@ -2598,13 +2775,57 @@ functionCall(int id, int initial_call, int *success)
     
   case  RECEIVE_POSE_CORRECTION:
     if  (initial_call) {
-      --global_sample_id;
+      
+      // for logging, all is added to the statistics matrix
+      int count = 0;
+      
+      // the base reference pose
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_x_base[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_q_base[i];
+      
+      // the perturbed reference pose
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_x[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_q[i];
+      
       triggerPoseDeltaPrediction();
-      *success = FALSE;      
+      *success = FALSE;
+      
     } else {
       if (checkPoseDeltaPrediction()) {
+
+	extern double predicted_reference_state_pose_delta_x_inverse[];
+	extern double predicted_reference_state_pose_delta_q_inverse[];
+	extern double reference_state_pose_delta_x_adjusted[];
+	extern double reference_state_pose_delta_q_adjusted[];
+	
+	
 	*success = TRUE;
 	++global_sample_id;
+
+	int count = 2*(N_CART+N_QUAT);;
+
+	// the adjusted delta pose
+	for (int i=1; i<=N_CART; ++i)
+	  statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_delta_x_adjusted[i];
+	for (int i=1; i<=N_QUAT; ++i)
+	  statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_delta_q_adjusted[i];
+	
+	// the current desired endeffector pose target
+	for (int i=1; i<=N_CART; ++i)
+	  statistics_matrix[current_state_pose_delta][++count] = ctarget[HAND].x[i];
+	for (int i=1; i<=N_QUAT; ++i)
+	  statistics_matrix[current_state_pose_delta][++count] = ctarget_orient[HAND].q[i];
+	
+	// the current endeffector pose
+	for (int i=1; i<=N_CART; ++i)
+	  statistics_matrix[current_state_pose_delta][++count] = cart_state[HAND].x[i];
+	for (int i=1; i<=N_QUAT; ++i)
+	  statistics_matrix[current_state_pose_delta][++count] = cart_orient[HAND].q[i];
+
       } else
 	*success = FALSE;
     }
@@ -2612,7 +2833,56 @@ functionCall(int id, int initial_call, int *success)
     
     // simply resets the reference pose to the base reference pose
   case RESET_TO_BASE_POSE:
+
     if  (initial_call) {
+    
+      extern double predicted_reference_state_pose_delta_x_inverse[];
+      extern double predicted_reference_state_pose_delta_q_inverse[];
+      
+      // for logging, all is added to the statistics matrix
+      int count = 0;
+      
+      // the base reference pose
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_x_base[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_q_base[i];
+      
+      // the perturbed reference pose
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_x[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_q[i];
+      
+      // the adjusted delta pose
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = 0; // not relevant
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = 0; // not relevant
+      
+      // the current desired endeffector pose target
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = ctarget[HAND].x[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = ctarget_orient[HAND].q[i];
+      
+      // the current endeffector pose
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = cart_state[HAND].x[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = cart_orient[HAND].q[i];
+      
+      // the pose correction from DL: this is just faked here and put into right variables
+      for (int i=1; i<=N_CART; ++i)
+	predicted_reference_state_pose_delta_x_inverse[i] = -reference_state_pose_delta_x_table[current_state_pose_delta][i];
+      for (int i=1; i<=N_QUAT; ++i)
+	if (i != _Q0_)
+	  predicted_reference_state_pose_delta_q_inverse[i] = -reference_state_pose_delta_q_table[current_state_pose_delta][i];
+	else
+	  predicted_reference_state_pose_delta_q_inverse[i] = reference_state_pose_delta_q_table[current_state_pose_delta][i];	  
+
+
+      // reset to base pose
       for (int i=1; i<=N_CART; ++i) {
 	reference_state_pose_x[i] = reference_state_pose_x_base[i];
       }
@@ -2620,6 +2890,42 @@ functionCall(int id, int initial_call, int *success)
 	reference_state_pose_q[i] = reference_state_pose_q_base[i];
       }
       *success = TRUE;
+
+    } else {
+      *success = TRUE;      
+    }
+    break;
+
+    // adds current target and actual pose to statistics matrix
+  case ADD_CURRENT_TO_STATISTICS:
+
+    if  (initial_call) {
+      extern double predicted_reference_state_pose_delta_x_inverse[];
+      extern double predicted_reference_state_pose_delta_q_inverse[];
+      
+      *success = TRUE;
+
+      // for logging, all is added to the statistics matrix
+      int count = 5*(N_CART+N_QUAT);
+      
+      // the pose correction from DL
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = predicted_reference_state_pose_delta_x_inverse[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = predicted_reference_state_pose_delta_q_inverse[i];	
+	
+      // the current desired endeffector pose target
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = ctarget[HAND].x[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = ctarget_orient[HAND].q[i];
+      
+      // the current endeffector pose
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = cart_state[HAND].x[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = cart_orient[HAND].q[i];
+      
     } else {
       *success = TRUE;      
     }

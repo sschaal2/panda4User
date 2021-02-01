@@ -131,13 +131,29 @@ manipulation_frame ref
 func_call	   next_table_delta
 duration      	   3
 pose_x        	   abs -0.002 -0.005 -0.01 
-pose_q        	   1 rel  0.9423 -0.1219 -0.2634 0.1678
+pose_q        	   1 abs  0.9423 -0.1219 -0.2634 0.1678
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
 max_wrench    	   cont 12 12 12 5 5 5
 exit_condition	   pos_orient 10 0.0015 0.01 0 0
 }
+
+
+
+{
+name               move_above_socket_corrected
+func_call	   reset_base_pose
+manipulation_frame ref
+duration      	   1
+pose_x        	   rel 0.0 0.0 -0.03
+pose_q        	   1 rel 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+}
+
+/*
 {
 name               move_above_socket_corrected
 func_call	   reset_base_pose
@@ -149,18 +165,20 @@ cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
 }
+*/
 {
 name               approach_tilted_corrected
 manipulation_frame ref
 duration      	   3
 pose_x        	   abs -0.002 -0.005 -0.01 
-pose_q        	   1 rel  0.9423 -0.1219 -0.2634 0.1678
+pose_q        	   1 abs  0.9423 -0.1219 -0.2634 0.1678
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
 max_wrench    	   cont 12 12 12 5 5 5
-exit_condition	   pos_orient 10 0.002 0.02 0 0
+exit_condition	   pos_orient 10 0.0015 0.01 0 0
 }
+
 {
 name               zero_force_torque_offsets
 manipulation_frame abs
@@ -206,9 +224,9 @@ duration      	   2
 pose_x       	   abs 0 0 .053 
 pose_q        	   1 rel 1 0 0 0
 cart_gain_x_scale  1.4 1.4 1.4 1.4 1.4 1.4
-cart_gain_a_scale  1.6 1.6 1.6 1.6 1.6 1.6
-force_desired      0.9 0.0 0 -70
-moment_desired     -1.0 0 0 0
+cart_gain_a_scale  1.6 1.6 0.1 1.6 1.6 0.1
+force_desired      0.9 0.0 0 -60
+moment_desired     0.0 0 0 0
 max_wrench    	   last 30 30 80 10 10 10
 exit_condition	   pos 10 0.01 0.0 0 0
 }

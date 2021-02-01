@@ -28,8 +28,10 @@
 // SL includes
 #include "SL.h"
 #include "SL_user.h"
+#include "SL_man.h"
 #include "SL_task_servo.h"
 #include "SL_unix_common.h"
+#include "SL_common.h"
 #include "SL_vx_wrappers.h"
 #include "utility.h"
 #include "data_collection_lib.h"
@@ -44,12 +46,15 @@ int    robot_ready_for_data_col_state = FALSE;
 int    robot_ready_for_data_col_label = FALSE;
 int    sm_ready_for_pose_delta_prediction = FALSE;
 int    global_sample_id = 0;
+double reference_state_pose_delta_x_adjusted[N_CART+1];
+double reference_state_pose_delta_q_adjusted[N_QUAT+1];
 double predicted_reference_state_pose_delta_x_inverse[N_CART+1];
 double predicted_reference_state_pose_delta_q_inverse[N_QUAT+1];
-double max_allowed_abs_diff_predicted_reference_state_pose_delta_x = 0.01;
-double max_allowed_abs_diff_predicted_reference_state_pose_delta_q = 0.01;
+double max_allowed_abs_diff_predicted_reference_state_pose_delta_x = 0.007; // meters
+double max_allowed_abs_diff_predicted_reference_state_pose_delta_q = 5.0;   // degree
 double max_abs_diff_predicted_reference_state_pose_delta_x = 0.0;
 double max_abs_diff_predicted_reference_state_pose_delta_q = 0.0;
+int    continue_pose_correction = FALSE;
 
 // external variables
 extern double reference_state_pose_x[];
@@ -59,6 +64,10 @@ extern double reference_state_pose_q_base[];
 extern double reference_state_pose_delta_x_table[][N_CART+1];
 extern double reference_state_pose_delta_q_table[][N_QUAT+1];
 extern int    current_state_pose_delta;
+extern double pos_error_vector[];
+extern double orient_error_quat[];
+extern SL_Cstate ctarget[];
+extern SL_quat ctarget_orient[];
 
 // local functions
 void add_joints_state(Json::Value &state);
@@ -68,6 +77,7 @@ void add_endeffector_calculated_force_torque(Json::Value &state);
 void add_experiment_data(Json::Value &state);
 void spawnComThread(void);
 void *ComThread(void *);
+static void   continuePoseCorrection(void);
 
 extern "C" int  initDataCollection(void);
 extern "C" void triggerPoseDeltaPrediction(void);
@@ -96,6 +106,8 @@ initDataCollection(void)
   int counter = 0;
 
   if (!run_com_thread_flag)  {
+
+    addToMan("cc","sets flags to execute pose correction",continuePoseCorrection); 
     
     // spawn TCP data-logger com thread
     printf("Spawn Com Thread...\n");
@@ -113,6 +125,29 @@ initDataCollection(void)
   }
   
   return TRUE;
+
+}
+
+/*!*****************************************************************************
+*******************************************************************************
+\note  continuePoseCorrection
+\date  Oct 2020
+
+\remarks
+
+sets the flag for allowing to execute pose correction
+
+*******************************************************************************
+Function Parameters: [in]=input,[out]=output
+
+none
+
+******************************************************************************/
+static void
+continuePoseCorrection(void)
+{
+
+  continue_pose_correction = TRUE;
 
 }
 
@@ -189,6 +224,8 @@ void
 triggerPoseDeltaPrediction(void)
 {
 
+  robot_ready_for_data_col_image = TRUE;
+  robot_ready_for_data_col_state = TRUE;
   sm_ready_for_pose_delta_prediction = TRUE;
 
 }
@@ -212,7 +249,8 @@ int
 checkPoseDeltaPrediction(void)
 {
 
-  if (!sm_ready_for_pose_delta_prediction)
+  if (!sm_ready_for_pose_delta_prediction && !robot_ready_for_data_col_image
+      && !robot_ready_for_data_col_state)
     return TRUE;
 
   return FALSE;
@@ -500,6 +538,15 @@ ComThread(void *)
       
       // handshake for getting the pose delta estimation
     }else if (req.std::string::find(receive_pose_delta_pred_request) != std::string::npos){
+
+      // reset the compensation
+      for (int i=1; i<=N_CART; ++i) {
+	predicted_reference_state_pose_delta_x_inverse[i] = 0.0;
+      }
+      for (int i=1; i<=N_QUAT; ++i) {
+	predicted_reference_state_pose_delta_q_inverse[i] = 0.0;
+      }
+
       // extract the sample id
       std::string sample_id = req.substr (receive_pose_delta_pred_request.length(),
                                           req.length());
@@ -577,11 +624,14 @@ ComThread(void *)
       double diff;
       max_abs_diff_predicted_reference_state_pose_delta_x = 0.00;
       max_abs_diff_predicted_reference_state_pose_delta_q = 0.00;
+      double diff_predicted_reference_state_pose_delta_x[N_CART+1];
 
       // position compensation
       for (i=1; i<=N_CART; ++i) {
         predicted_reference_state_pose_delta_x_inverse[i] = -std::atof(pose_delta_string[i-1].c_str());
-        diff = std::abs(std::abs(predicted_reference_state_pose_delta_x_inverse[i]) - std::abs(reference_state_pose_delta_x_table[current_state_pose_delta][i]));
+        diff = std::abs(predicted_reference_state_pose_delta_x_inverse[i] +
+			reference_state_pose_x[i] - reference_state_pose_x_base[i]);
+	diff_predicted_reference_state_pose_delta_x[i] = diff;
         if(diff > max_abs_diff_predicted_reference_state_pose_delta_x){
           max_abs_diff_predicted_reference_state_pose_delta_x = diff;
         }
@@ -589,34 +639,86 @@ ComThread(void *)
       }
 
       // orientation compensation
-      predicted_reference_state_pose_delta_q_inverse[1] = std::atof(pose_delta_string[N_CART+3].c_str());
-      predicted_reference_state_pose_delta_q_inverse[2] = -std::atof(pose_delta_string[N_CART].c_str());
-      predicted_reference_state_pose_delta_q_inverse[3] = -std::atof(pose_delta_string[N_CART+1].c_str());
-      predicted_reference_state_pose_delta_q_inverse[4] = -std::atof(pose_delta_string[N_CART+2].c_str());
+      predicted_reference_state_pose_delta_q_inverse[_Q0_] = std::atof(pose_delta_string[N_CART+3].c_str());
+      predicted_reference_state_pose_delta_q_inverse[_Q1_] = -std::atof(pose_delta_string[N_CART].c_str());
+      predicted_reference_state_pose_delta_q_inverse[_Q2_] = -std::atof(pose_delta_string[N_CART+1].c_str());
+      predicted_reference_state_pose_delta_q_inverse[_Q3_] = -std::atof(pose_delta_string[N_CART+2].c_str());
 
+      // ensure unit length
+      double q_norm;
+      q_norm = sqrt(vec_mult_inner_size(predicted_reference_state_pose_delta_q_inverse,predicted_reference_state_pose_delta_q_inverse,N_QUAT));
       for (i=1; i<=N_QUAT; ++i) {
-        diff = std::abs(std::abs(predicted_reference_state_pose_delta_q_inverse[i]) - std::abs(reference_state_pose_delta_q_table[current_state_pose_delta][i]));
-        if(diff > max_abs_diff_predicted_reference_state_pose_delta_q){
-          max_abs_diff_predicted_reference_state_pose_delta_q = diff;
-        }
-        //std::cout << "            quaternion " << i << " abs_diff: " << diff << "     abs(abs(" << predicted_reference_state_pose_delta_q_inverse[i] << ") - abs(" << reference_state_pose_delta_q_table[current_state_pose_delta][i] << "))" << std::endl;
+	predicted_reference_state_pose_delta_q_inverse[i] /= q_norm;
       }
 
-      std::cout << "        Maximum absolute deviation between prediction and groundtruth: x=" << max_abs_diff_predicted_reference_state_pose_delta_x << " q=" << max_abs_diff_predicted_reference_state_pose_delta_q  << std::endl;
-      if(max_abs_diff_predicted_reference_state_pose_delta_x > max_allowed_abs_diff_predicted_reference_state_pose_delta_x || max_abs_diff_predicted_reference_state_pose_delta_q > max_allowed_abs_diff_predicted_reference_state_pose_delta_q){
-        std::cout << "\n\n ERROR: The maximum allowd deviation x=" << max_allowed_abs_diff_predicted_reference_state_pose_delta_x << " or q=" << max_allowed_abs_diff_predicted_reference_state_pose_delta_q << " of the prediction was exceeded." << std::endl;
-        int ans = 999;
-        while (ans == 999) {
-          ans = get_int("Enter 1 to continue or anthing else to abort ...",ans,&ans);
-        }
-        if (ans==1){
-          sm_ready_for_pose_delta_prediction = FALSE;
-        }
+      double q_diff[N_QUAT+1];
+      quatRelative(reference_state_pose_q_base,reference_state_pose_q,q_diff);
+      quatMult(q_diff,predicted_reference_state_pose_delta_q_inverse,q_diff);
+
+      // norm of vector component of q_diff
+      double q_diff_norm = sqrt(vec_mult_inner_size(&(q_diff[_Q0_]),&(q_diff[_Q0_]),N_CART));
+      double so3_q_diff[N_CART+1];
+      for (int i=1; i<=N_CART; ++i) {
+	so3_q_diff[i] = 2.* acos(q_diff[_Q0_]) * q_diff[_Q0_+i] / (q_diff_norm + 1.e-10);
       }
-      else{
-        // the reset implies we are done with the task
-        sm_ready_for_pose_delta_prediction = FALSE;
+
+      printf("\n----------------------------------------------------------------------------------\n");
+      printf("Total pos error [m]: %f\n",sqrt(sqr(diff_predicted_reference_state_pose_delta_x[_X_])+
+					      sqr(diff_predicted_reference_state_pose_delta_x[_Y_])+
+					      sqr(diff_predicted_reference_state_pose_delta_x[_Z_])));
+      printf("Pos [m] error      : %f %f %f\n",diff_predicted_reference_state_pose_delta_x[_X_],
+	     diff_predicted_reference_state_pose_delta_x[_Y_],
+	     diff_predicted_reference_state_pose_delta_x[_Z_]);
+
+      printf("Angle err [deg]    : %f\n",acos(q_diff[_Q0_])*2/PI*180.);
+      printf("SO3 error          : %f (%f)  %f (%f)  %f (%f)\n",so3_q_diff[_X_],so3_q_diff[_X_]/PI*180.,so3_q_diff[_Y_],so3_q_diff[_Y_]/PI*180.,so3_q_diff[_Z_],so3_q_diff[_Z_]/PI*180.);
+      printf("----------------------------------------------------------------------------------\n\n");
+      max_abs_diff_predicted_reference_state_pose_delta_q = acos(q_diff[_Q0_])*2/PI*180.0;
+
+      //      std::cout << "Maximum absolute deviation between prediction and groundtruth: x=" <<
+      //	max_abs_diff_predicted_reference_state_pose_delta_x <<
+      //" alpha=" << max_abs_diff_predicted_reference_state_pose_delta_q  << std::endl;
+      
+      if(max_abs_diff_predicted_reference_state_pose_delta_x > max_allowed_abs_diff_predicted_reference_state_pose_delta_x ||
+	 max_abs_diff_predicted_reference_state_pose_delta_q > max_allowed_abs_diff_predicted_reference_state_pose_delta_q){
+	
+        std::cout << "\n\n ERROR: The maximum allowd deviation x=" <<
+	  max_allowed_abs_diff_predicted_reference_state_pose_delta_x << " or alpha=" <<
+	  max_allowed_abs_diff_predicted_reference_state_pose_delta_q << " of the prediction was exceeded." << std::endl;
+	std::cout << "\nYou have 10 seconds to run cc command to execute correction" << std::endl;
+	
+        continue_pose_correction = FALSE;
+
+	int count = task_servo_calls;
+        while (!continue_pose_correction) {
+	  sleep(1);
+	  if (task_servo_calls - count > 10000)
+	    break;
+        }
+
+      } else {
+
+	continue_pose_correction = TRUE;
+
       }
+
+      // execute the pose correction
+      if (continue_pose_correction){
+	
+	// position compensation
+	for (i=1; i<=N_CART; ++i) {
+	  reference_state_pose_x[i] = reference_state_pose_x[i] + predicted_reference_state_pose_delta_x_inverse[i];
+	}
+	
+	// orientation compensation
+	quatMult(reference_state_pose_q, predicted_reference_state_pose_delta_q_inverse,
+		 reference_state_pose_q);
+	
+      }
+
+      sm_ready_for_pose_delta_prediction = FALSE;
+	
+
     }
   }
 
@@ -802,17 +904,64 @@ add_experiment_data(Json::Value &state)
   Json::Value pos_q_delta(Json::arrayValue);
   Json::Value pos_q_target(Json::arrayValue);
 
+  double reference_state_pose_q_base_inverse[N_QUAT+1];
+  double q_tilted_inverse[N_QUAT+1];    // the special tilt approach for insertion
+  //double q_mis_grasp[N_QUAT+1]={0, 0.9990, -0.0436, 0, 0}; // in robot base coordinates
+  double q_mis_grasp[N_QUAT+1]={0, 0.9990, 0.0436, 0, 0}; // in robot base coordinates  
+
+  // add the tracking error to the pose_delta to make image and robot state
+  // maximaly consistent
+
+  // translation offset is easy as addition is commutative
+  vec_sub_size(reference_state_pose_x,reference_state_pose_x_base,N_CART,reference_state_pose_delta_x_adjusted);
+  vec_add_size(reference_state_pose_delta_x_adjusted,
+	       pos_error_vector,
+	       N_CART,
+	       reference_state_pose_delta_x_adjusted);
+  // hack for bad grasp data collection
+  printf("bad grasp simulation is running -- remove\n");
+  //reference_state_pose_delta_x_adjusted[_Y_] += 0.005; // 5mm mis-grasped in y direction
+  reference_state_pose_delta_x_adjusted[_Y_] -= 0.005; // -5mm mis-grasped in y direction  
+
+  // orientation needs rotation matrix rules: q_adj = q_tilt_inv * q_current * q_base_inv
+  quatRelative(reference_state_pose_q,ctarget_orient[HAND].q,q_tilted_inverse);
+  for (int i=1; i<=N_QUAT; ++i) {
+
+    if (i != _Q0_)
+      q_tilted_inverse[i] *= -1.;
+
+    reference_state_pose_q_base_inverse[i] = reference_state_pose_q_base[i];
+    if (i != _Q0_)
+      reference_state_pose_q_base_inverse[i] *= -1.;
+    
+  }
+  
+  //quatMult(reference_state_pose_q_base_inverse,ctarget_orient[HAND].q,reference_state_pose_delta_q_adjusted);
+  quatMult(reference_state_pose_q_base_inverse,cart_orient[HAND].q,reference_state_pose_delta_q_adjusted);    // takes tracking error into account
+  quatMult(reference_state_pose_delta_q_adjusted,q_tilted_inverse,reference_state_pose_delta_q_adjusted);
+
+  // hack for orientation mis-grasp: q_delta * q_mis_grasp (mis_brasp is like changing he ref_base pose)
+  //printf("bad grasp simulation is running -- remove\n");  
+  //quatMult(q_mis_grasp,reference_state_pose_delta_q_adjusted,reference_state_pose_delta_q_adjusted);
+
+  //print_vec_size("delta_x_adj",reference_state_pose_delta_x_adjusted,N_CART);
+  //print_vec_size("delta_x",reference_state_pose_delta_x_table[current_state_pose_delta],N_CART);  
+  //print_vec_size("delta_q_adj",reference_state_pose_delta_q_adjusted,N_QUAT);
+  //print_vec_size("delta_q",reference_state_pose_delta_q_table[current_state_pose_delta],N_QUAT);    
+
   // the following variables need to be assigned
   for (int i=1; i<=N_CART; ++i) {
     pos_x_truth.append(Json::Value(reference_state_pose_x_base[i]));
-    pos_x_delta.append(Json::Value(reference_state_pose_delta_x_table[current_state_pose_delta][i]));
+    //    pos_x_delta.append(Json::Value(reference_state_pose_delta_x_table[current_state_pose_delta][i]));
+    pos_x_delta.append(Json::Value(reference_state_pose_delta_x_adjusted[i]));    
     pos_x_target.append(Json::Value(reference_state_pose_x[i]));
   }
 
   // the following variables need to be assigned
   for (int i=1; i<=N_QUAT; ++i) {
     pos_q_truth.append(Json::Value(reference_state_pose_q_base[i]));
-    pos_q_delta.append(Json::Value(reference_state_pose_delta_q_table[current_state_pose_delta][i]));
+    //    pos_q_delta.append(Json::Value(reference_state_pose_delta_q_table[current_state_pose_delta][i]));
+    pos_q_delta.append(Json::Value(reference_state_pose_delta_q_adjusted[i]));    
     pos_q_target.append(Json::Value(reference_state_pose_q[i]));
   }
 

@@ -79,8 +79,8 @@ pose_q        	   1 rel 1 0 0 0
 gripper_start 	   abs 0.0 100
 gripper_end   	   abs 0.0 100
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
-cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
-cart_gain_integral 0.1
+cart_gain_a_scale  2.2 2.2 0.02 2.2 2.2 0.02
+cart_gain_integral 0.
 //force_desired      1 0 0 0 
 //moment_desired     1 0 0 0
 max_wrench   	   abort 30 30 30 10 10 10
@@ -106,8 +106,8 @@ pose_q        	   1 rel 1 0 0 0
 gripper_start 	   abs 0.0 100
 gripper_end   	   abs 0.0 100
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
-cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
-cart_gain_integral 0.1
+cart_gain_a_scale  2.2 2.2 0.02 2.2 2.2 0.02
+cart_gain_integral 0.
 //force_desired      1 0 0 0 
 //moment_desired     1 0 0 0
 max_wrench   	   abort 30 30 30 10 10 10
