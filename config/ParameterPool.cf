@@ -59,7 +59,7 @@ use_comp_inertia_fordyn		0
 
 // Panda IP address
 
-panda_ip			20.18.9.5
+panda_ip			192.170.10.4
 
 // goto task speed
 
