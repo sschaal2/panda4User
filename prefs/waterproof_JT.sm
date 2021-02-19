@@ -46,8 +46,8 @@ reference_state_pose_q	0.0 -0.7071 0.7071 0.0  // vertical down aligned with Z
 
 // the table of reference state perturbations//
 //reference_state_pose_delta_table prefs/all_powerplug_slots.txt
-//reference_state_pose_delta_table prefs/half_range_delta_pose.txt
-reference_state_pose_delta_table prefs/full_range_delta_pose.txt
+reference_state_pose_delta_table prefs/half_range_delta_pose.txt
+//reference_state_pose_delta_table prefs/full_range_delta_pose.txt
 
 // include the core state machine
 #include "prefs/waterproof_JT_core.sm"

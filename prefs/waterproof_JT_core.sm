@@ -68,7 +68,8 @@ manipulation_frame ref
 func_call	   next_table_delta
 duration      	   2
 pose_x        	   abs -0.0 0.0 -0.01
-pose_q        	   1 rel  0.9423 -0.1219 -0.2634 0.1678
+//pose_q        	   1 rel  0.9423 -0.1219 -0.2634 0.1678
+pose_q        	   1 rel  0.9863 -0.0600 -0.1298 0.0827
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
@@ -77,7 +78,7 @@ exit_condition	   pos_orient 10 0.002 0.01 0 0
 }
 {
 name               zero_force_torque_offsets
-manipulation_frame abs
+manipulation_frame ref
 func_call	   zero_ft
 duration      	   0.5
 pose_x        	   rel 0 0 0
@@ -96,7 +97,7 @@ pose_q        	   1 rel  1 0 0 0
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
-force_desired      0.5 0 0 -7
+force_desired      0.8 0 0 -10
 moment_desired     0 0 0 0
 max_wrench    	   cont 10 10 15 5 5 5
 }
@@ -104,13 +105,15 @@ max_wrench    	   cont 10 10 15 5 5 5
 name		   reorient_in_slot
 manipulation_frame ref
 duration      	   2
-pose_x        	   rel -0.0 0.0 0.0
+pose_x        	   rel 0.0 0.0 0.0
 pose_q        	   1 abs 1 0 0 0
 cart_gain_x_scale  1.4 1.4 1.4 1.4 1.4 1.4
 cart_gain_a_scale  1.6 1.6 1.6 1.6 1.6 1.6
 cart_gain_integral 0.0
-force_desired      0.5 -2 2 -8
-moment_desired     0.5 0 0 0
+//force_desired      0.5 -2 2 -8
+force_desired      0.8 -3 -3 -10
+//moment_desired     0.5 0 -2 -4
+moment_desired      0.5 0 -5 0
 max_wrench    	   last 15 15 15 5 5 5
 }
 {
@@ -120,9 +123,9 @@ duration      	   1.5
 pose_x       	   abs 0 0 .018 
 pose_q        	   1 rel 1 0 0 0
 cart_gain_x_scale  1.4 1.4 1.4 1.4 1.4 1.4
-force_desired      0.8 0 0 -100
-//moment_desired     -0.8 -1 -1 0
-moment_desired     0 0 0 0 
+cart_gain_a_scale  1.6 1.6 0.1 1.6 1.6 0.1
+force_desired      0.8 0 0 -120
+moment_desired     0 0 0 0
 max_wrench    	   last 30 30 90 10 10 10
 exit_condition	   pos 5 0.01 0.0 0 0
 }
