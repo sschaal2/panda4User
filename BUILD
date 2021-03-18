@@ -1,7 +1,7 @@
 # Every SL directory has a symbolic link to config/bazel to access the config files as local path.
 # While not pretty, this allows BUILD files to be independt of the SL_ROOT workspace path, and only
 # SL.bzl needs to be adjusted
-load(":bazel/SL.bzl", "SL_ROOT", "SL_ROOT_WS", "SL_VISIBILITY")
+load(":bazel/SL.bzl", "SL_ROOT", "SL_VISIBILITY")
 
 package(default_visibility = SL_VISIBILITY)
 

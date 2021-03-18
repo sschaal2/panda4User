@@ -480,8 +480,8 @@ init_sm_task(void)
 {
   int    j, i;
   char   string[100];
-  //static char   fname[100] = "qsfp_vl_collection.sm";
-  static char   fname[100] = "qsfp_vl_correction.sm";  
+  //  static char   fname[100] = "qsfp_vl_collection.sm";
+  static char   fname[100] = "waterproof_JT.sm";  
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;
