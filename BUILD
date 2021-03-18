@@ -68,12 +68,16 @@ cc_binary(
         "src/data_collection_lib.cpp",
         "src/data_collection_lib.h",
         "include/zmq.hpp",
-    ],
+        "include/zmq.h",
+    ] + glob(["include/json/*.h"]),
     includes = [
         "include",
         "src",                
     ],
-    linkopts = ["-lzmq"],
+    linkopts = [
+    	     "-lzmq",
+    	     "-ljsoncpp",
+    ],
     deps = [
         SL_ROOT + "SL:SLcommon",
         SL_ROOT + "SL:SLtask",
