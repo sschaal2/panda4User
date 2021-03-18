@@ -85,7 +85,8 @@ enum ExitOption
    MOMENT_EXIT,
    FORCE_MOMENT_EXIT,
    EXIT_AFTER_TABLE,
-   EXIT_AFTER_FUNCTION_CALL_SUCCESS
+   EXIT_AFTER_FUNCTION_CALL_SUCCESS,
+   GRASP_PERTURBATION
   };
 
 enum ManipulationFrame
@@ -169,6 +170,9 @@ double reference_state_pose_delta_x_table[MAX_STATES_SM+1][N_CART+1];
 double reference_state_pose_delta_q_table[MAX_STATES_SM+1][N_QUAT+1];
 int    current_state_pose_delta = 0;
 extern int        global_sample_id;
+double grasp_perturbation_x[N_CART+1];
+double grasp_perturbation_q[N_QUAT+1];
+static int apply_grasp_perturbation = FALSE;    
 
 // a big matrix to collect some statistics of visual learning experiments
 // the number of rows used will be equivalent to n_states_pose_delta at most
@@ -481,7 +485,7 @@ init_sm_task(void)
   int    j, i;
   char   string[100];
   //  static char   fname[100] = "qsfp_vl_collection.sm";
-  static char   fname[100] = "waterproof_JT.sm";  
+  static char   fname[100] = "waterproof_vl_collection.sm";  
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;
@@ -748,11 +752,13 @@ run_sm_task(void)
 	logMsg("\n",0,0,0,0,0,0);
       }
 
-      // are we running through the table of reference pertubations?: this requires functionCall to
+      // are we running through the table of reference perturbations?: this requires functionCall to
       // come before asssignCurrentSMTarget.
       if ((run_table && current_state_pose_delta < n_states_pose_delta &&
 	   targets_sm[current_state_sm].function_call == NEXT_TABLE_DELTA) ||
-	  targets_sm[current_state_sm].function_call == RESET_TO_BASE_POSE) {
+	  targets_sm[current_state_sm].function_call == RESET_TO_BASE_POSE ||
+	  targets_sm[current_state_sm].function_call == GRASP_PERTURBATION
+	  ) {
 	
 	functionCall(targets_sm[current_state_sm].function_call,TRUE,&function_call_success);
 	
@@ -1857,6 +1863,9 @@ read_state_machine(char *fname) {
 	    sm_temp.function_call = RESET_TO_BASE_POSE;
 	  else if (strcmp(saux,"add_statistics")==0)
 	    sm_temp.function_call = ADD_CURRENT_TO_STATISTICS;
+	  else if (strcmp(saux,"grasp_perturbation")==0) {
+	    sm_temp.function_call = GRASP_PERTURBATION;
+	  }
 	  else
 	    sm_temp.function_call = NO_FUNC;
 	}
@@ -2509,6 +2518,7 @@ assignCurrentSMTarget(StateMachineTarget smt,
   int i,j,r;
   MY_MATRIX(R,1,N_CART,1,N_CART);
   SL_quat temp_q;
+  double ref_q_adj[N_QUAT+1];
 
   // to get started, simply copy the target to the current target, and this what needs
   // to be fixed.
@@ -2533,6 +2543,9 @@ assignCurrentSMTarget(StateMachineTarget smt,
     mat_vec_mult_size(R,N_CART,N_CART,smt.pose_x,N_CART,smc->pose_x);
     for (i=1; i<=N_CART; ++i) {
       ct[HAND].x[i] = ref_x[i] + smc->pose_x[i];
+      if (apply_grasp_perturbation) {
+	ct[HAND].x[i] += grasp_perturbation_x[i];
+      }
     }
   } else if (smc->pose_x_is_relative == REL && smc->manipulation_frame == REF_FRAME) {
     mat_vec_mult_size(R,N_CART,N_CART,smt.pose_x,N_CART,smc->pose_x);
@@ -2563,7 +2576,13 @@ assignCurrentSMTarget(StateMachineTarget smt,
       //print_vec_size("before",cto[HAND].q,4);
       //print_vec_size("ref_state_pose",ref_q,4);
       mat_vec_mult_size(R,N_CART,N_CART,&(smt.pose_q[_Q0_]),N_CART,&(smc->pose_q[_Q0_]));
-      quatMult(ref_q,smc->pose_q,cto[HAND].q);
+      if (apply_grasp_perturbation) {
+	quatMult(ref_q,grasp_perturbation_q,ref_q_adj);	
+      } else {
+	for (i=1; i<=N_QUAT; ++i)
+	  ref_q_adj[i] = ref_q[i];
+      }
+      quatMult(ref_q_adj,smc->pose_q,cto[HAND].q);
       //print_vec_size("after",cto[HAND].q,4);
     } else if (smc->pose_q_is_relative == REL && smc->manipulation_frame == REF_FRAME) {	
       //print_vec_size("before",cto[HAND].q,4);
@@ -2699,7 +2718,7 @@ functionCall(int id, int initial_call, int *success)
     }
     break;
 
-    // assign a new delta pose pertubration    
+    // assign a new delta pose perturbration    
   case NEXT_TABLE_DELTA:
     if  (initial_call) {
 
@@ -2720,6 +2739,31 @@ functionCall(int id, int initial_call, int *success)
       }
 
     } else {
+      *success = TRUE;      
+    }
+    break;
+
+    // generarte a grasp perturbation: this is done by simulating a reference pose perturbation,
+    // i.e., the reference pose is transformed by the grasp perturbation pose. The grasp perturbation
+    // is in robot base coordinates, not any reference coordinate system
+  case GRASP_PERTURBATION:
+    if  (initial_call) {
+
+      // assign grasp perturbation to global variable, and set flag to true for applying
+      // the purtabation in target assignment
+      grasp_perturbation_x[_X_] = targets_sm[current_state_sm].function_args[1];
+      grasp_perturbation_x[_Y_] = targets_sm[current_state_sm].function_args[2];
+      grasp_perturbation_x[_Z_] = targets_sm[current_state_sm].function_args[3];
+      grasp_perturbation_q[_Q0_] = targets_sm[current_state_sm].function_args[4];
+      grasp_perturbation_q[_Q1_] = targets_sm[current_state_sm].function_args[5];
+      grasp_perturbation_q[_Q2_] = targets_sm[current_state_sm].function_args[6];
+      grasp_perturbation_q[_Q3_] = targets_sm[current_state_sm].function_args[7];
+      apply_grasp_perturbation = TRUE;
+      
+      *success = TRUE;	
+      
+    } else {
+      apply_grasp_perturbation = FALSE;    
       *success = TRUE;      
     }
     break;

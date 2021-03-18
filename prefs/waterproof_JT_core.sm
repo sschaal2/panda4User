@@ -10,7 +10,7 @@ default_cart_gain_a_scale	1 1 1 1 1 1
 // default controller
 default_controller ModelImpedanceJt
 
-// grasp the qfsp connector in first slot
+// grasp the connector
 
 {
 name               move_to_grasp
@@ -28,12 +28,12 @@ name               prepare_grasp
 func_call 	   gripper 4 0.04 0.1 0.1 0.0
 manipulation_frame bref
 duration      	   2
-pose_x        	   abs 0.0 0.00 0.017
+pose_x        	   abs 0.0 0.00 0.012
 pose_q        	   1 abs 1 0 0 0
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
-max_wrench   	   last 10 10 10 5 5 5
+max_wrench   	   last 10 10 10 8 8 8
 exit_condition	   pos_orient 10 0.0015 0.01 0 0
 }
 {
@@ -46,7 +46,7 @@ pose_q        	   1 rel 1 0 0 0
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
-max_wrench   	   last 20 20 20 5 5 5
+max_wrench   	   last 20 20 20 8 8 8
 exit_condition	   fun_success 10 0 0 0 0
 }
 {
@@ -57,7 +57,7 @@ pose_x        	   abs 0.0 0.0 -0.10
 pose_q        	   1 abs 1 0 0 0
 cart_gain_x_scale  1.4 1.4 1.4 1.4 1.4 1.4
 cart_gain_a_scale  1.4 1.4 1.4 1.4 1.4 1.4
-max_wrench    	   cont 20 20 50 5 5 5 
+max_wrench    	   cont 20 20 50 8 8 8 
 }
 
 
@@ -97,7 +97,7 @@ pose_q        	   1 rel  1 0 0 0
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
-force_desired      0.8 0 0 -10
+force_desired      0.8 0 0 -12
 moment_desired     0 0 0 0
 max_wrench    	   cont 10 10 15 5 5 5
 }
@@ -111,9 +111,9 @@ cart_gain_x_scale  1.4 1.4 1.4 1.4 1.4 1.4
 cart_gain_a_scale  1.6 1.6 1.6 1.6 1.6 1.6
 cart_gain_integral 0.0
 //force_desired      0.5 -2 2 -8
-force_desired      0.8 -3 -3 -10
+force_desired      0.8 -5 -5 -12
 //moment_desired     0.5 0 -2 -4
-moment_desired      0.5 0 -5 0
+moment_desired      0.5 0 5 -2
 max_wrench    	   last 15 15 15 5 5 5
 }
 {

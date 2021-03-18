@@ -68,6 +68,9 @@ extern double pos_error_vector[];
 extern double orient_error_quat[];
 extern SL_Cstate ctarget[];
 extern SL_quat ctarget_orient[];
+extern double grasp_perturbation_x[];
+extern double grasp_perturbation_q[];
+
 
 // local functions
 void add_joints_state(Json::Value &state);
@@ -104,6 +107,13 @@ int
 initDataCollection(void)
 {
   int counter = 0;
+
+  // make sure the perturbation variables are set to zero
+  for (int i=1; i<=N_CART; ++i)
+    grasp_perturbation_x[i] = 0.0;
+  
+  for (int i=1; i<=N_QUAT; ++i)
+    grasp_perturbation_q[i] = 0.0;
 
   if (!run_com_thread_flag)  {
 
@@ -905,9 +915,8 @@ add_experiment_data(Json::Value &state)
   Json::Value pos_q_target(Json::arrayValue);
 
   double reference_state_pose_q_base_inverse[N_QUAT+1];
+  double grasp_perturbation_q_inverse[N_QUAT+1];  
   double q_tilted_inverse[N_QUAT+1];    // the special tilt approach for insertion
-  //double q_mis_grasp[N_QUAT+1]={0, 0.9990, -0.0436, 0, 0}; // in robot base coordinates
-  double q_mis_grasp[N_QUAT+1]={0, 0.9990, 0.0436, 0, 0}; // in robot base coordinates  
 
   // add the tracking error to the pose_delta to make image and robot state
   // maximaly consistent
@@ -918,10 +927,9 @@ add_experiment_data(Json::Value &state)
 	       pos_error_vector,
 	       N_CART,
 	       reference_state_pose_delta_x_adjusted);
-  // hack for bad grasp data collection
-  printf("bad grasp simulation is running -- remove\n");
-  //reference_state_pose_delta_x_adjusted[_Y_] += 0.005; // 5mm mis-grasped in y direction
-  reference_state_pose_delta_x_adjusted[_Y_] -= 0.005; // -5mm mis-grasped in y direction  
+  // if there is a grasp purturbation, it is interpreted as an additional reference_state offset
+  for (int i = 1; i<=N_CART; ++i)
+    reference_state_pose_delta_x_adjusted[i] -= grasp_perturbation_x[i];
 
   // orientation needs rotation matrix rules: q_adj = q_tilt_inv * q_current * q_base_inv
   quatRelative(reference_state_pose_q,ctarget_orient[HAND].q,q_tilted_inverse);
@@ -940,9 +948,13 @@ add_experiment_data(Json::Value &state)
   quatMult(reference_state_pose_q_base_inverse,cart_orient[HAND].q,reference_state_pose_delta_q_adjusted);    // takes tracking error into account
   quatMult(reference_state_pose_delta_q_adjusted,q_tilted_inverse,reference_state_pose_delta_q_adjusted);
 
-  // hack for orientation mis-grasp: q_delta * q_mis_grasp (mis_brasp is like changing he ref_base pose)
-  //printf("bad grasp simulation is running -- remove\n");  
-  //quatMult(q_mis_grasp,reference_state_pose_delta_q_adjusted,reference_state_pose_delta_q_adjusted);
+  // grasp error in orientation: q_delta * grasp_pertubation_q^-1 (grasp error is like changing he ref_base pose)
+  for (int i=1; i<=N_QUAT; ++i) {
+    grasp_perturbation_q_inverse[i] =  grasp_perturbation_q[i];
+    if (i > _Q0_)
+      grasp_perturbation_q_inverse[i] *= -1.0;
+  }
+  quatMult(grasp_perturbation_q,reference_state_pose_delta_q_adjusted,reference_state_pose_delta_q_adjusted);
 
   //print_vec_size("delta_x_adj",reference_state_pose_delta_x_adjusted,N_CART);
   //print_vec_size("delta_x",reference_state_pose_delta_x_table[current_state_pose_delta],N_CART);  
