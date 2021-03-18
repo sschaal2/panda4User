@@ -6,10 +6,6 @@ q_start = randn(4,1);
 q_start = q_start*sign(q_start(1));
 q_end = randn(4,1);
 q_end = q_end*sign(q_end(1));
-t = q_end'*q_start;
-if (t < 0)
-    q_end = -q_end;
-end
 q_start = q_start/norm(q_start);
 q_end = q_end/norm(q_end);
 
@@ -19,7 +15,6 @@ Q=[];
 Q1=[];
 QQ=[];
 W=[];
-WW=[];
 S=[];
 s=0;
 sd=0;
@@ -39,12 +34,9 @@ for i=1:101
     [q,qd,qdd] = min_jerk_quat_next_step(q,qd,qdd,qt,qtd,qtdd,1-u,0.01);
     S(i,:)=[s sd sdd],
     q_slurp=(q_start*sin((1-s)*theta)/(sin(theta)+1e-10) + q_end*sin(s*theta)/(sin(theta)+1.e-10));
-    q_slurp = q_slurp*sign(q_slurp(1));
-    Q(i,:)=q_slurp';
+    Q(i,:)=(q_start*sin((1-s)*theta)/(sin(theta)+1e-10) + q_end*sin(s*theta)/(sin(theta)+1.e-10))';
     %Q1(i,:)=(q_start*sin((1-u)*theta)/(sin(theta)+1e-10) + q_end*sin(u*theta)/(sin(theta)+1.e-10))';
-    W(i,:)=quatLog(quatRel(Q(i,:)',q_last))/0.01;
-    [ad,add]=angularFromQuat(q,qd,qdd);
-    WW(i,:) = ad';
+    W(i,:)=2*quatLog(quatRel(Q(i,:)',q_last));
     q_last = Q(i,:)';
     % q_start = Q(i,:)'
     % theta = acos(q_start'*q_end);
@@ -64,9 +56,6 @@ figure(3);
 plot(S);
 figure(4);
 plot(W);
-hold on;
-plot(WW,'-.','LineWidth',2);
-hold off;
 
 
 

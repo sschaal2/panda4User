@@ -1417,8 +1417,8 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
 		    double *x_next, double *xd_next, double *xdd_next)
 
 {
-  long double t1,t2,t3,t4,t5;
-  long double tau,tau1,tau2,tau3,tau4,tau5;
+  double t1,t2,t3,t4,t5;
+  double tau,tau1,tau2,tau3,tau4,tau5;
   int    i,j;
 
   // a safety check
@@ -1439,24 +1439,22 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
   tau5 = tau4 * tau;
 
   // calculate the constants
-  long double dist   = t - x;
-  long double p1     = t;
-  long double p0     = x;
-  long double a1t2   = tdd*tau2;
-  long double a0t2   = xdd*tau2;
-  long double v1t1   = td*tau1;
-  long double v0t1   = xd*tau1;
+  double dist   = t - x;
+  double a1t2   = tdd*tau2;
+  double a0t2   = xdd*tau2;
+  double v1t1   = td*tau1;
+  double v0t1   = xd*tau1;
 
   // guards against numerical drift for large tau
   if (fabsl(dist) < 1.e-5)
     dist = 0.0;
 
-  long double c1 = (6.*dist + (a1t2 - a0t2)/2. - 3.*(v0t1 + v1t1));
-  long double c2 = (-15.*dist + (3.*a0t2 - 2.*a1t2)/2. + (8.*v0t1 + 7.*v1t1))*tau1; 
-  long double c3 = (10.*dist + (a1t2 - 3.*a0t2)/2. - (6.*v0t1 + 4.*v1t1))*tau2; 
-  long double c4 = xdd/2.;
-  long double c5 = xd;
-  long double c6 = x;
+  double c1 = (6.*dist + (a1t2 - a0t2)/2. - 3.*(v0t1 + v1t1));
+  double c2 = (-15.*dist + (3.*a0t2 - 2.*a1t2)/2. + (8.*v0t1 + 7.*v1t1))*tau1; 
+  double c3 = (10.*dist + (a1t2 - 3.*a0t2)/2. - (6.*v0t1 + 4.*v1t1))*tau2; 
+  double c4 = xdd/2.;
+  double c5 = xd;
+  double c6 = x;
   
   *x_next   = (c1*t5 + c2*t4 + c3*t3)/tau5 + c4*t2 + c5*t1 + c6;
   *xd_next  = (5.*c1*t4 + 4*c2*t3 + 3*c3*t2)/tau5 + 2.*c4*t1 + c5;
@@ -2359,8 +2357,7 @@ print_sm_stats(void)
 	 reference_state_pose_q[_Q0_],
 	 reference_state_pose_q[_Q1_],
 	 reference_state_pose_q[_Q2_],
-	 reference_state_pose_q[_Q3_],	 
-	 reference_state_pose_x[_Y_]);
+	 reference_state_pose_q[_Q3_]);	 
 
   printf("Target Pos Error      : %f (%f %f %f)\n",
 	 pos_error, pos_error_vector[_X_], pos_error_vector[_Y_], pos_error_vector[_Z_]);

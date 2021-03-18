@@ -91,6 +91,12 @@ name               prepare_grasp
 func_call 	   gripper 4 0.03 0.1 0.1 0.0
 manipulation_frame bref
 duration      	   2
+<<<<<<< HEAD
+pose_x        	   abs -0.00 0.00 0.048 
+//pose_q        	   1 abs 1 0 0 0
+//pose_q 	   1 abs 0.9990 0 0.0436 0 // 5 degrees in bref
+pose_q 	   1 abs 0.9990 0 -0.0436 0 // -5 degrees in bref
+=======
 //pose_x        	   abs 0.00 0.00 0.048
 pose_x        	   abs -0.005 0.00 0.048 // needs -5mm y-correction in code
 //pose_x        	   abs  0.005 0.00 0.048 // needs  5mm y-correction in code
@@ -98,6 +104,7 @@ pose_q        	   1 abs 1 0 0 0
 //pose_q   1 abs 0.9990 0 0.0436 0 // 5 degrees in bref
 //pose_q   1 abs 0.9990 0 -0.0436 0 // -5 degrees in bref
 
+>>>>>>> c3d710597f55faefb2fd7abd36d2c8969d09ebb6
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
