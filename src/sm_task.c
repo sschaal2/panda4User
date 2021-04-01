@@ -281,6 +281,8 @@ static int    min_jerk_next_step (double x,double xd, double xdd, double t, doub
 				  double *x_next, double *xd_next, double *xdd_next);
 static int    min_jerk_next_step_quat (SL_quat q_current, SL_quat q_target, double *s,
 				       double t_togo, double dt, SL_quat *q_next);
+static int    min_jerk_next_step_quat_new (SL_quat q, SL_quat q_target,
+					   double t_togo, double dt, SL_quat *q_next);
 static int    read_state_machine(char *fname);
 static void   print_sm_state(void);
 static void   save_statistics_matrix(void);
@@ -973,8 +975,13 @@ run_sm_task(void)
       }
       
       if (current_target_sm.use_orient) {
+	
 	min_jerk_next_step_quat(cdes_start_orient[HAND], ctarget_orient[HAND], s,
 				time_to_go, time_step, &(cdes_orient[HAND]));
+	/*
+	min_jerk_next_step_quat_new(cdes_orient[HAND],ctarget_orient[HAND],
+				    time_to_go, time_step,&(cdes_orient[HAND]));
+	*/
       }
     }
     
@@ -1446,8 +1453,8 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
   double v0t1   = xd*tau1;
 
   // guards against numerical drift for large tau
-  if (fabsl(dist) < 1.e-5)
-    dist = 0.0;
+  //if (fabsl(dist) < 1.e-5)
+  //  dist = 0.0;
 
   double c1 = (6.*dist + (a1t2 - a0t2)/2. - 3.*(v0t1 + v1t1));
   double c2 = (-15.*dist + (3.*a0t2 - 2.*a1t2)/2. + (8.*v0t1 + 7.*v1t1))*tau1; 
@@ -2477,6 +2484,127 @@ min_jerk_next_step_quat (SL_quat q_start, SL_quat q_target, double *s,
 
   //  fprintf(fp,"%f %f %f   %f %f %f %f\n",s[1],s[2],s[3],q_next->q[1],q_next->q[2],q_next->q[3],q_next->q[4]);
   
+  return TRUE;
+
+}
+
+/*!*****************************************************************************
+ *******************************************************************************
+\note  min_jerk_next_step_quat_new
+\date  March 2021
+   
+\remarks 
+
+ min jerk next step spline in quaternions. This is a first principles
+ correct 5th order orientation spline, exploiting the log() and exp()
+ transforms of quaternions. There is no internal state, and the spline can
+ start from any pos/vel/acc to any target in pos/vel/acc.
+
+ Thanks to Giovanni Sutanto for pointing out the right approach.
+
+ *******************************************************************************
+ Function Parameters: [in]=input,[out]=output
+
+ \param[in]          q        : the current quaternion with all derivatives
+ \param[in]          q_target : the target quaternion with all derivatives
+ \param[in]          t_togo   : time to go until target is reached
+ \param[in]          dt       : time increment
+ \param[out]         q_next   : the next state quaternion with all derivatives
+
+ ******************************************************************************/
+static int
+min_jerk_next_step_quat_new (SL_quat q, SL_quat q_target,
+			     double t_togo, double dt, SL_quat *q_next)
+
+{
+  int    i,j;
+  double aux;
+  double t1,t2,t3,t4,t5;
+  double tau,tau1,tau2,tau3,tau4,tau5;
+
+  // a safety check
+  if (dt > t_togo || dt <= 0) {
+    return FALSE;
+  }
+
+  // the target quaternion should be in the same solution space as the start
+  // quaternion (TBD: this issue may need to be checked carefully for general validity)
+  aux = vec_mult_inner_size(q.q,q_target.q,N_QUAT);
+  if (aux < 0) {
+    vec_mult_scalar_size(q_target.q,N_QUAT,-1.0,q_target.q);
+  }
+
+  // highly efficient precompuation of time constants
+  t1 = dt;
+  t2 = t1 * dt;
+  t3 = t2 * dt;
+  t4 = t3 * dt;
+  t5 = t4 * dt;
+
+  tau  = tau1 = t_togo;
+  tau2 = tau1 * tau;
+  tau3 = tau2 * tau;
+  tau4 = tau3 * tau;
+  tau5 = tau4 * tau;
+
+  // calculate the spline constants: note that the spline is in angular (tangent) space, not
+  // quaternion space, and thus all relevant quanities become 3D vectors
+  double q_rel[N_QUAT+1];
+  double dist[N_CART+1];
+
+  // the distance between q and q_target in tangent space
+  quatRelative(q.q, q_target.q, q_rel);
+  quatLog(q_rel,dist);
+
+  // fill in angular derivatives to quaternions
+  quatToAngularDerivatives(&q);
+  quatToAngularDerivatives(&q_target);  
+  
+  double a1t2[N_CART+1];
+  double a0t2[N_CART+1];
+  double v1t1[N_CART+1];
+  double v0t1[N_CART+1];
+
+  for (i=1; i<=N_CART; ++i) {
+    a1t2[i]   = q_target.add[i]*tau2;
+    a0t2[i]   = q.add[i]*tau2;
+    v1t1[i]   = q_target.ad[i]*tau1;
+    v0t1[i]   = q.ad[i]*tau1;
+  }
+
+  double c1[N_CART+1];
+  double c2[N_CART+1];
+  double c3[N_CART+1];
+  double c4[N_CART+1];
+  double c5[N_CART+1];
+
+  for (i=1; i<=N_CART; ++i) {
+    c1[i] = (6.*dist[i] + (a1t2[i] - a0t2[i])/2. - 3.*(v0t1[i] + v1t1[i]));
+    c2[i] = (-15.*dist[i] + (3.*a0t2[i] - 2.*a1t2[i])/2. + (8.*v0t1[i] + 7.*v1t1[i]))*tau1; 
+    c3[i] = (10.*dist[i] + (a1t2[i] - 3.*a0t2[i])/2. - (6.*v0t1[i] + 4.*v1t1[i]))*tau2; 
+    c4[i] = q.add[i]/2.;
+    c5[i] = q.ad[i];
+  }
+
+  double delta_a_next[N_CART+1];
+  double ad_next[N_CART+1];
+  double add_next[N_CART+1];
+
+  for (i=1; i<=N_CART; ++i) {
+    delta_a_next[i]   = (c1[i]*t5 + c2[i]*t4 + c3[i]*t3)/tau5 + c4[i]*t2 + c5[i]*t1;
+    q_next->ad[i] = ad_next[i]  = (5.*c1[i]*t4 + 4*c2[i]*t3 + 3*c3[i]*t2)/tau5 + 2.*c4[i]*t1 + c5[i];
+    q_next->add[i] = add_next[i] = (20.*c1[i]*t3 + 12.*c2[i]*t2 + 6.*c3[i]*t1)/tau5 + 2.*c4[i];
+  }
+
+  // postprocess into quaternions
+  quatExp(delta_a_next,q_rel);
+  quatMult(q.q,q_rel,q_next->q);
+  if (q_next->q[_Q0_] < 0)
+    for (i=1; i<=N_QUAT; ++i)
+      q_next->q[i] *= -1.0;
+
+  quatDerivatives(q_next);
+
   return TRUE;
 
 }

@@ -76,8 +76,6 @@ manipulation_frame abs
 duration      	   15
 pose_x        	   rel 0.0 0.0 0.0
 pose_q        	   1 rel 1 0 0 0
-gripper_start 	   abs 0.0 100
-gripper_end   	   abs 0.0 100
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 0.02 2.2 2.2 0.02
 cart_gain_integral 0.

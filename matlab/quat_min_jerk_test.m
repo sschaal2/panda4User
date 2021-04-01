@@ -130,7 +130,7 @@ function [q_next,qd_next, qdd_next] = min_jerk_quat_next_step (q,qd,qdd,qt,qtd,q
   t4 = t3 * dt;
   t5 = t4 * dt;
 
-  tau  = t_togo;
+  tau  = t_togo;edit
   tau1 = t_togo;
   tau2 = tau1 * tau;
   tau3 = tau2 * tau;
