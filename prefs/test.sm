@@ -47,7 +47,8 @@ default_cart_gain_x_scale	1 1 1 1 1 1
 default_cart_gain_a_scale	1 1 1 1 1 1
 
 // default controller
-default_controller ModelImpedanceJt
+//default_controller ModelImpedanceJt
+default_controller SimpleImpedanceJt
 
 
 {
@@ -73,11 +74,11 @@ exit_condition     func_success 10 0 0 0 0
 {
 name               test_state_2_neg_gain
 manipulation_frame abs
-duration      	   15
+duration      	   5
 pose_x        	   rel 0.0 0.0 0.0
 pose_q        	   1 rel 1 0 0 0
-cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
-cart_gain_a_scale  2.2 2.2 0.02 2.2 2.2 0.02
+cart_gain_x_scale  1.5 1.5 1.5 .5 .5 .5
+//cart_gain_a_scale  1.5 1.5 0.2 1.5 1.5 0.2
 cart_gain_integral 0.
 //force_desired      1 0 0 0 
 //moment_desired     1 0 0 0
@@ -98,13 +99,13 @@ exit_condition     func_success 10 0 0 0 0
 name               test_state_3_pos_gain
 name_next          test_state_2_neg_gain
 manipulation_frame abs
-duration      	   15
+duration      	   5
 pose_x        	   rel 0.0 0.0 0.0
 pose_q        	   1 rel 1 0 0 0
 gripper_start 	   abs 0.0 100
 gripper_end   	   abs 0.0 100
-cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
-cart_gain_a_scale  2.2 2.2 0.02 2.2 2.2 0.02
+cart_gain_x_scale  2.2 2.2 2.2 1.5 1.5 1.5
+//cart_gain_a_scale  2.2 2.2 0.02 2.2 2.2 0.02
 cart_gain_integral 0.
 //force_desired      1 0 0 0 
 //moment_desired     1 0 0 0

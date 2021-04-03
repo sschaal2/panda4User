@@ -975,13 +975,26 @@ run_sm_task(void)
       }
       
       if (current_target_sm.use_orient) {
-	
+	SL_quat ttt;
+
+	/*
 	min_jerk_next_step_quat(cdes_start_orient[HAND], ctarget_orient[HAND], s,
 				time_to_go, time_step, &(cdes_orient[HAND]));
-	/*
+	*/
 	min_jerk_next_step_quat_new(cdes_orient[HAND],ctarget_orient[HAND],
 				    time_to_go, time_step,&(cdes_orient[HAND]));
+
+	/*
+	print_vec_size("old",cdes_orient[HAND].q,4);
+	print_vec_size("new",ttt.q,4);	
+	print_vec_size("old -d",cdes_orient[HAND].qd,4);
+	print_vec_size("new -d",ttt.qd,4);	
+	print_vec_size("old -dd",cdes_orient[HAND].qdd,4);
+	print_vec_size("new -dd",ttt.qdd,4);
+	if (my_isnan(ttt.q[1]) == 1)
+	  getchar();
 	*/
+
       }
     }
     
