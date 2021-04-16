@@ -258,7 +258,7 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
       cref[count] = cref_integral[count];
       for (n= _X_; n<= _Z_; ++n)      
 	cref[count] += 
-	  (cdes[HAND].xd[n]  - cart_state[HAND].xd[n]) * 2.*sqrt(default_gain) * sqrt(gain_xd_scale[j][n]) +
+	  (cdes[HAND].xd[n]  - cart_state[HAND].xd[n]) * 2.*sqrt(default_gain) * sqrt(fabs(gain_xd_scale[j][n])) +
 	  (cdes[HAND].x[n]  - cart_state[HAND].x[n]) * default_gain * gain_x_scale[j][n];
     }
   }
@@ -275,7 +275,7 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
       cref[count] = cref_integral[count];
       for (n= _A_; n<= _G_ ; ++n) 
 	cref[count] += 
-	  (cdes_orient[HAND].ad[n] - cart_orient[HAND].ad[n]) *0.025 * 2.0 * sqrt(default_gain_orient) * sqrt(gain_ad_scale[j][n]) + 
+	  (cdes_orient[HAND].ad[n] - cart_orient[HAND].ad[n]) *0.025 * 2.0 * sqrt(default_gain_orient) * sqrt(fabs(gain_ad_scale[j][n])) + 
 	  log_q_mult * corient_error[n] * default_gain_orient * gain_a_scale[j][n]; 
     }
   }
@@ -404,8 +404,9 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
 
   // compute orientation error term for quaterion feedback control
   quatRelative(cart_orient[HAND].q,cdes_orient[HAND].q,q_rel);
-  for (i=1; i<=N_CART; ++i)
+  for (i=1; i<=N_CART; ++i) {
     corient_error[i] = q_rel[_Q1_+i-1];
+  }
 
   q_rel_angle = acos(q_rel[_Q0_]);
   log_q_mult = q_rel_angle/(sqrt(vec_mult_inner_size(corient_error,corient_error,N_CART))+1.e-6);
@@ -425,11 +426,12 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
       cref[count] = cref_integral[count];
       for (n= _X_; n<= _Z_; ++n)      
 	cref[count] += 
-	  (cdes[HAND].xd[n]  - cart_state[HAND].xd[n]) * 2.*sqrt(default_gain) * sqrt(gain_xd_scale[j][n]) +
+	  (cdes[HAND].xd[n]  - cart_state[HAND].xd[n]) * 2.*sqrt(default_gain) * sqrt(fabs(gain_xd_scale[j][n])) +
 	  (cdes[HAND].x[n]  - cart_state[HAND].x[n]) * default_gain * gain_x_scale[j][n];
     }
   }
-  
+
+
   for (j= _A_; j<= _G_ ; ++j) { /* orientation */
 
     if (status[N_CART + j]) {
@@ -440,10 +442,12 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
 	cref_integral[count] = MAX_INTEGRAL_MOMENT;
 
       cref[count] = cref_integral[count];
-      for (n= _A_; n<= _G_ ; ++n) 
+      for (n= _A_; n<= _G_ ; ++n) {
 	cref[count] += 
-	  (cdes_orient[HAND].ad[n] - cart_orient[HAND].ad[n]) *0.025 * 2.0 * sqrt(default_gain_orient) * sqrt(gain_ad_scale[j][n]) + 
-	  log_q_mult * corient_error[n] * default_gain_orient * gain_a_scale[j][n]; 
+	  (cdes_orient[HAND].ad[n] - cart_orient[HAND].ad[n]) *0.025 * 2.0 * sqrt(default_gain_orient) * sqrt(fabs(gain_ad_scale[j][n])) + 
+	  log_q_mult * corient_error[n] * default_gain_orient * gain_a_scale[j][n];
+
+      }
     }
   }
   
