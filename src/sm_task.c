@@ -654,7 +654,6 @@ init_sm_task(void)
   
   for (j=1; j<=N_QUAT; ++j) {
     cdes_orient[HAND].q[j] = ctarget_orient[HAND].q[j] = cart_des_orient[HAND].q[j];
-    printf("cdes_orient %f\n",cdes_orient[HAND].q[j]);
   }
 
   // ready to go
@@ -2758,9 +2757,9 @@ assignCurrentSMTarget(StateMachineTarget smt,
     for (j=1; j<=N_CART; ++j) {
       if ( i == j ) {
 	smc->cart_gain_x_scale_matrix[i][j] = smc->cart_gain_x_scale[i];
-	smc->cart_gain_xd_scale_matrix[i][j] = smc->cart_gain_xd_scale[i];
+	smc->cart_gain_xd_scale_matrix[i][j] = sqrt(smc->cart_gain_xd_scale[i]); //sqrt() for vel gain scaling
 	smc->cart_gain_a_scale_matrix[i][j] = smc->cart_gain_a_scale[i];
-	smc->cart_gain_ad_scale_matrix[i][j] = smc->cart_gain_ad_scale[i];
+	smc->cart_gain_ad_scale_matrix[i][j] = sqrt(smc->cart_gain_ad_scale[i]); //sqrt() for vel gain scaling
       } else {
 	smc->cart_gain_x_scale_matrix[i][j] = 0.0;
 	smc->cart_gain_xd_scale_matrix[i][j] = 0.0;
