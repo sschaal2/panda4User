@@ -66,7 +66,6 @@ enum RelativeOption
   {
    ABS = 0,
    REL,
-   RELREF
   };
 
 enum CoordinateFrame
@@ -1507,17 +1506,18 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
    "duration" movement_duration
    "manipulation_frame" ["abs" | "ref" | "bref"]
    "func_call" "...." (arbitrary name of implemented function to be called at this state)
-   "pose_x" ["abs" | "rel" | "refref"] pose_x_X pose_x_Y pose_x_Z
-   "pose_q" use_orient ["abs" | "rel | relref"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
-   "gripper_start" ["abs" | "rel"] gripper_start_width gripper_start_force
-   "gripper_end" ["abs" | "rel"] gripper_end_width gripper_end_force
+   "pose_x" ["abs" | "rel"] pose_x_X pose_x_Y pose_x_Z
+   "pose_q" use_orient ["abs" | "rel"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
+   "gripper_start" ["abs" | "rel"] gripper_start_width gripper_start_force (deprecated)
+   "gripper_end" ["abs" | "rel"] gripper_end_width gripper_end_force (deprecated)
    "cart_gain_x_scale" cart_gain_x_X cart_gain_x_Y cart_gain_x_Z cart_gain_xd_X cart_gain_xd_Y cart_gain_xd_Z
    "cart_gain_a_scale" cart_gain_a_A cart_gain_a_B cart_gain_a_G cart_gain_ad_A cart_gain_ad_B cart_gain_ad_G
    "cart_gain_integral" cart_gain_integral
-   "ff_wrench" fx fy fz mx my mz
-   "max_wrench" ["cont" | "abort" | "last"] fx_max fy_max fz_max mx_max my_max mz_max
+   "force_desired" feedback_gain fx fy fz
+   "moment_desired" feedback_gain mx my mz
+   "max_wrench" fx_max fy_max fz_max mx_max my_max mz_max
    "controller" controller_name
-   "exit_condition" ["none" | "pos" | "orient" | "pos_orient" | "force" | "moment" | "force_moment"] exit_timeout err_pos err_orient err_force err_moment
+   "exit_condition" ["none" | "pos" | "orient" | "pos_orient" | "force" | "moment" | "force_moment" | "func_success" ] time_out err_pos err_orient err_force err_moment
 }
 
  ******************************************************************************/
@@ -1905,8 +1905,6 @@ read_state_machine(char *fname) {
 	  }
 	  if (strcmp(saux,"rel")==0)
 	    sm_temp.pose_x_is_relative = REL;
-	  else if (strcmp(saux,"relref")==0)
-	    sm_temp.pose_x_is_relative = RELREF;
 	  else
 	    sm_temp.pose_x_is_relative = ABS;
 	}
@@ -1928,8 +1926,6 @@ read_state_machine(char *fname) {
 	  }
 	  if (strcmp(saux,"rel")==0)
 	    sm_temp.pose_q_is_relative = REL;
-	  else if (strcmp(saux,"relref")==0)
-	    sm_temp.pose_q_is_relative = RELREF;
 	  else
 	    sm_temp.pose_q_is_relative = ABS;
 
