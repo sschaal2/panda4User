@@ -860,7 +860,6 @@ run_sm_task(void)
       return FALSE;
     }
 
-    
     break;
     
     
@@ -887,6 +886,11 @@ run_sm_task(void)
 	cdes[HAND].xdd[i] = 0.0;
 	cdes_orient[HAND].ad[i]  = 0.0;
 	cdes_orient[HAND].add[i]  = 0.0;	
+      }
+
+      for (i=1; i<=N_QUAT; ++i) {
+	cdes_orient[HAND].qd[i]  = 0.0;
+	cdes_orient[HAND].qdd[i]  = 0.0;	
       }
 
       time_to_go = 0;
@@ -980,6 +984,7 @@ run_sm_task(void)
 	min_jerk_next_step_quat(cdes_start_orient[HAND], ctarget_orient[HAND], s,
 				time_to_go, time_step, &(cdes_orient[HAND]));
 	*/
+
 	min_jerk_next_step_quat_new(cdes_orient[HAND],ctarget_orient[HAND],
 				    time_to_go, time_step,&(cdes_orient[HAND]));
 
@@ -1157,7 +1162,6 @@ run_sm_task(void)
     }
   }
 
-  
   switch (current_controller) {
 
   case SIMPLE_IMPEDANCE_JT:
@@ -1630,6 +1634,8 @@ read_state_machine(char *fname) {
       reference_state_pose_q_base[i] = cart_orient[HAND].q[i];
   }
 
+  quatNorm(reference_state_pose_q_base);
+
   for (i=1; i<=N_QUAT; ++i)
     reference_state_pose_q[i] = reference_state_pose_q_base[i];
 
@@ -1720,6 +1726,7 @@ read_state_machine(char *fname) {
 		    &reference_state_pose_delta_q_table[i][_Q1_],
 		    &reference_state_pose_delta_q_table[i][_Q2_],
 		    &reference_state_pose_delta_q_table[i][_Q3_]);
+	quatNorm(reference_state_pose_delta_q_table[i]);
       }
       printf("Found table of pose perturbations with %d entries\n",n_states_pose_delta);
     } else {
@@ -1924,6 +1931,7 @@ read_state_machine(char *fname) {
 	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
 	    continue;
 	  }
+	  quatNorm(sm_temp.pose_q);
 	  if (strcmp(saux,"rel")==0)
 	    sm_temp.pose_q_is_relative = REL;
 	  else
@@ -2745,9 +2753,9 @@ assignCurrentSMTarget(StateMachineTarget smt,
     for (j=1; j<=N_CART; ++j) {
       if ( i == j ) {
 	smc->cart_gain_x_scale_matrix[i][j] = smc->cart_gain_x_scale[i];
-	smc->cart_gain_xd_scale_matrix[i][j] = smc->cart_gain_xd_scale[i];
+	smc->cart_gain_xd_scale_matrix[i][j] = sqrt(smc->cart_gain_xd_scale[i]); //sqrt() for vel gain scaling
 	smc->cart_gain_a_scale_matrix[i][j] = smc->cart_gain_a_scale[i];
-	smc->cart_gain_ad_scale_matrix[i][j] = smc->cart_gain_ad_scale[i];
+	smc->cart_gain_ad_scale_matrix[i][j] = sqrt(smc->cart_gain_ad_scale[i]); //sqrt() for vel gain scaling
       } else {
 	smc->cart_gain_x_scale_matrix[i][j] = 0.0;
 	smc->cart_gain_xd_scale_matrix[i][j] = 0.0;
@@ -2866,6 +2874,7 @@ functionCall(int id, int initial_call, int *success)
 	}
 	quatMult(reference_state_pose_q_base,reference_state_pose_delta_q_table[current_state_pose_delta],
 		 reference_state_pose_q);
+	quatNorm(reference_state_pose_q);
 	*success = TRUE;
       } else {
 	*success = FALSE;	
