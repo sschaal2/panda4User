@@ -121,6 +121,8 @@ typedef struct StateMachineTarget {
   int    pose_x_is_relative;
   double pose_x[N_CART+1];
   int    use_orient;
+  int    reverse_orient_movement;
+  double orient_rel_axis[N_CART+1];
   int    pose_q_is_relative;
   double pose_q[N_QUAT+1];
   int    gripper_start_active;
@@ -400,6 +402,20 @@ add_sm_task( void )
     addVarToCollect((char *)&(cdes_orient[i].qdd[_Q2_]),string,"-", DOUBLE,FALSE);
     sprintf(string,"%s_cdes_q3dd",cart_names[i]);
     addVarToCollect((char *)&(cdes_orient[i].qdd[_Q3_]),string,"-", DOUBLE,FALSE);
+
+    sprintf(string,"%s_cdes_ad",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].ad[_A_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_bd",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].ad[_B_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_gd",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].ad[_G_]),string,"-", DOUBLE,FALSE);
+
+    sprintf(string,"%s_cdes_add",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].add[_A_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_bdd",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].add[_B_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_gdd",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].add[_G_]),string,"-", DOUBLE,FALSE);
 
     sprintf(string,"%s_ct_ad",cart_names[i]);
     addVarToCollect((char *)&(ctarget_orient[i].ad[_A_]),string,"-", DOUBLE,FALSE);
@@ -1547,7 +1563,7 @@ static char state_group_names[][100]=
    {"exit_condition"}
   };
 
-static int n_parms[] = {0,1,1,1,1,2,4,6,3,3,6,6,1,4,4,7,1,6};
+static int n_parms[] = {0,1,1,1,1,2,4,7,3,3,6,6,1,4,4,7,1,6};
 #define MAX_BIG_STRING 5000
 
 static int
@@ -1921,15 +1937,28 @@ read_state_machine(char *fname) {
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
 	  sm_temp.use_orient = FALSE;
+	  sm_temp.reverse_orient_movement = FALSE;
 	} else {
-	  n_read = sscanf(c,"%d %s %lf %lf %lf %lf", &(sm_temp.use_orient),saux,
+	  // new syntax: allow for reverse_orient_movement
+	  n_read = sscanf(c,"%d %s %lf %lf %lf %lf %d",
+			  &(sm_temp.use_orient),saux,
 			  &(sm_temp.pose_q[_Q0_]),
 			  &(sm_temp.pose_q[_Q1_]),
 			  &(sm_temp.pose_q[_Q2_]),
-			  &(sm_temp.pose_q[_Q3_]));
-	  if (n_read != n_parms[i]) {
-	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
-	    continue;
+			  &(sm_temp.pose_q[_Q3_]),
+			  &(sm_temp.reverse_orient_movement));
+	  if (n_read != n_parms[i]) {  // if failure, try old syntax
+	    sm_temp.reverse_orient_movement = FALSE;	    
+	    n_read = sscanf(c,"%d %s %lf %lf %lf %lf",
+			    &(sm_temp.use_orient),saux,
+			    &(sm_temp.pose_q[_Q0_]),
+			    &(sm_temp.pose_q[_Q1_]),
+			    &(sm_temp.pose_q[_Q2_]),
+			    &(sm_temp.pose_q[_Q3_]));
+	    if (n_read != n_parms[i]-1) {
+	      printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	      continue;
+	    }
 	  }
 	  quatNorm(sm_temp.pose_q);
 	  if (strcmp(saux,"rel")==0)
@@ -2500,6 +2529,8 @@ min_jerk_next_step_quat (SL_quat q_start, SL_quat q_target, double *s,
   }
 
   //  fprintf(fp,"%f %f %f   %f %f %f %f\n",s[1],s[2],s[3],q_next->q[1],q_next->q[2],q_next->q[3],q_next->q[4]);
+
+  quatToAngularDerivatives(q_next);
   
   return TRUE;
 
@@ -2547,9 +2578,12 @@ min_jerk_next_step_quat_new (SL_quat q, SL_quat q_target,
   // the target quaternion should be in the same solution space as the start
   // quaternion (TBD: this issue may need to be checked carefully for general validity)
   aux = vec_mult_inner_size(q.q,q_target.q,N_QUAT);
+
   if (aux < 0) {
     vec_mult_scalar_size(q_target.q,N_QUAT,-1.0,q_target.q);
   }
+
+  // && strcmp(current_target_sm.state_name,"rotate_right")!=0
 
   // highly efficient precompuation of time constants
   t1 = dt;
@@ -2571,6 +2605,15 @@ min_jerk_next_step_quat_new (SL_quat q, SL_quat q_target,
 
   // the distance between q and q_target in tangent space
   quatRelative(q.q, q_target.q, q_rel);
+
+  // do we need a reverse rotation?
+  aux = 0;
+  for (i=1; i<=N_CART; ++i)
+    aux += q_rel[_Q0_+i]*current_target_sm.orient_rel_axis[i];
+  if (aux < 0 && current_target_sm.reverse_orient_movement)
+    for (i=1; i<=N_CART; ++i)
+      q_rel[_Q0_+i] *= -1;
+
   quatLog(q_rel,dist);
 
   // fill in angular derivatives to quaternions
@@ -2738,6 +2781,18 @@ assignCurrentSMTarget(StateMachineTarget smt,
 	cto[HAND].q[i] = smc->pose_q[i];
       }
     }
+
+    // assign the initial relative rotation axis to the target
+    double q_rel[N_QUAT+1];
+    double ip = vec_mult_inner_size(cdes_orient[HAND].q, cto[HAND].q, N_QUAT);
+    quatRelative(cdes_orient[HAND].q, cto[HAND].q, q_rel);
+    if (ip < 0) // by default we choose the shortest path in orientation space
+      vec_mult_scalar_size(q_rel,N_QUAT,-1.0,q_rel);
+    if (smc->reverse_orient_movement)  // if explicitly requested, choose longest path
+      vec_mult_scalar_size(q_rel,N_QUAT,-1.0,q_rel);
+
+    for (i=1; i<=N_CART; ++i)
+      smc->orient_rel_axis[i] = q_rel[_Q0_+i];
 
   } else { // no orientation
     

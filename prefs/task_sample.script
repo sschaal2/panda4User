@@ -321,6 +321,12 @@ HAND_cdes_q0dd
 HAND_cdes_q1dd
 HAND_cdes_q2dd
 HAND_cdes_q3dd
+HAND_cdes_ad
+HAND_cdes_bd
+HAND_cdes_gd
+HAND_cdes_add
+HAND_cdes_bdd
+HAND_cdes_gdd
 HAND_ct_ad
 HAND_ct_bd
 HAND_ct_gd

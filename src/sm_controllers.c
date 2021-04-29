@@ -241,7 +241,7 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
   q_rel_angle = acos(q_rel[_Q0_]);
   
   if (q_rel_angle > 3)getchar();
-  log_q_mult = q_rel_angle/(sqrt(vec_mult_inner_size(corient_error,corient_error,N_CART))+1.e-6);
+  log_q_mult = q_rel_angle/(sqrt(vec_mult_inner_size(corient_error,corient_error,N_CART))+1.e-10);
   
   // prepare the impdance controller, i.e., compute operational
   // space force command
@@ -273,10 +273,16 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
 	cref_integral[count] = MAX_INTEGRAL_MOMENT;
 
       cref[count] = cref_integral[count];
-      for (n= _A_; n<= _G_ ; ++n) 
+      for (n= _A_; n<= _G_ ; ++n) {
 	cref[count] += 
 	  (cdes_orient[HAND].ad[n] - cart_orient[HAND].ad[n]) *0.025 * 2.0 * sqrt(default_gain_orient) * gain_ad_scale[j][n] + 
-	  log_q_mult * corient_error[n] * default_gain_orient * gain_a_scale[j][n]; 
+	  log_q_mult * corient_error[n] * default_gain_orient * gain_a_scale[j][n];
+	/*
+	printf("%d.%d: %f %f     %f %f\n",j,n,
+	       (cdes_orient[HAND].ad[n] - cart_orient[HAND].ad[n]),0.025 * 2.0 * sqrt(default_gain_orient) * gain_ad_scale[j][n],
+	       corient_error[n], log_q_mult * default_gain_orient * gain_a_scale[j][n]);	       
+	*/
+      }
     }
   }
   
@@ -409,7 +415,7 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
   }
 
   q_rel_angle = acos(q_rel[_Q0_]);
-  log_q_mult = q_rel_angle/(sqrt(vec_mult_inner_size(corient_error,corient_error,N_CART))+1.e-6);
+  log_q_mult = q_rel_angle/(sqrt(vec_mult_inner_size(corient_error,corient_error,N_CART))+1.e-10);
   
   // prepare the impdance controller, i.e., compute operational
   // space force command
@@ -769,7 +775,7 @@ computePseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix J
   }
 
 
-  // provide points to result matrices
+  // provide pointers to result matrices
   mat_equal_size(Jred,count,N_DOFS,Jprop);
   mat_equal_size(B,N_DOFS,count,Jhash);
   mat_equal_size(O,N_DOFS,N_DOFS,Nproj);
