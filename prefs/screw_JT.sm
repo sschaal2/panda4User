@@ -21,6 +21,7 @@ default_cart_gain_a_scale	1 1 1 1 1 1
 
 // default controller
 default_controller ModelImpedanceJt
+//default_controller SimpleImpedanceJt
 
 // grasp bolt from nest
 
@@ -100,29 +101,27 @@ max_wrench    	   cont 20 20 50 8 8 8
 //exit_condition	   pos_orient 10 0.0015 0.01 0 0
 }
 {
-name               un_screw_ccw
-manipulation_frame abs
+name               screw_ccw
+manipulation_frame ref
 duration      	   4
 pose_x        	   rel 0.0 0.0 0.0
-pose_q        	   1 abs 0.002 .996 0.091 0.001 1
-//pose_q        	   1 abs 0 1 0 0
+pose_q        	   1 rel -0.0861  0 0 -0.9963 -3
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
-force_desired	   0.8 0 0 25
+force_desired	   0.8 0 0 -25
 max_wrench    	   cont 20 20 50 8 8 8
 }
 {
 name               screw_cw
-manipulation_frame abs
+manipulation_frame ref
 duration      	   5
 pose_x        	   rel 0.0 0.0 0.0
-pose_q        	   1 abs 0.008 -0.928 -0.372 0.005 1
-//pose_q        	   1 abs 0 -0.677 -0.736 0 1
+pose_q        	   1 rel 0.9578 0 0 -0.2875 3
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
-force_desired	   0.8 0 0 25
+force_desired	   0.8 0 0 -25
 max_wrench    	   cont 20 20 50 8 8 8
 }
 {
@@ -151,12 +150,10 @@ exit_condition	   fun_success 10 0 0 0 0
 }
 {
 name               unscrew_ccw
-manipulation_frame abs
+manipulation_frame ref
 duration      	   5
-pose_x        	   rel 0.0 0.0 0.005
-//pose_q        	   1 abs 1 0 0 0
-pose_q        	   1 abs 0 1 0 0 1
-//pose_q        	   1 abs 0 0.996 0.097 0 1
+pose_x        	   rel 0.0 0.0 -0.005
+pose_q        	   1 rel 0.9578 0 0 0.2875 -3
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
@@ -179,16 +176,16 @@ name               move_to_nest
 manipulation_frame bref
 duration      	   3
 pose_x        	   abs 0.147 0.0 -0.03
-pose_q        	   1 abs 1 0 0 0 1
+pose_q        	   1 abs 1 0 0 0 3
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
 max_wrench    	   last 20 20 20 5 5 5
 }
 {
-name               move_down_on_next
+name               move_down_on_nest
 manipulation_frame bref
-duration      	   5
+duration      	   2
 pose_x        	   rel 0 0 .02
 pose_q        	   1 rel 1 0 0 0 1
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
@@ -199,7 +196,6 @@ max_wrench    	   last 10 10 10 5 5 5
 {
 name               gripper_release
 name_next 	   prepare_grasp
-func_call 	   gripper 4 0.02 0.1 0.1 0.0
 manipulation_frame bref
 duration      	   0.1
 pose_x        	   rel 0 0 0 

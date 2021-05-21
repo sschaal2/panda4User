@@ -76,7 +76,8 @@ name               rotate_left
 manipulation_frame abs
 duration      	   2
 pose_x        	   rel 0 0 0
-pose_q        	   1 abs  0 0.907 0.420 0 1
+//pose_q        	   1 abs  0 0.907 0.420 0 1
+pose_q        	   1 abs  0 -0.999 0.051 0 1
 max_wrench   	   abort 30 30 30 10 10 10
 }
 {

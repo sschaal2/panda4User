@@ -121,7 +121,7 @@ typedef struct StateMachineTarget {
   int    pose_x_is_relative;
   double pose_x[N_CART+1];
   int    use_orient;
-  int    reverse_orient_movement;
+  int    nearest_rot_axis;
   double orient_rel_axis[N_CART+1];
   int    pose_q_is_relative;
   double pose_q[N_QUAT+1];
@@ -465,8 +465,6 @@ add_sm_task( void )
     sprintf(string,"%s_cdes_zd",cart_names[i]);
     addVarToCollect((char *)&(cdes[i].xd[_Z_]),string,"m", DOUBLE,FALSE);
       
-      
-      
   }
     
   sprintf(string,"sm_pos_error");
@@ -508,6 +506,7 @@ init_sm_task(void)
   int    flag = FALSE;
   static int firsttime = TRUE;
   static int pert = 0;
+  float  data[N_CART+N_QUAT+1+1];
 
   
   if (firsttime) {
@@ -687,6 +686,17 @@ init_sm_task(void)
   // reclibrate the gripper F/T offsets
   sendCalibrateFTCommand();
   taskDelay(100);
+
+  // draw the reference base pose coordinate frame
+  data[1] = 0.1; // length of coordinate arrows
+  data[2] = reference_state_pose_x_base[_X_];
+  data[3] = reference_state_pose_x_base[_Y_];
+  data[4] = reference_state_pose_x_base[_Z_];
+  data[5] = reference_state_pose_q_base[_Q0_];
+  data[6] = reference_state_pose_q_base[_Q1_];
+  data[7] = reference_state_pose_q_base[_Q2_];
+  data[8] = reference_state_pose_q_base[_Q3_];
+  sendUserGraphics("drawPoseFrame",&(data[1]),(N_CART+N_QUAT+1)*sizeof(float));  
 
   time_step = 1./(double)task_servo_rate;
   start_time = task_servo_time;
@@ -1938,18 +1948,19 @@ read_state_machine(char *fname) {
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
 	  sm_temp.use_orient = FALSE;
-	  sm_temp.reverse_orient_movement = FALSE;
+	  sm_temp.nearest_rot_axis = FALSE;
 	} else {
-	  // new syntax: allow for reverse_orient_movement
+	  // new syntax: allows specifying one of the canonical coordinate axes
+	  // to be the nearest to the relative rotation axis
 	  n_read = sscanf(c,"%d %s %lf %lf %lf %lf %d",
 			  &(sm_temp.use_orient),saux,
 			  &(sm_temp.pose_q[_Q0_]),
 			  &(sm_temp.pose_q[_Q1_]),
 			  &(sm_temp.pose_q[_Q2_]),
 			  &(sm_temp.pose_q[_Q3_]),
-			  &(sm_temp.reverse_orient_movement));
+			  &(sm_temp.nearest_rot_axis));
 	  if (n_read != n_parms[i]) {  // if failure, try old syntax
-	    sm_temp.reverse_orient_movement = FALSE;	    
+	    sm_temp.nearest_rot_axis = FALSE;	    
 	    n_read = sscanf(c,"%d %s %lf %lf %lf %lf",
 			    &(sm_temp.use_orient),saux,
 			    &(sm_temp.pose_q[_Q0_]),
@@ -2607,13 +2618,14 @@ min_jerk_next_step_quat_new (SL_quat q, SL_quat q_target,
   // the distance between q and q_target in tangent space
   quatRelative(q.q, q_target.q, q_rel);
 
-  // do we need a reverse rotation?
+  // do we need to change rotation direction?
   aux = 0;
   for (i=1; i<=N_CART; ++i)
     aux += q_rel[_Q0_+i]*current_target_sm.orient_rel_axis[i];
-  if (aux < 0 && current_target_sm.reverse_orient_movement)
-    for (i=1; i<=N_CART; ++i)
-      q_rel[_Q0_+i] *= -1;
+
+    if (aux < 0 && fabs(aux) > 0.001)
+    for (i=1; i<=N_QUAT; ++i)
+      q_rel[i] *= -1;
 
   quatLog(q_rel,dist);
 
@@ -2787,13 +2799,25 @@ assignCurrentSMTarget(StateMachineTarget smt,
     double q_rel[N_QUAT+1];
     double ip = vec_mult_inner_size(cdes_orient[HAND].q, cto[HAND].q, N_QUAT);
     quatRelative(cdes_orient[HAND].q, cto[HAND].q, q_rel);
+
     if (ip < 0) // by default we choose the shortest path in orientation space
       vec_mult_scalar_size(q_rel,N_QUAT,-1.0,q_rel);
-    if (smc->reverse_orient_movement)  // if explicitly requested, choose longest path
-      vec_mult_scalar_size(q_rel,N_QUAT,-1.0,q_rel);
+    
+    if (smc->nearest_rot_axis != 0) {  // the user specified a nearest rotation axis
+      for (i=1; i<=N_QUAT; ++i)
+	q_rel[i] = 0;
+      q_rel[ abs(smc->nearest_rot_axis)+1 ] = sign(smc->nearest_rot_axis);
+    }
 
-    for (i=1; i<=N_CART; ++i)
-      smc->orient_rel_axis[i] = q_rel[_Q0_+i];
+    // adust for orientatin of the reference frame
+    //print_vec_size("q",q_rel,N_QUAT);    
+    mat_vec_mult_size(R,N_CART,N_CART,&(q_rel[_Q0_]),N_CART,smc->orient_rel_axis);
+
+    ip = vec_mult_inner_size(smc->orient_rel_axis,smc->orient_rel_axis,N_CART);
+    if (fabs(ip) < 0.01) // numerical round off issues
+      vec_zero_size(smc->orient_rel_axis,N_CART);
+
+    //print_vec_size("axis",smc->orient_rel_axis,N_CART);    
 
   } else { // no orientation
     
