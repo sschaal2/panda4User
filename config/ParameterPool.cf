@@ -63,4 +63,4 @@ panda_ip			192.170.10.4
 
 // goto task speed
 
-goto_speed			.3
+goto_speed			.7
