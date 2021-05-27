@@ -16,7 +16,7 @@ reference_state_pose_delta_table prefs/half_range_delta_pose.txt
 endeffector   0.1  0 0 0  0 0 0.2334  0 0 2.351
 
 // default gains
-default_cart_gain_x_scale	1 1 1 1 1 1
+default_cart_gain_x_scale	1 1 1 1 1 1  
 default_cart_gain_a_scale	1 1 1 1 1 1
 
 // default controller
