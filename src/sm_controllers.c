@@ -200,7 +200,6 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
   
   double         corient_error[N_CART+1];
   double         cref[N_ENDEFFS*6+1];
-  static double  cref_integral[N_ENDEFFS*6+1];
   double         q_rel[N_QUAT+1];
   double         q_rel_angle;
   double         log_q_mult;
@@ -374,7 +373,6 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
   
   double         corient_error[N_CART+1];
   double         cref[N_ENDEFFS*6+1];
-  static double  cref_integral[N_ENDEFFS*6+1];
   double         q_rel[N_QUAT+1];
   double         q_rel_angle;
   double         log_q_mult;

@@ -2094,10 +2094,11 @@ read_state_machine(char *fname) {
 	}
 
 	// simulator does not like high integral gains
+	/*
 	if (!real_robot_flag)
 	  if (sm_temp.cart_gain_integral > 0.01)
 	    sm_temp.cart_gain_integral = 0.01;
-
+	*/
 	// force_desired (optional)
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
