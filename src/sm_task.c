@@ -2315,7 +2315,7 @@ save_statistics_matrix(void)
 {
   int i,j;
   FILE *fp;
-  char fname[200];
+  char fname[400];
   time_t rawtime;
   struct tm *tptr;
   char   string[200]="";
