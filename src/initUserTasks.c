@@ -18,6 +18,7 @@ Remarks:
 #include "SL_task_servo.h"
 #include "unistd.h"
 #include "limits.h"
+#include "string.h"
 
 /* global variables */
 
