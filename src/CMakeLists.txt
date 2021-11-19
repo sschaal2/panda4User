@@ -38,7 +38,7 @@ include_directories(BEFORE $ENV{LAB_ROOT}/${NAME}/include)
 include_directories(BEFORE $ENV{LAB_ROOT}/${NAME}/math)
 include_directories(BEFORE ../include)
 include_directories(BEFORE ../src)
-
+include_directories(BEFORE /usr/include/jsoncpp)
 
 # ------------------------------------------------------------------------
 
@@ -51,7 +51,8 @@ set(SRCS_XTASK
 	sm_controllers.c	
 	test_task.c
 	impedance_test_task.c
-	cilantro_track_task.cpp		
+	cilantro_track_task.cpp
+	data_collection_lib.cpp
 	)
 
 set(SRCS_XOPENGL
@@ -79,7 +80,7 @@ set(RBINARIES
 install(PROGRAMS ${BINARIES} DESTINATION ${CMAKE_BINARY_DIR})
 
 add_executable(xtask ${SRCS_XTASK})
-target_link_libraries(xtask SLtask SLcommon ${NAME}_task ${NAME} utility ${LAB_STD_LIBS})
+target_link_libraries(xtask SLtask SLcommon ${NAME}_task ${NAME} utility ${LAB_STD_LIBS} zmq jsoncpp)
 
 add_executable(xopengl ${SRCS_XOPENGL})
 target_link_libraries(xopengl SLopenGL SLcommon ${NAME}_openGL ${NAME} utility ${LAB_STD_LIBS})

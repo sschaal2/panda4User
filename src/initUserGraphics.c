@@ -14,17 +14,20 @@ Remarks:
 #include "SL.h"
 #include "SL_user.h"
 #include "SL_man.h"
+#include "SL_common.h"
 #include "string.h"
 
 // openGL includes
 #include "GL/freeglut.h"
 #include "SL_openGL.h"
 #include "SL_userGraphics.h"
+#include "utility_macros.h"
 
 // global variables
 
 // local variables
 static void displayFTVector(void *b);
+static void drawPoseCoordinateFrame(void *b);
 
 /*****************************************************************************
 ******************************************************************************
@@ -50,6 +53,8 @@ initUserGraphics(void)
 
   addToUserGraphics("displayFTVector","Displays a F/T vector at pos x",displayFTVector,
                     3*N_CART*sizeof(float));
+  addToUserGraphics("drawPoseFrame","Displays coordinate frame of pose",drawPoseCoordinateFrame,
+                    (N_CART+N_QUAT+1)*sizeof(float));
 
   return TRUE;
 
@@ -124,3 +129,108 @@ displayFTVector(void *b)
   glPopMatrix();
 
 }
+
+/*!*****************************************************************************
+*******************************************************************************
+\note  drawPoseCoordinateFrame
+\date  March 2013
+   
+\remarks 
+
+draws the local coordinate specified by a pose vector [position, quaternion]
+
+*******************************************************************************
+Function Parameters: [in]=input,[out]=output
+
+\param[in]      b      : the general array of bytes
+
+******************************************************************************/
+static void
+drawPoseCoordinateFrame(void *b)
+{
+
+  int     i,j;
+  float   data[N_CART+N_QUAT+1+1];  
+  double  v[N_CART+1+1];
+  double  r[N_CART+1+1];
+  double  s[N_CART+1+1];
+  double  arrow_width = 0.005;
+  double  length;
+  double  x[N_CART+1];
+  SL_quat q;
+  MY_MATRIX(A,1,N_CART+1,1,N_CART+1);
+  
+
+  // assign the pose coordinates to local variables
+  memcpy(&(data[1]),b,(1+N_CART+N_QUAT)*sizeof(float));
+  length  = data[1];
+  x[_X_]  = data[2];
+  x[_Y_]  = data[3];
+  x[_Z_]  = data[4];
+  q.q[_Q0_] = data[5];
+  q.q[_Q1_] = data[6];
+  q.q[_Q2_] = data[7];
+  q.q[_Q3_] = data[8];
+
+  // need the rotation matrix from quaternion: will be in first 3x3 of homogenious
+  // transformation matrix
+  quatToRotMat(&q,A);
+  A[1][4] = x[_X_];
+  A[2][4] = x[_Y_];
+  A[3][4] = x[_Z_];
+  A[4][4] = 1.0;
+  
+  // draw the coordinate systems
+  glPushMatrix();
+  glLineWidth(2.0);
+
+  v[_X_] = length;
+  v[_Y_] = v[_Z_] = 0.0;
+  v[_Z_+1] = 1.0;
+  mat_vec_mult_size(A,N_CART+1,N_CART+1,v,N_CART+1,r);
+  for (i=1; i<=N_CART; ++i)
+    s[i] = A[i][4];
+
+  glColor4f (1.0,0.0,0.0,0.0);
+  drawArrow(s,r,arrow_width);
+
+  v[_X_] = length+0.1;
+  mat_vec_mult_size(A,N_CART+1,N_CART+1,v,N_CART+1,r);
+  glRasterPos3f(r[_X_],r[_Y_],r[_Z_]);
+  glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18,'X');  
+
+  v[_Y_] = length;
+  v[_X_] = v[_Z_] = 0.0;
+  v[_Z_+1] = 1.0;
+  mat_vec_mult_size(A,N_CART+1,N_CART+1,v,N_CART+1,r);
+  for (i=1; i<=N_CART; ++i)
+    s[i] = A[i][4];
+
+  glColor4f (0.0,1.0,0.0,0.0);
+  drawArrow(s,r,arrow_width);
+  
+  v[_Y_] = length+0.1;
+  mat_vec_mult_size(A,N_CART+1,N_CART+1,v,N_CART+1,r);
+  glRasterPos3f(r[_X_],r[_Y_],r[_Z_]);
+  glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18,'Y');  
+  
+  v[_Z_] = length;
+  v[_Y_] = v[_X_] = 0.0;
+  v[_Z_+1] = 1.0;
+  mat_vec_mult_size(A,N_CART+1,N_CART+1,v,N_CART+1,r);
+  for (i=1; i<=N_CART; ++i)
+    s[i] = A[i][4];
+
+  glColor4f (0.0,0.0,1.0,0.0);
+  drawArrow(s,r,arrow_width);
+
+  v[_Z_] = length+0.1;
+  mat_vec_mult_size(A,N_CART+1,N_CART+1,v,N_CART+1,r);
+  glRasterPos3f(r[_X_],r[_Y_],r[_Z_]);
+  glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18,'Z');
+  
+  glLineWidth(1.0);
+  glPopMatrix();
+
+}
+

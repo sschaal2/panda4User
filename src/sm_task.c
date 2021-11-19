@@ -25,6 +25,8 @@ Remarks:
 #include "SL_man.h"
 #include "SL_common.h"
 #include "utility_macros.h"
+#include "data_collection_lib.h"
+#include "time.h"
 
 // defines
 enum StateMachineStates
@@ -64,7 +66,6 @@ enum RelativeOption
   {
    ABS = 0,
    REL,
-   RELREF
   };
 
 enum CoordinateFrame
@@ -82,7 +83,9 @@ enum ExitOption
    FORCE_EXIT,
    MOMENT_EXIT,
    FORCE_MOMENT_EXIT,
-   EXIT_AFTER_TABLE
+   EXIT_AFTER_TABLE,
+   EXIT_AFTER_FUNCTION_CALL_SUCCESS,
+   GRASP_PERTURBATION
   };
 
 enum ManipulationFrame
@@ -96,23 +99,34 @@ enum FunctionCalls
   {
     NO_FUNC = 0,
     ZERO_FT,
-    NEXT_TABLE_DELTA
+    NEXT_TABLE_DELTA,
+    GRIPPER,
+    SEND_POSE_EST_DATA,
+    RECEIVE_POSE_CORRECTION,
+    RESET_TO_BASE_POSE,
+    ADD_CURRENT_TO_STATISTICS,
   };
 		 
 
-
+#define MAX_FUNCTION_ARGS 10
 typedef struct StateMachineTarget {
   char   state_name[100];
   char   next_state_name[100];
   int    next_state_id;
   int    manipulation_frame;
   int    function_call;
+  int    n_function_args;
+  double function_args[MAX_FUNCTION_ARGS+1];
   double movement_duration;
   int    pose_x_is_relative;
   double pose_x[N_CART+1];
   int    use_orient;
+  int    nearest_rot_axis;
+  double orient_rel_axis[N_CART+1];
   int    pose_q_is_relative;
   double pose_q[N_QUAT+1];
+  int    gripper_start_active;
+  int    gripper_end_active;  
   int    gripper_width_start_is_relative;
   double gripper_width_start;
   int    gripper_width_end_is_relative;  
@@ -143,23 +157,36 @@ typedef struct StateMachineTarget {
   double err_moment; // abs error in moment
 } StateMachineTarget;
 
-#define MAX_STATES_SM 1000
+#define MAX_STATES_SM 10000
 static StateMachineTarget targets_sm[MAX_STATES_SM+1];
 static StateMachineTarget current_target_sm;
-static double reference_state_pose_x[N_CART+1];
-static double reference_state_pose_q[N_QUAT+1];
-static double reference_state_pose_x_base[N_CART+1];
-static double reference_state_pose_q_base[N_QUAT+1];
-static double reference_state_pose_delta_x_table[MAX_STATES_SM+1][N_CART+1];
-static double reference_state_pose_delta_q_table[MAX_STATES_SM+1][N_QUAT+1];
+
+// these stats need to be accessible to data collection
+// TODO: communicate them rather than shareing in global variables
+double reference_state_pose_x[N_CART+1];
+double reference_state_pose_q[N_QUAT+1];
+double reference_state_pose_x_base[N_CART+1];
+double reference_state_pose_q_base[N_QUAT+1];
+double reference_state_pose_delta_x_table[MAX_STATES_SM+1][N_CART+1];
+double reference_state_pose_delta_q_table[MAX_STATES_SM+1][N_QUAT+1];
+int    current_state_pose_delta = 0;
+extern int        global_sample_id;
+double grasp_perturbation_x[N_CART+1];
+double grasp_perturbation_q[N_QUAT+1];
+static int apply_grasp_perturbation = FALSE;    
+
+// a big matrix to collect some statistics of visual learning experiments
+// the number of rows used will be equivalent to n_states_pose_delta at most
+Matrix statistics_matrix;
+
 static int    allow_base_reference_frame=FALSE;
 static int    n_states_sm = 0;
 static int    n_states_pose_delta = 0;
-static int    current_state_pose_delta = 0;
 static int    current_state_sm = 0;
 static double speed_mult = 1.0;
 static int    current_controller = SIMPLE_IMPEDANCE_JT;
 static int    default_controller = SIMPLE_IMPEDANCE_JT;
+static int    function_call_success;
 
 /* Cartesian orientation representation with a rotation around an axis */
 typedef struct { 
@@ -170,9 +197,9 @@ typedef struct {
 /* local variables */
 static double     time_step;
 static double     cref[N_ENDEFFS*6+1];
-static SL_Cstate  ctarget[N_ENDEFFS+1];
+SL_Cstate  ctarget[N_ENDEFFS+1];
 static SL_Cstate  cdes[N_ENDEFFS+1];
-static SL_quat    ctarget_orient[N_ENDEFFS+1];
+SL_quat    ctarget_orient[N_ENDEFFS+1];
 static My_Crot    ctarget_rot[N_ENDEFFS+1];  
 static SL_quat    cdes_orient[N_ENDEFFS+1];
 static SL_quat    cdes_start_orient[N_ENDEFFS+1];
@@ -204,6 +231,22 @@ static double     default_cart_gain_a_scale[2*N_CART+1];
 
 static double pos_error;
 static double orient_error;
+static double pos_tracking_error;
+static double orient_tracking_error;
+
+double pos_error_vector[N_CART+1];
+double orient_error_quat[N_QUAT+1];
+
+double pos_tracking_error_vector[N_CART+1];
+double orient_tracking_error_quat[N_QUAT+1];
+
+double max_pos_tracking_error;
+double min_pos_tracking_error;
+double mean_pos_tracking_error;
+
+double max_orient_tracking_error;
+double min_orient_tracking_error;
+double mean_orient_tracking_error;
 
 // for no_user_interaction_flag
 char   sm_file_name[200];
@@ -239,14 +282,20 @@ static int    min_jerk_next_step (double x,double xd, double xdd, double t, doub
 				  double *x_next, double *xd_next, double *xdd_next);
 static int    min_jerk_next_step_quat (SL_quat q_current, SL_quat q_target, double *s,
 				       double t_togo, double dt, SL_quat *q_next);
+static int    min_jerk_next_step_quat_new (SL_quat q, SL_quat q_target,
+					   double t_togo, double dt, SL_quat *q_next);
 static int    read_state_machine(char *fname);
 static void   print_sm_state(void);
+static void   save_statistics_matrix(void);
+static void   print_sm_stats(void);
 static void   assignCurrentSMTarget(StateMachineTarget smt,
 				    double *ref_x,
 				    double *ref_q,
 				    SL_Cstate *ct,
 				    SL_quat   *cto,
 				    StateMachineTarget *smc);
+static int    functionCall(int id, int initial_call, int *success) ;
+
 
 
 /*****************************************************************************
@@ -272,7 +321,9 @@ add_sm_task( void )
   addTask("State Machine Task", init_sm_task, 
 	  run_sm_task, change_sm_task);
 
-  addToMan("print_sm_state","prints the current state suitable for state machine",print_sm_state); 
+  addToMan("print_sm_state","prints the current state suitable for state machine",print_sm_state);
+  addToMan("save_statistics","saves statistics matrix to file",save_statistics_matrix);
+  addToMan("sm_stats","prints some stats of state machine",print_sm_stats);     
 
   // add variables to data collection
   for (i=1; i<=N_ENDEFFS; ++i) {
@@ -352,6 +403,20 @@ add_sm_task( void )
     sprintf(string,"%s_cdes_q3dd",cart_names[i]);
     addVarToCollect((char *)&(cdes_orient[i].qdd[_Q3_]),string,"-", DOUBLE,FALSE);
 
+    sprintf(string,"%s_cdes_ad",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].ad[_A_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_bd",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].ad[_B_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_gd",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].ad[_G_]),string,"-", DOUBLE,FALSE);
+
+    sprintf(string,"%s_cdes_add",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].add[_A_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_bdd",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].add[_B_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_gdd",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].add[_G_]),string,"-", DOUBLE,FALSE);
+
     sprintf(string,"%s_ct_ad",cart_names[i]);
     addVarToCollect((char *)&(ctarget_orient[i].ad[_A_]),string,"-", DOUBLE,FALSE);
     sprintf(string,"%s_ct_bd",cart_names[i]);
@@ -400,8 +465,6 @@ add_sm_task( void )
     sprintf(string,"%s_cdes_zd",cart_names[i]);
     addVarToCollect((char *)&(cdes[i].xd[_Z_]),string,"m", DOUBLE,FALSE);
       
-      
-      
   }
     
   sprintf(string,"sm_pos_error");
@@ -436,11 +499,14 @@ init_sm_task(void)
 {
   int    j, i;
   char   string[100];
-  static char   fname[100] = "powerplug_JT.sm";
+  //  static char   fname[100] = "qsfp_vl_collection.sm";
+  //  static char   fname[100] = "waterproof_vl_collection.sm";
+  static char   fname[100] = "screw_JT.sm";    
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;
   static int pert = 0;
+  float  data[N_CART+N_QUAT+1+1];
 
   
   if (firsttime) {
@@ -456,6 +522,9 @@ init_sm_task(void)
       targets_sm[i].cart_gain_a_scale_matrix = my_matrix(1,N_CART,1,N_CART);
       targets_sm[i].cart_gain_ad_scale_matrix = my_matrix(1,N_CART,1,N_CART);
     }
+
+    // allocate just ample of columns to avoid thinking about how many
+    statistics_matrix = my_matrix(1, MAX_STATES_SM, 1, 100);
 
     firsttime = FALSE;
     
@@ -496,6 +565,9 @@ init_sm_task(void)
 	return FALSE;
     } else {
       if (get_string("File name of state machine in prefs/",fname,fname)) {
+	int sl = strlen(fname);
+	if (strcmp(&(fname[sl-3]),".sm") != 0)
+	  strcat(fname,".sm");
 	if (!read_state_machine(fname))
 	  return FALSE;
       }
@@ -611,9 +683,20 @@ init_sm_task(void)
       return FALSE;
   }  
 
-  // reclibrate the gripper offsets
+  // reclibrate the gripper F/T offsets
   sendCalibrateFTCommand();
   taskDelay(100);
+
+  // draw the reference base pose coordinate frame
+  data[1] = 0.1; // length of coordinate arrows
+  data[2] = reference_state_pose_x_base[_X_];
+  data[3] = reference_state_pose_x_base[_Y_];
+  data[4] = reference_state_pose_x_base[_Z_];
+  data[5] = reference_state_pose_q_base[_Q0_];
+  data[6] = reference_state_pose_q_base[_Q1_];
+  data[7] = reference_state_pose_q_base[_Q2_];
+  data[8] = reference_state_pose_q_base[_Q3_];
+  sendUserGraphics("drawPoseFrame",&(data[1]),(N_CART+N_QUAT+1)*sizeof(float));  
 
   time_step = 1./(double)task_servo_rate;
   start_time = task_servo_time;
@@ -622,6 +705,7 @@ init_sm_task(void)
   current_state_sm = 0;
   current_target_sm = targets_sm[current_state_sm];
   no_user_interaction_flag = FALSE;
+  mat_zero(statistics_matrix);
   
   scd();
   
@@ -653,6 +737,7 @@ run_sm_task(void)
   double dist;
   double aux;
   static double time_to_go;
+  static int n_mean = 0;
   float pos[N_CART+1+1]; // one extra element for radius
   double gripper_move_threshold = 1e-8;
   static int wait_ticks=0;
@@ -662,7 +747,6 @@ run_sm_task(void)
   int    ft_exception_flag = FALSE;
   char   string[200];
   float  b[N_CART*3+1];
-  double q_temp[N_QUAT+1];
   
   switch (state_machine_state) {
 
@@ -696,17 +780,16 @@ run_sm_task(void)
 	logMsg("\n",0,0,0,0,0,0);
       }
 
-      // are we running through the table of reference pertubations?
-      if (run_table && current_state_pose_delta < n_states_pose_delta && targets_sm[current_state_sm].function_call == NEXT_TABLE_DELTA) {
-	++current_state_pose_delta;
-	sprintf(msg,"\nRunning perturbation %d\n",current_state_pose_delta);
-	logMsg(msg,0,0,0,0,0,0);
-	for (i=1; i<=N_CART; ++i) {
-	  reference_state_pose_x[i] = reference_state_pose_x_base[i] +
-	    reference_state_pose_delta_x_table[current_state_pose_delta][i];
-	}
-	quatMult(reference_state_pose_q_base,reference_state_pose_delta_q_table[current_state_pose_delta],
-		 reference_state_pose_q);
+      // are we running through the table of reference perturbations?: this requires functionCall to
+      // come before asssignCurrentSMTarget.
+      if ((run_table && current_state_pose_delta < n_states_pose_delta &&
+	   targets_sm[current_state_sm].function_call == NEXT_TABLE_DELTA) ||
+	  targets_sm[current_state_sm].function_call == RESET_TO_BASE_POSE ||
+	  targets_sm[current_state_sm].function_call == GRASP_PERTURBATION
+	  ) {
+	
+	functionCall(targets_sm[current_state_sm].function_call,TRUE,&function_call_success);
+	
       }
 
       // assign to simpler variable and take into account the reference frame of the state
@@ -726,7 +809,6 @@ run_sm_task(void)
 			      &current_target_sm);
       }
 
-      
       if (current_target_sm.cart_gain_integral != 0) 
 	sprintf(msg,"    %d.%-30s with %sInt\n",
 		current_state_sm,current_target_sm.state_name,current_target_sm.controller_name);
@@ -744,12 +826,9 @@ run_sm_task(void)
       
     }
 
-    // check whether there is a function call
-    if (current_target_sm.function_call == ZERO_FT) {
-      sprintf(msg,"Calibrate F/T offsets\n");
-      logMsg(msg,0,0,0,0,0,0);      
-      sendCalibrateFTCommand();
-    }
+    // check whether there is a function call, with special exception for NEXT_TABLE_DELTA
+    if (current_target_sm.function_call != NEXT_TABLE_DELTA && current_target_sm.function_call != RESET_TO_BASE_POSE)
+      functionCall(current_target_sm.function_call,TRUE,&function_call_success);
 
     // assign relevant variables from state machine state array
     time_to_go = current_target_sm.movement_duration/speed_mult;
@@ -759,11 +838,13 @@ run_sm_task(void)
 
     // gripper movement: only if gripper states have changed
     no_gripper_motion = FALSE;
-    if (current_state_sm > 1) {
+    if (current_state_sm > 1 && current_target_sm.gripper_start_active) {
       if (current_target_sm.gripper_width_start == targets_sm[current_state_sm-1].gripper_width_end &&
 	  current_target_sm.gripper_force_start == targets_sm[current_state_sm-1].gripper_force_end) {
 	no_gripper_motion=TRUE; 
       }
+    } else if (!current_target_sm.gripper_start_active) {
+	no_gripper_motion=TRUE;       
     }
 
     if (!no_gripper_motion) {
@@ -782,10 +863,11 @@ run_sm_task(void)
 				0.08);
 	
       }
-      wait_ticks = 50; // need to give non-real-time gripper thread a moment to get started
+      wait_ticks = 100; // need to give non-real-time gripper thread a moment to get started
       state_machine_state = GRIPPER_START;
     } else {
       state_machine_state = MOVE_TO_TARGET;
+      n_mean = 0;
     }
     
     // prepare min jerk for orientation space: s is an interpolation variable 
@@ -805,7 +887,6 @@ run_sm_task(void)
       return FALSE;
     }
 
-    
     break;
     
     
@@ -814,6 +895,7 @@ run_sm_task(void)
     if (--wait_ticks < 0) {
       if (misc_sensor[G_MOTION] == 0) {
 	state_machine_state = MOVE_TO_TARGET;
+	n_mean = 0;	
       }
     }
     
@@ -821,6 +903,26 @@ run_sm_task(void)
     
     
   case MOVE_TO_TARGET:
+
+    // check for function call success
+    functionCall(current_target_sm.function_call,FALSE,&function_call_success);
+    if (current_target_sm.exit_condition == EXIT_AFTER_FUNCTION_CALL_SUCCESS && function_call_success) {
+
+      for (i=1; i<=N_CART; ++i) {
+	cdes[HAND].xd[i]  = 0.0;
+	cdes[HAND].xdd[i] = 0.0;
+	cdes_orient[HAND].ad[i]  = 0.0;
+	cdes_orient[HAND].add[i]  = 0.0;	
+      }
+
+      for (i=1; i<=N_QUAT; ++i) {
+	cdes_orient[HAND].qd[i]  = 0.0;
+	cdes_orient[HAND].qdd[i]  = 0.0;	
+      }
+
+      time_to_go = 0;
+
+    }
 
     // check for exceeding max force/torque
     if (fabs(misc_sensor[S_FX]) > current_target_sm.max_wrench[_X_]) {
@@ -891,7 +993,6 @@ run_sm_task(void)
       for (i=1; i<=N_CART; ++i) {
 	min_jerk_next_step(cdes[HAND].x[i],
 			   cdes[HAND].xd[i],
-
 			   cdes[HAND].xdd[i],
 			   ctarget[HAND].x[i],
 			   ctarget[HAND].xd[i],
@@ -904,8 +1005,27 @@ run_sm_task(void)
       }
       
       if (current_target_sm.use_orient) {
+	SL_quat ttt;
+
+	/*
 	min_jerk_next_step_quat(cdes_start_orient[HAND], ctarget_orient[HAND], s,
 				time_to_go, time_step, &(cdes_orient[HAND]));
+	*/
+
+	min_jerk_next_step_quat_new(cdes_orient[HAND],ctarget_orient[HAND],
+				    time_to_go, time_step,&(cdes_orient[HAND]));
+
+	/*
+	print_vec_size("old",cdes_orient[HAND].q,4);
+	print_vec_size("new",ttt.q,4);	
+	print_vec_size("old -d",cdes_orient[HAND].qd,4);
+	print_vec_size("new -d",ttt.qd,4);	
+	print_vec_size("old -dd",cdes_orient[HAND].qdd,4);
+	print_vec_size("new -dd",ttt.qdd,4);
+	if (my_isnan(ttt.q[1]) == 1)
+	  getchar();
+	*/
+
       }
     }
     
@@ -913,18 +1033,54 @@ run_sm_task(void)
 
     // logging of position and orientation error
 
-    // position error
+    // position error relative to target
     pos_error = 0.0;
-    for (i=1; i<=N_CART; ++i)
-      pos_error += sqr(ctarget[HAND].x[i]-cart_state[HAND].x[i]);
+    for (i=1; i<=N_CART; ++i) {
+      pos_error_vector[i] = cart_state[HAND].x[i] - ctarget[HAND].x[i];
+      pos_error += sqr(pos_error_vector[i]);
+    }
     pos_error = sqrt(pos_error);
     
-    // orientation error
-    quatRelative(ctarget_orient[HAND].q, cart_orient[HAND].q, q_temp);
-    orient_error = 2.0*fabs(acos(q_temp[_Q0_]));
+    // position tracking
+    pos_tracking_error = 0.0;
+    for (i=1; i<=N_CART; ++i) {
+      pos_tracking_error_vector[i] = cdes[HAND].x[i] - cart_state[HAND].x[i];
+      pos_tracking_error += sqr(pos_tracking_error_vector[i]);
+    }
+    pos_tracking_error = sqrt(pos_tracking_error);
+    
+    if (pos_tracking_error > max_pos_tracking_error)
+      max_pos_tracking_error = pos_tracking_error;
+
+    if (pos_tracking_error < min_pos_tracking_error)
+      min_pos_tracking_error = pos_tracking_error;
+
+    mean_pos_tracking_error = (mean_pos_tracking_error*(double)n_mean + pos_tracking_error)/(double)(n_mean+1);
+    
+
+    // orientation error relative to target
+    quatRelative(ctarget_orient[HAND].q, cart_orient[HAND].q, orient_error_quat);
+    orient_error = 2.0*fabs(acos(orient_error_quat[_Q0_]));
     if (orient_error > PI)
       orient_error = 2.*PI-orient_error;
+
+    // orientation tracking error 
+    quatRelative(cart_orient[HAND].q, cdes_orient[HAND].q, orient_tracking_error_quat);
+    orient_tracking_error = 2.0*fabs(acos(orient_tracking_error_quat[_Q0_]));
+    if (orient_tracking_error > PI)
+      orient_tracking_error = 2.*PI-orient_tracking_error;
+
+    if (orient_tracking_error > max_orient_tracking_error)
+      max_orient_tracking_error = orient_tracking_error;
     
+    if (orient_tracking_error < min_orient_tracking_error)
+      min_orient_tracking_error = orient_tracking_error;
+
+    mean_orient_tracking_error = (mean_orient_tracking_error*(double)n_mean + orient_tracking_error)/(double)(n_mean+1);
+
+    n_mean += 1;
+    
+
     // check whether there is an exit condtion which overules progressing 
     // to the next state
     
@@ -949,6 +1105,11 @@ run_sm_task(void)
 	    exit_flag = FALSE;
 	  break;
 
+	case EXIT_AFTER_FUNCTION_CALL_SUCCESS:
+	  if (!function_call_success)
+	    exit_flag = FALSE;
+	  break;
+
 	}
 
       if (!exit_flag && fabs(time_to_go) < current_target_sm.exit_timeout)
@@ -959,7 +1120,7 @@ run_sm_task(void)
       }
 
       
-    } // end check exit condiitons
+    } // end check exit conditions
     
 
     // at this point we know that we will exit this state of the state machine    
@@ -967,11 +1128,15 @@ run_sm_task(void)
       time_to_go = 0;
 
       no_gripper_motion = FALSE;
-      if (current_target_sm.gripper_width_end ==
-	  current_target_sm.gripper_width_start &&
-	  current_target_sm.gripper_force_end ==
-	  current_target_sm.gripper_force_start) {
-	no_gripper_motion=TRUE; 
+      if (current_target_sm.gripper_end_active) {
+	if (current_target_sm.gripper_width_end ==
+	    current_target_sm.gripper_width_start &&
+	    current_target_sm.gripper_force_end ==
+	    current_target_sm.gripper_force_start) {
+	  no_gripper_motion=TRUE; 
+	}
+      } else {
+	  no_gripper_motion=TRUE;
       }
 
       if (!no_gripper_motion) {
@@ -985,9 +1150,10 @@ run_sm_task(void)
 				  0.08,
 				  0.08);
 	}
-	wait_ticks = 50; // need to give non-real-time gripper thread a moment to get started
+	wait_ticks = 100; // need to give non-real-time gripper thread a moment to get started
 	state_machine_state = GRIPPER_END;
       } else {
+	//print_sm_stats();
 	state_machine_state = INIT_SM_TARGET;
       }
     } // end time_to_go < 0
@@ -1023,7 +1189,6 @@ run_sm_task(void)
     }
   }
 
-  
   switch (current_controller) {
 
   case SIMPLE_IMPEDANCE_JT:
@@ -1302,8 +1467,8 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
 		    double *x_next, double *xd_next, double *xdd_next)
 
 {
-  long double t1,t2,t3,t4,t5;
-  long double tau,tau1,tau2,tau3,tau4,tau5;
+  double t1,t2,t3,t4,t5;
+  double tau,tau1,tau2,tau3,tau4,tau5;
   int    i,j;
 
   // a safety check
@@ -1324,24 +1489,22 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
   tau5 = tau4 * tau;
 
   // calculate the constants
-  long double dist   = t - x;
-  long double p1     = t;
-  long double p0     = x;
-  long double a1t2   = tdd*tau2;
-  long double a0t2   = xdd*tau2;
-  long double v1t1   = td*tau1;
-  long double v0t1   = xd*tau1;
+  double dist   = t - x;
+  double a1t2   = tdd*tau2;
+  double a0t2   = xdd*tau2;
+  double v1t1   = td*tau1;
+  double v0t1   = xd*tau1;
 
   // guards against numerical drift for large tau
-  if (fabsl(dist) < 1.e-5)
-    dist = 0.0;
+  //if (fabsl(dist) < 1.e-5)
+  //  dist = 0.0;
 
-  long double c1 = (6.*dist + (a1t2 - a0t2)/2. - 3.*(v0t1 + v1t1));
-  long double c2 = (-15.*dist + (3.*a0t2 - 2.*a1t2)/2. + (8.*v0t1 + 7.*v1t1))*tau1; 
-  long double c3 = (10.*dist + (a1t2 - 3.*a0t2)/2. - (6.*v0t1 + 4.*v1t1))*tau2; 
-  long double c4 = xdd/2.;
-  long double c5 = xd;
-  long double c6 = x;
+  double c1 = (6.*dist + (a1t2 - a0t2)/2. - 3.*(v0t1 + v1t1));
+  double c2 = (-15.*dist + (3.*a0t2 - 2.*a1t2)/2. + (8.*v0t1 + 7.*v1t1))*tau1; 
+  double c3 = (10.*dist + (a1t2 - 3.*a0t2)/2. - (6.*v0t1 + 4.*v1t1))*tau2; 
+  double c4 = xdd/2.;
+  double c5 = xd;
+  double c6 = x;
   
   *x_next   = (c1*t5 + c2*t4 + c3*t3)/tau5 + c4*t2 + c5*t1 + c6;
   *xd_next  = (5.*c1*t4 + 4*c2*t3 + 3*c3*t2)/tau5 + 2.*c4*t1 + c5;
@@ -1374,17 +1537,18 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
    "duration" movement_duration
    "manipulation_frame" ["abs" | "ref" | "bref"]
    "func_call" "...." (arbitrary name of implemented function to be called at this state)
-   "pose_x" ["abs" | "rel" | "refref"] pose_x_X pose_x_Y pose_x_Z
-   "pose_q" use_orient ["abs" | "rel | relref"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
-   "gripper_start" ["abs" | "rel"] gripper_start_width gripper_start_force
-   "gripper_end" ["abs" | "rel"] gripper_end_width gripper_end_force
+   "pose_x" ["abs" | "rel"] pose_x_X pose_x_Y pose_x_Z
+   "pose_q" use_orient ["abs" | "rel"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
+   "gripper_start" ["abs" | "rel"] gripper_start_width gripper_start_force (deprecated)
+   "gripper_end" ["abs" | "rel"] gripper_end_width gripper_end_force (deprecated)
    "cart_gain_x_scale" cart_gain_x_X cart_gain_x_Y cart_gain_x_Z cart_gain_xd_X cart_gain_xd_Y cart_gain_xd_Z
    "cart_gain_a_scale" cart_gain_a_A cart_gain_a_B cart_gain_a_G cart_gain_ad_A cart_gain_ad_B cart_gain_ad_G
    "cart_gain_integral" cart_gain_integral
-   "ff_wrench" fx fy fz mx my mz
-   "max_wrench" ["cont" | "abort" | "last"] fx_max fy_max fz_max mx_max my_max mz_max
+   "force_desired" feedback_gain fx fy fz
+   "moment_desired" feedback_gain mx my mz
+   "max_wrench" fx_max fy_max fz_max mx_max my_max mz_max
    "controller" controller_name
-   "exit_condition" ["none" | "pos" | "orient" | "pos_orient" | "force" | "moment" | "force_moment"] exit_timeout err_pos err_orient err_force err_moment
+   "exit_condition" ["none" | "pos" | "orient" | "pos_orient" | "force" | "moment" | "force_moment" | "func_success" ] time_out err_pos err_orient err_force err_moment
 }
 
  ******************************************************************************/
@@ -1410,7 +1574,7 @@ static char state_group_names[][100]=
    {"exit_condition"}
   };
 
-static int n_parms[] = {0,1,1,1,1,1,4,6,3,3,6,6,1,4,4,7,1,6};
+static int n_parms[] = {0,1,1,1,1,2,4,7,3,3,6,6,1,4,4,7,1,6};
 #define MAX_BIG_STRING 5000
 
 static int
@@ -1428,6 +1592,7 @@ read_state_machine(char *fname) {
   int    cr;
   char   saux[MAX_BIG_STRING+1];
   double aux;
+  int    iaux;
     
   // open the file and strip all comments
   sprintf(string,"%s%s",PREFS,fname);
@@ -1495,6 +1660,8 @@ read_state_machine(char *fname) {
     for (i=1; i<=N_QUAT; ++i)
       reference_state_pose_q_base[i] = cart_orient[HAND].q[i];
   }
+
+  quatNorm(reference_state_pose_q_base);
 
   for (i=1; i<=N_QUAT; ++i)
     reference_state_pose_q[i] = reference_state_pose_q_base[i];
@@ -1586,6 +1753,7 @@ read_state_machine(char *fname) {
 		    &reference_state_pose_delta_q_table[i][_Q1_],
 		    &reference_state_pose_delta_q_table[i][_Q2_],
 		    &reference_state_pose_delta_q_table[i][_Q3_]);
+	quatNorm(reference_state_pose_delta_q_table[i]);
       }
       printf("Found table of pose perturbations with %d entries\n",n_states_pose_delta);
     } else {
@@ -1687,19 +1855,73 @@ read_state_machine(char *fname) {
 	if (c == NULL) {
 	  sm_temp.function_call = NO_FUNC;
 	} else {
-	  n_read = sscanf(c,"%s",saux);
+	  n_read = sscanf(c,"%s %d",saux,&iaux);
 	  if (n_read != n_parms[i]) {
-	    printf("Expected %d elements, but found only %d elements  in group %s\n",
-		   n_parms[i],n_read,state_group_names[i]);
-	    continue;
+	    if (n_read == 1) { // backward compatibility
+	      iaux = 0;
+	    } else {
+	      printf("Expected %d elements, but found only %d elements  in group %s\n",
+		     n_parms[i],n_read,state_group_names[i]);
+	      continue;
+	    }
 	  }
+
+	  sm_temp.n_function_args = iaux;
+
+	  // read arguments of function call
+	  if (iaux > 0) {
+	    n_read = sscanf(c,"%s %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf ",saux,&iaux,
+			    &sm_temp.function_args[1],
+			    &sm_temp.function_args[2],
+			    &sm_temp.function_args[3],
+			    &sm_temp.function_args[4],
+			    &sm_temp.function_args[5],			    
+			    &sm_temp.function_args[6],
+			    &sm_temp.function_args[7],
+			    &sm_temp.function_args[8],
+			    &sm_temp.function_args[9],
+			    &sm_temp.function_args[10]			    
+			    );
+	    if (n_read != n_parms[i] + iaux) {
+	      printf("Expected %d elements, but found only %d elements  in group %s\n",
+		     n_parms[i]+iaux,n_read,state_group_names[i]);
+	      continue;
+	    }
+	  }
+
+	  // determine which function call is requested
 	  if (strcmp(saux,"zero_ft")==0)
 	    sm_temp.function_call = ZERO_FT;
 	  else if (strcmp(saux,"next_table_delta")==0)
 	    sm_temp.function_call = NEXT_TABLE_DELTA;
+	  else if (strcmp(saux,"gripper")==0)
+	    sm_temp.function_call = GRIPPER;
+	  else if (strcmp(saux,"send_pose")==0) {
+	    if (initDataCollection()) {
+	      sm_temp.function_call = SEND_POSE_EST_DATA;
+	    } else {
+	      printf("Could not start data collection\n");	      
+	      sm_temp.function_call = NO_FUNC;
+	    }
+	  }
+	  else if (strcmp(saux,"correct_pose")==0)
+	    if (initDataCollection()) {	    
+	      sm_temp.function_call = RECEIVE_POSE_CORRECTION;
+	    } else {
+	      printf("Could not start data collection\n");
+	      sm_temp.function_call = NO_FUNC;	      
+	    }
+	  else if (strcmp(saux,"reset_base_pose")==0)
+	    sm_temp.function_call = RESET_TO_BASE_POSE;
+	  else if (strcmp(saux,"add_statistics")==0)
+	    sm_temp.function_call = ADD_CURRENT_TO_STATISTICS;
+	  else if (strcmp(saux,"grasp_perturbation")==0) {
+	    sm_temp.function_call = GRASP_PERTURBATION;
+	  }
 	  else
 	    sm_temp.function_call = NO_FUNC;
 	}
+    
 
 	// pose_x
 	++i;
@@ -1717,8 +1939,6 @@ read_state_machine(char *fname) {
 	  }
 	  if (strcmp(saux,"rel")==0)
 	    sm_temp.pose_x_is_relative = REL;
-	  else if (strcmp(saux,"relref")==0)
-	    sm_temp.pose_x_is_relative = RELREF;
 	  else
 	    sm_temp.pose_x_is_relative = ABS;
 	}
@@ -1728,20 +1948,33 @@ read_state_machine(char *fname) {
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
 	  sm_temp.use_orient = FALSE;
+	  sm_temp.nearest_rot_axis = FALSE;
 	} else {
-	  n_read = sscanf(c,"%d %s %lf %lf %lf %lf", &(sm_temp.use_orient),saux,
+	  // new syntax: allows specifying one of the canonical coordinate axes
+	  // to be the nearest to the relative rotation axis
+	  n_read = sscanf(c,"%d %s %lf %lf %lf %lf %d",
+			  &(sm_temp.use_orient),saux,
 			  &(sm_temp.pose_q[_Q0_]),
 			  &(sm_temp.pose_q[_Q1_]),
 			  &(sm_temp.pose_q[_Q2_]),
-			  &(sm_temp.pose_q[_Q3_]));
-	  if (n_read != n_parms[i]) {
-	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
-	    continue;
+			  &(sm_temp.pose_q[_Q3_]),
+			  &(sm_temp.nearest_rot_axis));
+	  if (n_read != n_parms[i]) {  // if failure, try old syntax
+	    sm_temp.nearest_rot_axis = FALSE;	    
+	    n_read = sscanf(c,"%d %s %lf %lf %lf %lf",
+			    &(sm_temp.use_orient),saux,
+			    &(sm_temp.pose_q[_Q0_]),
+			    &(sm_temp.pose_q[_Q1_]),
+			    &(sm_temp.pose_q[_Q2_]),
+			    &(sm_temp.pose_q[_Q3_]));
+	    if (n_read != n_parms[i]-1) {
+	      printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	      continue;
+	    }
 	  }
+	  quatNorm(sm_temp.pose_q);
 	  if (strcmp(saux,"rel")==0)
 	    sm_temp.pose_q_is_relative = REL;
-	  else if (strcmp(saux,"relref")==0)
-	    sm_temp.pose_q_is_relative = RELREF;
 	  else
 	    sm_temp.pose_q_is_relative = ABS;
 
@@ -1764,8 +1997,7 @@ read_state_machine(char *fname) {
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
-	  printf("Could not find group %s\n",state_group_names[i]);
-	  continue;
+	  sm_temp.gripper_start_active = FALSE;
 	} else {
 	  n_read = sscanf(c,"%s %lf %lf",saux,&(sm_temp.gripper_width_start), &(sm_temp.gripper_force_start));
 	  if (n_read != n_parms[i]) {
@@ -1773,6 +2005,7 @@ read_state_machine(char *fname) {
 		   n_parms[i],n_read,state_group_names[i]);
 	    continue;
 	  }
+	  sm_temp.gripper_start_active = TRUE;	  
 	  if (strcmp(saux,"rel")==0)
 	    sm_temp.gripper_width_start_is_relative = TRUE;
 	  else
@@ -1784,14 +2017,14 @@ read_state_machine(char *fname) {
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
-	  printf("Could not find group %s\n",state_group_names[i]);
-	  continue;
+	  sm_temp.gripper_end_active = FALSE;	  
 	} else {
 	  n_read = sscanf(c,"%s %lf %lf",saux,&(sm_temp.gripper_width_end), &(sm_temp.gripper_force_end));
 	  if (n_read != n_parms[i]) {
 	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
 	    continue;
 	  }
+	  sm_temp.gripper_end_active = TRUE;	  	  
 	  if (strcmp(saux,"rel")==0)
 	    sm_temp.gripper_width_end_is_relative = TRUE;
 	  else
@@ -1861,9 +2094,11 @@ read_state_machine(char *fname) {
 	}
 
 	// simulator does not like high integral gains
+	/*
 	if (!real_robot_flag)
-	  sm_temp.cart_gain_integral /= 10.0;
-
+	  if (sm_temp.cart_gain_integral > 0.01)
+	    sm_temp.cart_gain_integral = 0.01;
+	*/
 	// force_desired (optional)
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
@@ -1965,7 +2200,7 @@ read_state_machine(char *fname) {
 	    continue;
 	  }
 
-	  //   "exit_condition" ["none" | "pos" | "orient" | "pos_orient" | "force" | "moment" | "force_moment"] err_pos err_orient err_force err_moment
+	  //   "exit_condition" ["none" | "pos" | "orient" | "pos_orient" | "force" | "moment" | "force_moment" | "func_success" ] tiime_out err_pos err_orient err_force err_moment
 
 	  if (strcmp(saux,"pos")==0)
 	    sm_temp.exit_condition = POS_EXIT;
@@ -1981,7 +2216,9 @@ read_state_machine(char *fname) {
 	    sm_temp.exit_condition = FORCE_MOMENT_EXIT;
 	  else if (strcmp(saux,"table")==0)
 	    sm_temp.exit_condition = EXIT_AFTER_TABLE;
-	  else
+	  else if (strcmp(saux,"func_success")==0)
+	    sm_temp.exit_condition = EXIT_AFTER_FUNCTION_CALL_SUCCESS;
+	  else 
 	    sm_temp.exit_condition = NO_EXIT;
 
 
@@ -2059,6 +2296,58 @@ read_state_machine(char *fname) {
 
 /*!*****************************************************************************
  *******************************************************************************
+\note  save_statistics_matrix
+\date  Nov 2020
+   
+\remarks 
+
+       just saves relevant statistics matrix to file in ascii, where file
+       name includes date/time of creation
+
+ *******************************************************************************
+ Function Parameters: [in]=input,[out]=output
+
+  none
+
+ ******************************************************************************/
+static void 
+save_statistics_matrix(void)
+{
+  int i,j;
+  FILE *fp;
+  char fname[400];
+  time_t rawtime;
+  struct tm *tptr;
+  char   string[200]="";
+  
+  get_string("Additional string in filename?",string,string);
+  
+  time(&rawtime);
+  tptr = localtime(&rawtime);
+  sprintf(fname,"stat_matrix_%s_%d-%d-%d-%d:%d:%d.txt",string,tptr->tm_year+1900,tptr->tm_mon+1,tptr->tm_mday,tptr->tm_hour,tptr->tm_min,tptr->tm_sec);
+
+  // open file
+  fp = fopen(fname,"w");
+  if (fp == NULL) {
+    printf("Cannot open file %s\n",fname);
+    return;
+  }
+
+  for (i=1; i<=n_states_pose_delta; ++i) {
+    for (j=1; j<=8*(N_CART+N_QUAT); ++j) {
+      fprintf(fp,"%f ",statistics_matrix[i][j]);
+      if (j%7 == 0)
+	fprintf(fp,"    ");
+    }
+    fprintf(fp,"\n");
+  }
+
+  fclose(fp);
+
+}
+
+/*!*****************************************************************************
+ *******************************************************************************
 \note  print_sm_state
 \date  Feb 2019
    
@@ -2100,6 +2389,55 @@ print_sm_state(void)
   printf("0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 "); // gains
 
   printf("%s",controller_names[SIMPLE_IMPEDANCE_JT]);
+  printf("\n");
+
+}
+/*!*****************************************************************************
+ *******************************************************************************
+\note  print_sm_stats
+\date  Dec. 2020
+   
+\remarks 
+
+       prints current statistics/info of state machine state
+
+ *******************************************************************************
+ Function Parameters: [in]=input,[out]=output
+
+  none
+
+ ******************************************************************************/
+static void 
+print_sm_stats(void)
+{
+  int i;
+
+  printf("StateName             : %s\n",current_target_sm.state_name);
+
+  printf("Reference State Pos   : %f %f %f\n",
+	 reference_state_pose_x[_X_],
+	 reference_state_pose_x[_Y_],
+	 reference_state_pose_x[_Z_]);
+
+  printf("Reference State Orient: %f %f %f %f\n",
+	 reference_state_pose_q[_Q0_],
+	 reference_state_pose_q[_Q1_],
+	 reference_state_pose_q[_Q2_],
+	 reference_state_pose_q[_Q3_]);	 
+
+  printf("Target Pos Error      : %f (%f %f %f)\n",
+	 pos_error, pos_error_vector[_X_], pos_error_vector[_Y_], pos_error_vector[_Z_]);
+
+  printf("Target Orient Error   : %f (%f %f %f %f)\n",
+	 orient_error, orient_error_quat[_Q0_], orient_error_quat[_Q1_],
+	 orient_error_quat[_Q2_], orient_error_quat[_Q3_]);
+
+  printf("Tracking Pos Stats    : %f < %f < %f\n",min_pos_tracking_error,
+	 mean_pos_tracking_error, max_pos_tracking_error);
+
+  printf("Tracking Orient Stats : %f < %f < %f\n",min_orient_tracking_error,
+	 mean_orient_tracking_error, max_orient_tracking_error);
+
   printf("\n");
 
 }
@@ -2204,7 +2542,143 @@ min_jerk_next_step_quat (SL_quat q_start, SL_quat q_target, double *s,
   }
 
   //  fprintf(fp,"%f %f %f   %f %f %f %f\n",s[1],s[2],s[3],q_next->q[1],q_next->q[2],q_next->q[3],q_next->q[4]);
+
+  quatToAngularDerivatives(q_next);
   
+  return TRUE;
+
+}
+
+/*!*****************************************************************************
+ *******************************************************************************
+\note  min_jerk_next_step_quat_new
+\date  March 2021
+   
+\remarks 
+
+ min jerk next step spline in quaternions. This is a first principles
+ correct 5th order orientation spline, exploiting the log() and exp()
+ transforms of quaternions. There is no internal state, and the spline can
+ start from any pos/vel/acc to any target in pos/vel/acc.
+
+ Thanks to Giovanni Sutanto for pointing out the right approach.
+
+ *******************************************************************************
+ Function Parameters: [in]=input,[out]=output
+
+ \param[in]          q        : the current quaternion with all derivatives
+ \param[in]          q_target : the target quaternion with all derivatives
+ \param[in]          t_togo   : time to go until target is reached
+ \param[in]          dt       : time increment
+ \param[out]         q_next   : the next state quaternion with all derivatives
+
+ ******************************************************************************/
+static int
+min_jerk_next_step_quat_new (SL_quat q, SL_quat q_target,
+			     double t_togo, double dt, SL_quat *q_next)
+
+{
+  int    i,j;
+  double aux;
+  double t1,t2,t3,t4,t5;
+  double tau,tau1,tau2,tau3,tau4,tau5;
+
+  // a safety check
+  if (dt > t_togo || dt <= 0) {
+    return FALSE;
+  }
+
+  // the target quaternion should be in the same solution space as the start
+  // quaternion (TBD: this issue may need to be checked carefully for general validity)
+  aux = vec_mult_inner_size(q.q,q_target.q,N_QUAT);
+
+  if (aux < 0) {
+    vec_mult_scalar_size(q_target.q,N_QUAT,-1.0,q_target.q);
+  }
+
+  // && strcmp(current_target_sm.state_name,"rotate_right")!=0
+
+  // highly efficient precompuation of time constants
+  t1 = dt;
+  t2 = t1 * dt;
+  t3 = t2 * dt;
+  t4 = t3 * dt;
+  t5 = t4 * dt;
+
+  tau  = tau1 = t_togo;
+  tau2 = tau1 * tau;
+  tau3 = tau2 * tau;
+  tau4 = tau3 * tau;
+  tau5 = tau4 * tau;
+
+  // calculate the spline constants: note that the spline is in angular (tangent) space, not
+  // quaternion space, and thus all relevant quanities become 3D vectors
+  double q_rel[N_QUAT+1];
+  double dist[N_CART+1];
+
+  // the distance between q and q_target in tangent space
+  quatRelative(q.q, q_target.q, q_rel);
+
+  // do we need to change rotation direction?
+  aux = 0;
+  for (i=1; i<=N_CART; ++i)
+    aux += q_rel[_Q0_+i]*current_target_sm.orient_rel_axis[i];
+
+    if (aux < 0 && fabs(aux) > 0.001)
+    for (i=1; i<=N_QUAT; ++i)
+      q_rel[i] *= -1;
+
+  quatLog(q_rel,dist);
+
+  // fill in angular derivatives to quaternions
+  quatToAngularDerivatives(&q);
+  quatToAngularDerivatives(&q_target);  
+  
+  double a1t2[N_CART+1];
+  double a0t2[N_CART+1];
+  double v1t1[N_CART+1];
+  double v0t1[N_CART+1];
+
+  for (i=1; i<=N_CART; ++i) {
+    a1t2[i]   = q_target.add[i]*tau2;
+    a0t2[i]   = q.add[i]*tau2;
+    v1t1[i]   = q_target.ad[i]*tau1;
+    v0t1[i]   = q.ad[i]*tau1;
+  }
+
+  double c1[N_CART+1];
+  double c2[N_CART+1];
+  double c3[N_CART+1];
+  double c4[N_CART+1];
+  double c5[N_CART+1];
+
+  for (i=1; i<=N_CART; ++i) {
+    c1[i] = (6.*dist[i] + (a1t2[i] - a0t2[i])/2. - 3.*(v0t1[i] + v1t1[i]));
+    c2[i] = (-15.*dist[i] + (3.*a0t2[i] - 2.*a1t2[i])/2. + (8.*v0t1[i] + 7.*v1t1[i]))*tau1; 
+    c3[i] = (10.*dist[i] + (a1t2[i] - 3.*a0t2[i])/2. - (6.*v0t1[i] + 4.*v1t1[i]))*tau2; 
+    c4[i] = q.add[i]/2.;
+    c5[i] = q.ad[i];
+  }
+
+  double delta_a_next[N_CART+1];
+  double ad_next[N_CART+1];
+  double add_next[N_CART+1];
+
+  for (i=1; i<=N_CART; ++i) {
+    delta_a_next[i]   = (c1[i]*t5 + c2[i]*t4 + c3[i]*t3)/tau5 + c4[i]*t2 + c5[i]*t1;
+    q_next->ad[i] = ad_next[i]  = (5.*c1[i]*t4 + 4*c2[i]*t3 + 3*c3[i]*t2)/tau5 + 2.*c4[i]*t1 + c5[i];
+    q_next->add[i] = add_next[i] = (20.*c1[i]*t3 + 12.*c2[i]*t2 + 6.*c3[i]*t1)/tau5 + 2.*c4[i];
+  }
+
+  // postprocess into quaternions
+  quatExp(delta_a_next,q_rel);
+  quatMult(q.q,q_rel,q_next->q);
+  if (q_next->q[_Q0_] < 0)
+    for (i=1; i<=N_QUAT; ++i)
+      q_next->q[i] *= -1.0;
+
+  quatDerivatives(q_next);
+
   return TRUE;
 
 }
@@ -2243,6 +2717,7 @@ assignCurrentSMTarget(StateMachineTarget smt,
   int i,j,r;
   MY_MATRIX(R,1,N_CART,1,N_CART);
   SL_quat temp_q;
+  double ref_q_adj[N_QUAT+1];
 
   // to get started, simply copy the target to the current target, and this what needs
   // to be fixed.
@@ -2257,9 +2732,7 @@ assignCurrentSMTarget(StateMachineTarget smt,
 
   // compute rotation matrix
   quatToRotMatInv(&temp_q,R);
-  
 
-  
   // assign the target position
   if (smc->pose_x_is_relative == REL && smc->manipulation_frame == ABS_FRAME) {
     for (i=1; i<=N_CART; ++i) {
@@ -2269,6 +2742,9 @@ assignCurrentSMTarget(StateMachineTarget smt,
     mat_vec_mult_size(R,N_CART,N_CART,smt.pose_x,N_CART,smc->pose_x);
     for (i=1; i<=N_CART; ++i) {
       ct[HAND].x[i] = ref_x[i] + smc->pose_x[i];
+      if (apply_grasp_perturbation) {
+	ct[HAND].x[i] += grasp_perturbation_x[i];
+      }
     }
   } else if (smc->pose_x_is_relative == REL && smc->manipulation_frame == REF_FRAME) {
     mat_vec_mult_size(R,N_CART,N_CART,smt.pose_x,N_CART,smc->pose_x);
@@ -2299,7 +2775,13 @@ assignCurrentSMTarget(StateMachineTarget smt,
       //print_vec_size("before",cto[HAND].q,4);
       //print_vec_size("ref_state_pose",ref_q,4);
       mat_vec_mult_size(R,N_CART,N_CART,&(smt.pose_q[_Q0_]),N_CART,&(smc->pose_q[_Q0_]));
-      quatMult(ref_q,smc->pose_q,cto[HAND].q);
+      if (apply_grasp_perturbation) {
+	quatMult(ref_q,grasp_perturbation_q,ref_q_adj);	
+      } else {
+	for (i=1; i<=N_QUAT; ++i)
+	  ref_q_adj[i] = ref_q[i];
+      }
+      quatMult(ref_q_adj,smc->pose_q,cto[HAND].q);
       //print_vec_size("after",cto[HAND].q,4);
     } else if (smc->pose_q_is_relative == REL && smc->manipulation_frame == REF_FRAME) {	
       //print_vec_size("before",cto[HAND].q,4);
@@ -2313,6 +2795,30 @@ assignCurrentSMTarget(StateMachineTarget smt,
 	cto[HAND].q[i] = smc->pose_q[i];
       }
     }
+
+    // assign the initial relative rotation axis to the target
+    double q_rel[N_QUAT+1];
+    double ip = vec_mult_inner_size(cdes_orient[HAND].q, cto[HAND].q, N_QUAT);
+    quatRelative(cdes_orient[HAND].q, cto[HAND].q, q_rel);
+
+    if (ip < 0) // by default we choose the shortest path in orientation space
+      vec_mult_scalar_size(q_rel,N_QUAT,-1.0,q_rel);
+    
+    if (smc->nearest_rot_axis != 0) {  // the user specified a nearest rotation axis
+      for (i=1; i<=N_QUAT; ++i)
+	q_rel[i] = 0;
+      q_rel[ abs(smc->nearest_rot_axis)+1 ] = sign(smc->nearest_rot_axis);
+    }
+
+    // adust for orientatin of the reference frame
+    //print_vec_size("q",q_rel,N_QUAT);    
+    mat_vec_mult_size(R,N_CART,N_CART,&(q_rel[_Q0_]),N_CART,smc->orient_rel_axis);
+
+    ip = vec_mult_inner_size(smc->orient_rel_axis,smc->orient_rel_axis,N_CART);
+    if (fabs(ip) < 0.01) // numerical round off issues
+      vec_zero_size(smc->orient_rel_axis,N_CART);
+
+    //print_vec_size("axis",smc->orient_rel_axis,N_CART);    
 
   } else { // no orientation
     
@@ -2328,9 +2834,9 @@ assignCurrentSMTarget(StateMachineTarget smt,
     for (j=1; j<=N_CART; ++j) {
       if ( i == j ) {
 	smc->cart_gain_x_scale_matrix[i][j] = smc->cart_gain_x_scale[i];
-	smc->cart_gain_xd_scale_matrix[i][j] = smc->cart_gain_xd_scale[i];
+	smc->cart_gain_xd_scale_matrix[i][j] = sqrt(smc->cart_gain_xd_scale[i]); //sqrt() for vel gain scaling
 	smc->cart_gain_a_scale_matrix[i][j] = smc->cart_gain_a_scale[i];
-	smc->cart_gain_ad_scale_matrix[i][j] = smc->cart_gain_ad_scale[i];
+	smc->cart_gain_ad_scale_matrix[i][j] = sqrt(smc->cart_gain_ad_scale[i]); //sqrt() for vel gain scaling
       } else {
 	smc->cart_gain_x_scale_matrix[i][j] = 0.0;
 	smc->cart_gain_xd_scale_matrix[i][j] = 0.0;
@@ -2378,10 +2884,319 @@ assignCurrentSMTarget(StateMachineTarget smt,
   
 }
 
+/*!*****************************************************************************
+ *******************************************************************************
+\note  functionCall
+\date  Oct 2020
+   
+\remarks 
+
+ A switch statement to manage function calls and a possible success feedback.
+ The first call at the initialization phasee of a sm state sets the initial_call
+ flag to TRUE. During execution of the state, at every timestep, the functionCalls
+ is called with initial_call = FALSE, such that only the success termination
+ of the function call is checked.
+ 
+
+ *******************************************************************************
+ Function Parameters: [in]=input,[out]=output
 
 
+ \param[in]          id           : functionCalls ID as in ENUM statement
+ \param[in]          initial_call : TRUE/FALSE for first call at state
+                                    initialization.
+ \param[out]         success      : TRUE or FALSE for function_call terminated
+                                    successfully
+
+ returns FALSE when error happens, otherwise TRUE
+
+ ******************************************************************************/
+static int
+functionCall(int id, int initial_call, int *success) 
+{
+  static int count =0;
+  char   msg[1000];
+
+  // counts how often this function was called after the last initial_call=TRUE
+  if (initial_call)
+    count=0;
+  else
+    ++count;
+
+  switch (id) {
+    
+    // zero the force torque cell 
+  case ZERO_FT:
+    if  (initial_call) {
+      sprintf(msg,"Calibrate F/T offsets\n");
+      logMsg(msg,0,0,0,0,0,0);      
+      sendCalibrateFTCommand();
+      *success = FALSE;
+    } else {
+      // calibration takes  100 ticks, plus extra safety ticks
+      if (count > 100+100)
+	*success = TRUE;
+      else
+	*success = FALSE;
+    }
+    break;
+
+    // assign a new delta pose perturbration    
+  case NEXT_TABLE_DELTA:
+    if  (initial_call) {
+
+      if (current_state_pose_delta < n_states_pose_delta) {
+	++current_state_pose_delta;
+	sprintf(msg,"\nRunning perturbation %d\n",current_state_pose_delta);
+	logMsg(msg,0,0,0,0,0,0);
+	for (int i=1; i<=N_CART; ++i) {
+	  reference_state_pose_x[i] = reference_state_pose_x_base[i] +
+	    reference_state_pose_delta_x_table[current_state_pose_delta][i];
+	}
+	quatMult(reference_state_pose_q_base,reference_state_pose_delta_q_table[current_state_pose_delta],
+		 reference_state_pose_q);
+	quatNorm(reference_state_pose_q);
+	*success = TRUE;
+      } else {
+	*success = FALSE;	
+	return FALSE;
+      }
+
+    } else {
+      *success = TRUE;      
+    }
+    break;
+
+    // generarte a grasp perturbation: this is done by simulating a reference pose perturbation,
+    // i.e., the reference pose is transformed by the grasp perturbation pose. The grasp perturbation
+    // is in robot base coordinates, not any reference coordinate system
+  case GRASP_PERTURBATION:
+    if  (initial_call) {
+
+      // assign grasp perturbation to global variable, and set flag to true for applying
+      // the purtabation in target assignment
+      grasp_perturbation_x[_X_] = targets_sm[current_state_sm].function_args[1];
+      grasp_perturbation_x[_Y_] = targets_sm[current_state_sm].function_args[2];
+      grasp_perturbation_x[_Z_] = targets_sm[current_state_sm].function_args[3];
+      grasp_perturbation_q[_Q0_] = targets_sm[current_state_sm].function_args[4];
+      grasp_perturbation_q[_Q1_] = targets_sm[current_state_sm].function_args[5];
+      grasp_perturbation_q[_Q2_] = targets_sm[current_state_sm].function_args[6];
+      grasp_perturbation_q[_Q3_] = targets_sm[current_state_sm].function_args[7];
+      apply_grasp_perturbation = TRUE;
+      
+      *success = TRUE;	
+      
+    } else {
+      apply_grasp_perturbation = FALSE;    
+      *success = TRUE;      
+    }
+    break;
+
+    // gripper motion: move or grasp
+  case GRIPPER:
+    if  (initial_call) {
+      double des_gripper_width = current_target_sm.function_args[1];
+      double des_gripper_width_tolerance = current_target_sm.function_args[2];
+      double des_gripper_speed = current_target_sm.function_args[3];
+      double des_gripper_force = current_target_sm.function_args[4];
+
+      // give move command to gripper to desired position if width is larger than current width
+      if (des_gripper_width > misc_sensor[G_WIDTH] || des_gripper_force == 0) {
+	
+	sendGripperMoveCommand(des_gripper_width,des_gripper_speed);
+	
+      } else { // or close gripper with force control otherwise
+	
+	sendGripperGraspCommand(des_gripper_width,
+				des_gripper_speed,
+				des_gripper_force,
+				des_gripper_width_tolerance,
+				des_gripper_width_tolerance);		
+      }
+      *success = FALSE;
+    } else {
+      // 10 safety tick before allowing success -- some communication delay may exist
+      if (count > 100 && misc_sensor[G_MOTION] == 0.0) {
+	*success = TRUE;
+      } else
+	*success = FALSE;
+    }
+    break;
+    
+  case SEND_POSE_EST_DATA:
+    if  (initial_call) {
+      triggerDataCollection();
+      *success = FALSE;      
+    } else {
+      if (checkDataCollection()) {
+	*success = TRUE;
+	++global_sample_id;
+      } else
+	*success = FALSE;
+    }
+    break;
+    
+  case  RECEIVE_POSE_CORRECTION:
+    if  (initial_call) {
+      
+      // for logging, all is added to the statistics matrix
+      int count = 0;
+      
+      // the base reference pose
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_x_base[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_q_base[i];
+      
+      // the perturbed reference pose
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_x[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_q[i];
+      
+      triggerPoseDeltaPrediction();
+      *success = FALSE;
+      
+    } else {
+      if (checkPoseDeltaPrediction()) {
+
+	extern double predicted_reference_state_pose_delta_x_inverse[];
+	extern double predicted_reference_state_pose_delta_q_inverse[];
+	extern double reference_state_pose_delta_x_adjusted[];
+	extern double reference_state_pose_delta_q_adjusted[];
+	
+	
+	*success = TRUE;
+	++global_sample_id;
+
+	int count = 2*(N_CART+N_QUAT);;
+
+	// the adjusted delta pose
+	for (int i=1; i<=N_CART; ++i)
+	  statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_delta_x_adjusted[i];
+	for (int i=1; i<=N_QUAT; ++i)
+	  statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_delta_q_adjusted[i];
+	
+	// the current desired endeffector pose target
+	for (int i=1; i<=N_CART; ++i)
+	  statistics_matrix[current_state_pose_delta][++count] = ctarget[HAND].x[i];
+	for (int i=1; i<=N_QUAT; ++i)
+	  statistics_matrix[current_state_pose_delta][++count] = ctarget_orient[HAND].q[i];
+	
+	// the current endeffector pose
+	for (int i=1; i<=N_CART; ++i)
+	  statistics_matrix[current_state_pose_delta][++count] = cart_state[HAND].x[i];
+	for (int i=1; i<=N_QUAT; ++i)
+	  statistics_matrix[current_state_pose_delta][++count] = cart_orient[HAND].q[i];
+
+      } else
+	*success = FALSE;
+    }
+    break;
+    
+    // simply resets the reference pose to the base reference pose
+  case RESET_TO_BASE_POSE:
+
+    if  (initial_call) {
+    
+      extern double predicted_reference_state_pose_delta_x_inverse[];
+      extern double predicted_reference_state_pose_delta_q_inverse[];
+      
+      // for logging, all is added to the statistics matrix
+      int count = 0;
+      
+      // the base reference pose
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_x_base[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_q_base[i];
+      
+      // the perturbed reference pose
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_x[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = reference_state_pose_q[i];
+      
+      // the adjusted delta pose
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = 0; // not relevant
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = 0; // not relevant
+      
+      // the current desired endeffector pose target
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = ctarget[HAND].x[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = ctarget_orient[HAND].q[i];
+      
+      // the current endeffector pose
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = cart_state[HAND].x[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = cart_orient[HAND].q[i];
+      
+      // the pose correction from DL: this is just faked here and put into right variables
+      for (int i=1; i<=N_CART; ++i)
+	predicted_reference_state_pose_delta_x_inverse[i] = -reference_state_pose_delta_x_table[current_state_pose_delta][i];
+      for (int i=1; i<=N_QUAT; ++i)
+	if (i != _Q0_)
+	  predicted_reference_state_pose_delta_q_inverse[i] = -reference_state_pose_delta_q_table[current_state_pose_delta][i];
+	else
+	  predicted_reference_state_pose_delta_q_inverse[i] = reference_state_pose_delta_q_table[current_state_pose_delta][i];	  
 
 
+      // reset to base pose
+      for (int i=1; i<=N_CART; ++i) {
+	reference_state_pose_x[i] = reference_state_pose_x_base[i];
+      }
+      for (int i=1; i<=N_QUAT; ++i) {
+	reference_state_pose_q[i] = reference_state_pose_q_base[i];
+      }
+      *success = TRUE;
 
+    } else {
+      *success = TRUE;      
+    }
+    break;
 
+    // adds current target and actual pose to statistics matrix
+  case ADD_CURRENT_TO_STATISTICS:
 
+    if  (initial_call) {
+      extern double predicted_reference_state_pose_delta_x_inverse[];
+      extern double predicted_reference_state_pose_delta_q_inverse[];
+      
+      *success = TRUE;
+
+      // for logging, all is added to the statistics matrix
+      int count = 5*(N_CART+N_QUAT);
+      
+      // the pose correction from DL
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = predicted_reference_state_pose_delta_x_inverse[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = predicted_reference_state_pose_delta_q_inverse[i];	
+	
+      // the current desired endeffector pose target
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = ctarget[HAND].x[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = ctarget_orient[HAND].q[i];
+      
+      // the current endeffector pose
+      for (int i=1; i<=N_CART; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = cart_state[HAND].x[i];
+      for (int i=1; i<=N_QUAT; ++i)
+	statistics_matrix[current_state_pose_delta][++count] = cart_orient[HAND].q[i];
+      
+    } else {
+      *success = TRUE;      
+    }
+    break;
+
+  default: // this is NO_FUNC by default
+    *success = TRUE;
+  }
+
+  return TRUE;
+}

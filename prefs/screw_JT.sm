@@ -1,0 +1,220 @@
+/* This file contains the specification for a state machine and a particular controller.
+   The file format allows C/C++ comments.
+*/
+
+// the reference state: this is the bolt pose, with x,y,z denoting the top surface of the bolt
+
+reference_state_pose_x	0.672 -0.163 0.026       // M8 bolt, SF NIST board
+reference_state_pose_q	0.0 0.0 1.0 0.0         // vertical down aligned with Z
+
+// the table of reference state perturbations//
+//reference_state_pose_delta_table prefs/all_powerplug_slots.txt
+reference_state_pose_delta_table prefs/half_range_delta_pose.txt
+//reference_state_pose_delta_table prefs/full_range_delta_pose.txt
+
+// endeffector modification: flange+finger_off+finger_length -- nut is flush with finger end
+endeffector   0.1  0 0 0  0 0 0.2334  0 0 2.351
+
+// default gains
+default_cart_gain_x_scale	1 1 1 1 1 1  
+default_cart_gain_a_scale	1 1 1 1 1 1
+
+// default controller
+default_controller ModelImpedanceJt
+//default_controller SimpleImpedanceJt
+
+// grasp bolt from nest
+
+{
+name               move_to_grasp
+manipulation_frame bref
+duration      	   1.25
+pose_x        	   abs 0.151 0.0 -0.025
+pose_q        	   1 abs 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0
+max_wrench    	   last 10 10 10 5 5 5
+}
+{
+name               prepare_grasp
+func_call 	   gripper 4 0.02 0.1 0.1 0.0
+manipulation_frame bref
+duration      	   1
+pose_x        	   abs 0.151 0.003 0.008
+pose_q        	   1 rel 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench   	   last 10 10 20 8 8 8
+exit_condition	   pos_orient 10 0.0015 0.015 0 0
+}
+{
+name               grasp
+func_call 	   gripper 4 0.0 0.1 0.1 100.0
+manipulation_frame bref
+duration      	   1
+pose_x        	   rel 0 0 0 
+pose_q        	   1 rel 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench   	   last 20 20 20 8 8 8
+exit_condition	   fun_success 10 0 0 0 0
+}
+{
+name               extract
+manipulation_frame bref
+duration      	   1
+pose_x        	   rel 0.0 0.0 -0.07
+pose_q        	   1 rel 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0
+max_wrench    	   cont 20 20 50 8 8 8 
+}
+
+// the screw-on motion sequence
+{
+name               move_above_bolt
+manipulation_frame ref
+duration      	   1
+pose_x        	   abs 0.0 0.0 -0.005
+pose_q        	   1 abs 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench    	   cont 20 20 50 8 8 8
+exit_condition	   pos_orient 10 0.0015 0.01 0 0
+}
+{
+name               zero_force_torque_offsets
+manipulation_frame ref
+func_call	   zero_ft
+duration      	   0.5
+pose_x        	   rel 0 0 0
+pose_q        	   1 rel  1 0 0 0 
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench    	   cont 10 10 10 5 5 5
+}
+{
+name               touch_down_on_bolt
+manipulation_frame ref
+duration      	   1
+pose_x        	   abs 0.0 0.0 0.0
+pose_q        	   1 rel 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+force_desired	   0.8 0 0 -25
+max_wrench    	   cont 20 20 50 8 8 8
+//exit_condition	   pos_orient 10 0.0015 0.01 0 0
+}
+{
+name               screw_ccw
+manipulation_frame ref
+duration      	   4
+pose_x        	   rel 0.0 0.0 0.0
+pose_q        	   1 rel -0.0861  0 0 -0.9963 -3
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+force_desired	   0.8 0 0 -25
+max_wrench    	   cont 20 20 50 8 8 8
+}
+{
+name               screw_cw
+manipulation_frame ref
+duration      	   4.5
+pose_x        	   rel 0.0 0.0 0.0
+pose_q        	   1 rel 0.9578 0 0 -0.2875 3
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+force_desired	   0.8 0 0 -25
+max_wrench    	   cont 20 20 50 8 8 8
+}
+{
+name               gripper_open
+func_call 	   gripper 4 0.02 0.1 0.1 0.0
+manipulation_frame ref
+duration      	   2
+pose_x        	   abs 0 0 0.005 
+pose_q        	   1 rel 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+exit_condition	   fun_success 10 0 0 0 0
+}
+{
+name               gripper_close_again
+func_call 	   gripper 4 0.0 0.1 0.1 100.0
+manipulation_frame ref
+duration      	   2
+pose_x        	   rel 0 0 0 
+pose_q        	   1 rel 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+exit_condition	   fun_success 10 0 0 0 0
+}
+{
+name               unscrew_ccw
+manipulation_frame ref
+duration      	   5
+pose_x        	   rel 0.0 0.0 -0.005
+pose_q        	   1 rel 0.9578 0 0 0.2875 -3
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench    	   cont 20 20 50 8 8 8
+}
+{
+name               move_away
+manipulation_frame abs
+duration      	   1
+pose_x        	   rel 0.0 0.0 0.03
+pose_q        	   1 rel 1 0 0 0 
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0
+max_wrench    	   cont 20 20 50 8 8 8
+}
+// back to the nest
+{
+name               move_to_nest
+manipulation_frame bref
+duration      	   3
+pose_x        	   abs 0.150 0.003 -0.03
+pose_q        	   1 abs 1 0 0 0 3
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench    	   last 20 20 20 5 5 5
+exit_condition	   pos_orient 10 0.0015 0.02 0 0
+}
+{
+name               move_down_on_nest
+manipulation_frame bref
+duration      	   2
+pose_x        	   rel 0 0 .02
+pose_q        	   1 rel 1 0 0 0 1
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench    	   last 20 20 20 5 5 5
+}
+{
+name               gripper_release
+name_next 	   prepare_grasp
+manipulation_frame bref
+duration      	   0.1
+pose_x        	   rel 0 0 0 
+pose_q        	   1 rel 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+exit_condition	   fun_success 10 0 0 0 0
+}

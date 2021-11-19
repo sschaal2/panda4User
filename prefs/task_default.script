@@ -179,6 +179,14 @@ HAND_cdes_xd
 HAND_cdes_yd
 HAND_cdes_zd
 
+HAND_cdes_ad
+HAND_cdes_bd
+HAND_cdes_gd
+
+HAND_cdes_add
+HAND_cdes_bdd
+HAND_cdes_gdd
+
 sm_pos_error
 sm_orient_error
 sm_state_id
