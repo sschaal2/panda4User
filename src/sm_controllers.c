@@ -200,7 +200,6 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
   
   double         corient_error[N_CART+1];
   double         cref[N_ENDEFFS*6+1];
-  static double  cref_integral[N_ENDEFFS*6+1];
   double         q_rel[N_QUAT+1];
   double         q_rel_angle;
   double         log_q_mult;
@@ -241,7 +240,7 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
   q_rel_angle = acos(q_rel[_Q0_]);
   
   if (q_rel_angle > 3)getchar();
-  log_q_mult = q_rel_angle/(sqrt(vec_mult_inner_size(corient_error,corient_error,N_CART))+1.e-6);
+  log_q_mult = q_rel_angle/(sqrt(vec_mult_inner_size(corient_error,corient_error,N_CART))+1.e-10);
   
   // prepare the impdance controller, i.e., compute operational
   // space force command
@@ -252,8 +251,8 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
       ++count;
 
       cref_integral[count] += gain_integral * (cdes[HAND].x[j]  - cart_state[HAND].x[j]);
-      if (cref_integral[count] > MAX_INTEGRAL_FORCE)
-	cref_integral[count] = MAX_INTEGRAL_FORCE;
+      if (fabs(cref_integral[count]) > MAX_INTEGRAL_FORCE)
+	cref_integral[count] = sign(cref_integral[count])*MAX_INTEGRAL_FORCE;
 
       cref[count] = cref_integral[count];
       for (n= _X_; n<= _Z_; ++n)      
@@ -269,14 +268,20 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
       ++count;
 
       cref_integral[count] +=  0.1 * log_q_mult * corient_error[j] * gain_integral;
-      if (cref_integral[count] > MAX_INTEGRAL_MOMENT)
-	cref_integral[count] = MAX_INTEGRAL_MOMENT;
+      if (fabs(cref_integral[count]) > MAX_INTEGRAL_MOMENT)
+	cref_integral[count] = sign(cref_integral[count])*MAX_INTEGRAL_MOMENT;
 
       cref[count] = cref_integral[count];
-      for (n= _A_; n<= _G_ ; ++n) 
+      for (n= _A_; n<= _G_ ; ++n) {
 	cref[count] += 
 	  (cdes_orient[HAND].ad[n] - cart_orient[HAND].ad[n]) *0.025 * 2.0 * sqrt(default_gain_orient) * gain_ad_scale[j][n] + 
-	  log_q_mult * corient_error[n] * default_gain_orient * gain_a_scale[j][n]; 
+	  log_q_mult * corient_error[n] * default_gain_orient * gain_a_scale[j][n];
+	/*
+	printf("%d.%d: %f %f     %f %f\n",j,n,
+	       (cdes_orient[HAND].ad[n] - cart_orient[HAND].ad[n]),0.025 * 2.0 * sqrt(default_gain_orient) * gain_ad_scale[j][n],
+	       corient_error[n], log_q_mult * default_gain_orient * gain_a_scale[j][n]);	       
+	*/
+      }
     }
   }
   
@@ -368,7 +373,6 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
   
   double         corient_error[N_CART+1];
   double         cref[N_ENDEFFS*6+1];
-  static double  cref_integral[N_ENDEFFS*6+1];
   double         q_rel[N_QUAT+1];
   double         q_rel_angle;
   double         log_q_mult;
@@ -409,7 +413,7 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
   }
 
   q_rel_angle = acos(q_rel[_Q0_]);
-  log_q_mult = q_rel_angle/(sqrt(vec_mult_inner_size(corient_error,corient_error,N_CART))+1.e-6);
+  log_q_mult = q_rel_angle/(sqrt(vec_mult_inner_size(corient_error,corient_error,N_CART))+1.e-10);
   
   // prepare the impdance controller, i.e., compute operational
   // space force command
@@ -420,8 +424,8 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
       ++count;
 
       cref_integral[count] += gain_integral * (cdes[HAND].x[j]  - cart_state[HAND].x[j]);
-      if (cref_integral[count] > MAX_INTEGRAL_FORCE)
-	cref_integral[count] = MAX_INTEGRAL_FORCE;
+      if (fabs(cref_integral[count]) > MAX_INTEGRAL_FORCE)
+	cref_integral[count] = sign(cref_integral[count])*MAX_INTEGRAL_FORCE;
 
       cref[count] = cref_integral[count];
       for (n= _X_; n<= _Z_; ++n)      
@@ -438,8 +442,8 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
       ++count;
 
       cref_integral[count] +=  0.1 * log_q_mult * corient_error[j] * gain_integral;
-      if (cref_integral[count] > MAX_INTEGRAL_MOMENT)
-	cref_integral[count] = MAX_INTEGRAL_MOMENT;
+      if (fabs(cref_integral[count]) > MAX_INTEGRAL_MOMENT)
+	cref_integral[count] = sign(cref_integral[count])*MAX_INTEGRAL_MOMENT;
 
       cref[count] = cref_integral[count];
       for (n= _A_; n<= _G_ ; ++n) {
@@ -769,7 +773,7 @@ computePseudoInverseAndNullSpace(iVector status, Matrix Jprop, int *nr, Matrix J
   }
 
 
-  // provide points to result matrices
+  // provide pointers to result matrices
   mat_equal_size(Jred,count,N_DOFS,Jprop);
   mat_equal_size(B,N_DOFS,count,Jhash);
   mat_equal_size(O,N_DOFS,N_DOFS,Nproj);

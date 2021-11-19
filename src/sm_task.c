@@ -66,7 +66,6 @@ enum RelativeOption
   {
    ABS = 0,
    REL,
-   RELREF
   };
 
 enum CoordinateFrame
@@ -122,6 +121,8 @@ typedef struct StateMachineTarget {
   int    pose_x_is_relative;
   double pose_x[N_CART+1];
   int    use_orient;
+  int    nearest_rot_axis;
+  double orient_rel_axis[N_CART+1];
   int    pose_q_is_relative;
   double pose_q[N_QUAT+1];
   int    gripper_start_active;
@@ -402,6 +403,20 @@ add_sm_task( void )
     sprintf(string,"%s_cdes_q3dd",cart_names[i]);
     addVarToCollect((char *)&(cdes_orient[i].qdd[_Q3_]),string,"-", DOUBLE,FALSE);
 
+    sprintf(string,"%s_cdes_ad",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].ad[_A_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_bd",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].ad[_B_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_gd",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].ad[_G_]),string,"-", DOUBLE,FALSE);
+
+    sprintf(string,"%s_cdes_add",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].add[_A_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_bdd",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].add[_B_]),string,"-", DOUBLE,FALSE);
+    sprintf(string,"%s_cdes_gdd",cart_names[i]);
+    addVarToCollect((char *)&(cdes_orient[i].add[_G_]),string,"-", DOUBLE,FALSE);
+
     sprintf(string,"%s_ct_ad",cart_names[i]);
     addVarToCollect((char *)&(ctarget_orient[i].ad[_A_]),string,"-", DOUBLE,FALSE);
     sprintf(string,"%s_ct_bd",cart_names[i]);
@@ -450,8 +465,6 @@ add_sm_task( void )
     sprintf(string,"%s_cdes_zd",cart_names[i]);
     addVarToCollect((char *)&(cdes[i].xd[_Z_]),string,"m", DOUBLE,FALSE);
       
-      
-      
   }
     
   sprintf(string,"sm_pos_error");
@@ -487,11 +500,13 @@ init_sm_task(void)
   int    j, i;
   char   string[100];
   //  static char   fname[100] = "qsfp_vl_collection.sm";
-  static char   fname[100] = "waterproof_vl_collection.sm";  
+  //  static char   fname[100] = "waterproof_vl_collection.sm";
+  static char   fname[100] = "screw_JT.sm";    
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;
   static int pert = 0;
+  float  data[N_CART+N_QUAT+1+1];
 
   
   if (firsttime) {
@@ -671,6 +686,17 @@ init_sm_task(void)
   // reclibrate the gripper F/T offsets
   sendCalibrateFTCommand();
   taskDelay(100);
+
+  // draw the reference base pose coordinate frame
+  data[1] = 0.1; // length of coordinate arrows
+  data[2] = reference_state_pose_x_base[_X_];
+  data[3] = reference_state_pose_x_base[_Y_];
+  data[4] = reference_state_pose_x_base[_Z_];
+  data[5] = reference_state_pose_q_base[_Q0_];
+  data[6] = reference_state_pose_q_base[_Q1_];
+  data[7] = reference_state_pose_q_base[_Q2_];
+  data[8] = reference_state_pose_q_base[_Q3_];
+  sendUserGraphics("drawPoseFrame",&(data[1]),(N_CART+N_QUAT+1)*sizeof(float));  
 
   time_step = 1./(double)task_servo_rate;
   start_time = task_servo_time;
@@ -1511,17 +1537,18 @@ min_jerk_next_step (double x,double xd, double xdd, double t, double td, double 
    "duration" movement_duration
    "manipulation_frame" ["abs" | "ref" | "bref"]
    "func_call" "...." (arbitrary name of implemented function to be called at this state)
-   "pose_x" ["abs" | "rel" | "refref"] pose_x_X pose_x_Y pose_x_Z
-   "pose_q" use_orient ["abs" | "rel | relref"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
-   "gripper_start" ["abs" | "rel"] gripper_start_width gripper_start_force
-   "gripper_end" ["abs" | "rel"] gripper_end_width gripper_end_force
+   "pose_x" ["abs" | "rel"] pose_x_X pose_x_Y pose_x_Z
+   "pose_q" use_orient ["abs" | "rel"] pose_q_Q0 pose_q_Q1 pose_q_Q2 pose_q_Q3 pose_q_Q4
+   "gripper_start" ["abs" | "rel"] gripper_start_width gripper_start_force (deprecated)
+   "gripper_end" ["abs" | "rel"] gripper_end_width gripper_end_force (deprecated)
    "cart_gain_x_scale" cart_gain_x_X cart_gain_x_Y cart_gain_x_Z cart_gain_xd_X cart_gain_xd_Y cart_gain_xd_Z
    "cart_gain_a_scale" cart_gain_a_A cart_gain_a_B cart_gain_a_G cart_gain_ad_A cart_gain_ad_B cart_gain_ad_G
    "cart_gain_integral" cart_gain_integral
-   "ff_wrench" fx fy fz mx my mz
-   "max_wrench" ["cont" | "abort" | "last"] fx_max fy_max fz_max mx_max my_max mz_max
+   "force_desired" feedback_gain fx fy fz
+   "moment_desired" feedback_gain mx my mz
+   "max_wrench" fx_max fy_max fz_max mx_max my_max mz_max
    "controller" controller_name
-   "exit_condition" ["none" | "pos" | "orient" | "pos_orient" | "force" | "moment" | "force_moment"] exit_timeout err_pos err_orient err_force err_moment
+   "exit_condition" ["none" | "pos" | "orient" | "pos_orient" | "force" | "moment" | "force_moment" | "func_success" ] time_out err_pos err_orient err_force err_moment
 }
 
  ******************************************************************************/
@@ -1547,7 +1574,7 @@ static char state_group_names[][100]=
    {"exit_condition"}
   };
 
-static int n_parms[] = {0,1,1,1,1,2,4,6,3,3,6,6,1,4,4,7,1,6};
+static int n_parms[] = {0,1,1,1,1,2,4,7,3,3,6,6,1,4,4,7,1,6};
 #define MAX_BIG_STRING 5000
 
 static int
@@ -1912,8 +1939,6 @@ read_state_machine(char *fname) {
 	  }
 	  if (strcmp(saux,"rel")==0)
 	    sm_temp.pose_x_is_relative = REL;
-	  else if (strcmp(saux,"relref")==0)
-	    sm_temp.pose_x_is_relative = RELREF;
 	  else
 	    sm_temp.pose_x_is_relative = ABS;
 	}
@@ -1923,21 +1948,33 @@ read_state_machine(char *fname) {
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
 	  sm_temp.use_orient = FALSE;
+	  sm_temp.nearest_rot_axis = FALSE;
 	} else {
-	  n_read = sscanf(c,"%d %s %lf %lf %lf %lf", &(sm_temp.use_orient),saux,
+	  // new syntax: allows specifying one of the canonical coordinate axes
+	  // to be the nearest to the relative rotation axis
+	  n_read = sscanf(c,"%d %s %lf %lf %lf %lf %d",
+			  &(sm_temp.use_orient),saux,
 			  &(sm_temp.pose_q[_Q0_]),
 			  &(sm_temp.pose_q[_Q1_]),
 			  &(sm_temp.pose_q[_Q2_]),
-			  &(sm_temp.pose_q[_Q3_]));
-	  if (n_read != n_parms[i]) {
-	    printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
-	    continue;
+			  &(sm_temp.pose_q[_Q3_]),
+			  &(sm_temp.nearest_rot_axis));
+	  if (n_read != n_parms[i]) {  // if failure, try old syntax
+	    sm_temp.nearest_rot_axis = FALSE;	    
+	    n_read = sscanf(c,"%d %s %lf %lf %lf %lf",
+			    &(sm_temp.use_orient),saux,
+			    &(sm_temp.pose_q[_Q0_]),
+			    &(sm_temp.pose_q[_Q1_]),
+			    &(sm_temp.pose_q[_Q2_]),
+			    &(sm_temp.pose_q[_Q3_]));
+	    if (n_read != n_parms[i]-1) {
+	      printf("Expected %d elements, but found only %d elements  in group %s\n",n_parms[i],n_read,state_group_names[i]);
+	      continue;
+	    }
 	  }
 	  quatNorm(sm_temp.pose_q);
 	  if (strcmp(saux,"rel")==0)
 	    sm_temp.pose_q_is_relative = REL;
-	  else if (strcmp(saux,"relref")==0)
-	    sm_temp.pose_q_is_relative = RELREF;
 	  else
 	    sm_temp.pose_q_is_relative = ABS;
 
@@ -2057,10 +2094,11 @@ read_state_machine(char *fname) {
 	}
 
 	// simulator does not like high integral gains
+	/*
 	if (!real_robot_flag)
 	  if (sm_temp.cart_gain_integral > 0.01)
 	    sm_temp.cart_gain_integral = 0.01;
-
+	*/
 	// force_desired (optional)
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
@@ -2277,7 +2315,11 @@ save_statistics_matrix(void)
 {
   int i,j;
   FILE *fp;
+<<<<<<< HEAD
   char fname[300];
+=======
+  char fname[400];
+>>>>>>> 0a7f4e24d60b0e6da0edda61abbc712dfc6de760
   time_t rawtime;
   struct tm *tptr;
   char   string[200]="";
@@ -2504,6 +2546,8 @@ min_jerk_next_step_quat (SL_quat q_start, SL_quat q_target, double *s,
   }
 
   //  fprintf(fp,"%f %f %f   %f %f %f %f\n",s[1],s[2],s[3],q_next->q[1],q_next->q[2],q_next->q[3],q_next->q[4]);
+
+  quatToAngularDerivatives(q_next);
   
   return TRUE;
 
@@ -2551,9 +2595,12 @@ min_jerk_next_step_quat_new (SL_quat q, SL_quat q_target,
   // the target quaternion should be in the same solution space as the start
   // quaternion (TBD: this issue may need to be checked carefully for general validity)
   aux = vec_mult_inner_size(q.q,q_target.q,N_QUAT);
+
   if (aux < 0) {
     vec_mult_scalar_size(q_target.q,N_QUAT,-1.0,q_target.q);
   }
+
+  // && strcmp(current_target_sm.state_name,"rotate_right")!=0
 
   // highly efficient precompuation of time constants
   t1 = dt;
@@ -2575,6 +2622,16 @@ min_jerk_next_step_quat_new (SL_quat q, SL_quat q_target,
 
   // the distance between q and q_target in tangent space
   quatRelative(q.q, q_target.q, q_rel);
+
+  // do we need to change rotation direction?
+  aux = 0;
+  for (i=1; i<=N_CART; ++i)
+    aux += q_rel[_Q0_+i]*current_target_sm.orient_rel_axis[i];
+
+    if (aux < 0 && fabs(aux) > 0.001)
+    for (i=1; i<=N_QUAT; ++i)
+      q_rel[i] *= -1;
+
   quatLog(q_rel,dist);
 
   // fill in angular derivatives to quaternions
@@ -2742,6 +2799,30 @@ assignCurrentSMTarget(StateMachineTarget smt,
 	cto[HAND].q[i] = smc->pose_q[i];
       }
     }
+
+    // assign the initial relative rotation axis to the target
+    double q_rel[N_QUAT+1];
+    double ip = vec_mult_inner_size(cdes_orient[HAND].q, cto[HAND].q, N_QUAT);
+    quatRelative(cdes_orient[HAND].q, cto[HAND].q, q_rel);
+
+    if (ip < 0) // by default we choose the shortest path in orientation space
+      vec_mult_scalar_size(q_rel,N_QUAT,-1.0,q_rel);
+    
+    if (smc->nearest_rot_axis != 0) {  // the user specified a nearest rotation axis
+      for (i=1; i<=N_QUAT; ++i)
+	q_rel[i] = 0;
+      q_rel[ abs(smc->nearest_rot_axis)+1 ] = sign(smc->nearest_rot_axis);
+    }
+
+    // adust for orientatin of the reference frame
+    //print_vec_size("q",q_rel,N_QUAT);    
+    mat_vec_mult_size(R,N_CART,N_CART,&(q_rel[_Q0_]),N_CART,smc->orient_rel_axis);
+
+    ip = vec_mult_inner_size(smc->orient_rel_axis,smc->orient_rel_axis,N_CART);
+    if (fabs(ip) < 0.01) // numerical round off issues
+      vec_zero_size(smc->orient_rel_axis,N_CART);
+
+    //print_vec_size("axis",smc->orient_rel_axis,N_CART);    
 
   } else { // no orientation
     
