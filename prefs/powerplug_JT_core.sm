@@ -1,7 +1,9 @@
 // the core state machine for powerplug insertion
 
 // endeffector modification: powerplug+flange+finger_off+finger_length PowerPlug=0.0023 (stick out)
-endeffector   0.1  0 0 0  0 0 0.2564  0 0 2.356
+//endeffector   0.1  0 0 0  0 0 0.2564  0 0 2.356  // Franka hand with robotiq fingers
+endeffector   0.1  0 0 0  0 0 0.355  0 0 2.356  // Franka hand with robotiq fingers
+
 
 // default gains
 default_cart_gain_x_scale	1 1 1 1 1 1
@@ -49,7 +51,7 @@ cart_gain_x_scale  1.4 1.4 1.4 1.4 1.4 1.4
 cart_gain_a_scale  1.4 1.4 1.4 1.4 1.4 1.4
 gripper_start 	   abs 0.0  100
 gripper_end   	   abs 0.0  100
-max_wrench    	   cont 20 20 50 5 5 5 
+max_wrench    	   cont 20 20 50 10 10 10
 }
 
 

@@ -351,3 +351,9 @@ HAND_cdes_zd
 sm_pos_error
 sm_orient_error
 sm_state_id
+HAND_fi_x
+HAND_fi_y
+HAND_fi_z
+HAND_ti_x
+HAND_ti_y
+HAND_ti_z

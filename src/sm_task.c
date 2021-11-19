@@ -823,38 +823,38 @@ run_sm_task(void)
   case MOVE_TO_TARGET:
 
     // check for exceeding max force/torque
-    if (fabs(misc_sensor[C_FX]) > current_target_sm.max_wrench[_X_]) {
-      sprintf(string,"max force X exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_FX],current_target_sm.max_wrench[_X_]);
+    if (fabs(misc_sensor[S_FX]) > current_target_sm.max_wrench[_X_]) {
+      sprintf(string,"max force X exceeded (|%6.3f| > %6.3f)\n",misc_sensor[S_FX],current_target_sm.max_wrench[_X_]);
       logMsg(string,0,0,0,0,0,0);
       ft_exception_flag = TRUE;
     }
 
-    if (fabs(misc_sensor[C_FY]) > current_target_sm.max_wrench[_Y_]) {
-      sprintf(string,"max force Y exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_FY],current_target_sm.max_wrench[_Y_]);
+    if (fabs(misc_sensor[S_FY]) > current_target_sm.max_wrench[_Y_]) {
+      sprintf(string,"max force Y exceeded (|%6.3f| > %6.3f)\n",misc_sensor[S_FY],current_target_sm.max_wrench[_Y_]);
       logMsg(string,0,0,0,0,0,0);
       ft_exception_flag = TRUE;
     }
 
-    if (fabs(misc_sensor[C_FZ]) > current_target_sm.max_wrench[_Z_]) {
-      sprintf(string,"max force Z exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_FZ],current_target_sm.max_wrench[_Z_]);
+    if (fabs(misc_sensor[S_FZ]) > current_target_sm.max_wrench[_Z_]) {
+      sprintf(string,"max force Z exceeded (|%6.3f| > %6.3f)\n",misc_sensor[S_FZ],current_target_sm.max_wrench[_Z_]);
       logMsg(string,0,0,0,0,0,0);
       ft_exception_flag = TRUE;
     }
 
-    if (fabs(misc_sensor[C_MX]) > current_target_sm.max_wrench[N_CART+_A_]) {
-      sprintf(string,"max torque A exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_MX],current_target_sm.max_wrench[N_CART+_A_]);
+    if (fabs(misc_sensor[S_MX]) > current_target_sm.max_wrench[N_CART+_A_]) {
+      sprintf(string,"max torque A exceeded (|%6.3f| > %6.3f)\n",misc_sensor[S_MX],current_target_sm.max_wrench[N_CART+_A_]);
       logMsg(string,0,0,0,0,0,0);
       ft_exception_flag = TRUE;
     }
 
-    if (fabs(misc_sensor[C_MY]) > current_target_sm.max_wrench[N_CART+_B_]) {
-      sprintf(string,"max torque B exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_MY],current_target_sm.max_wrench[N_CART+_B_]);
+    if (fabs(misc_sensor[S_MY]) > current_target_sm.max_wrench[N_CART+_B_]) {
+      sprintf(string,"max torque B exceeded (|%6.3f| > %6.3f)\n",misc_sensor[S_MY],current_target_sm.max_wrench[N_CART+_B_]);
       logMsg(string,0,0,0,0,0,0);
       ft_exception_flag = TRUE;
     }
 
-    if (fabs(misc_sensor[C_MZ]) > current_target_sm.max_wrench[N_CART+_G_]) {
-      sprintf(string,"max torque G exceeded (|%6.3f| > %6.3f)\n",misc_sensor[C_MZ],current_target_sm.max_wrench[N_CART+_G_]);
+    if (fabs(misc_sensor[S_MZ]) > current_target_sm.max_wrench[N_CART+_G_]) {
+      sprintf(string,"max torque G exceeded (|%6.3f| > %6.3f)\n",misc_sensor[S_MZ],current_target_sm.max_wrench[N_CART+_G_]);
       logMsg(string,0,0,0,0,0,0);
       ft_exception_flag = TRUE;
     }
@@ -1057,8 +1057,8 @@ run_sm_task(void)
   double torque_correction[N_CART+1];
 
   for (j=1; j<=N_CART; ++j) {
-    force_local[j]  = misc_sensor[C_FX-1+j];
-    torque_local[j] = misc_sensor[C_MX-1+j];
+    force_local[j]  = misc_sensor[S_FX-1+j];
+    torque_local[j] = misc_sensor[S_MX-1+j];
   }
 
   // convert the F/T sensor into the compliance frame, which could be at the top of the
