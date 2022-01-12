@@ -78,6 +78,7 @@ enum ExitOption
   {
    NO_EXIT = 0,
    POS_EXIT,
+   POS_EXIT_Z,
    ORIENT_EXIT,
    POS_ORIENT_EXIT,
    FORCE_EXIT,
@@ -105,6 +106,7 @@ enum FunctionCalls
     RECEIVE_POSE_CORRECTION,
     RESET_TO_BASE_POSE,
     ADD_CURRENT_TO_STATISTICS,
+    FORCE_LISSAJOU,
   };
 		 
 
@@ -501,7 +503,7 @@ init_sm_task(void)
   char   string[100];
   //  static char   fname[100] = "qsfp_vl_collection.sm";
   //  static char   fname[100] = "waterproof_vl_collection.sm";
-  static char   fname[100] = "screw_JT.sm";    
+  static char   fname[100] = "transformer_JT.sm";    
   int    ans;
   int    flag = FALSE;
   static int firsttime = TRUE;
@@ -671,6 +673,10 @@ init_sm_task(void)
     cdes_orient[HAND].q[j] = ctarget_orient[HAND].q[j] = cart_des_orient[HAND].q[j];
   }
 
+  // reclibrate the gripper F/T offsets
+  sendCalibrateFTCommand();
+
+
   // ready to go
   if (!no_user_interaction_flag) {
     ans = 999;
@@ -682,10 +688,6 @@ init_sm_task(void)
     if (ans != 1) 
       return FALSE;
   }  
-
-  // reclibrate the gripper F/T offsets
-  sendCalibrateFTCommand();
-  taskDelay(100);
 
   // draw the reference base pose coordinate frame
   data[1] = 0.1; // length of coordinate arrows
@@ -1091,6 +1093,11 @@ run_sm_task(void)
 	{
 	case POS_EXIT:
 	  if (pos_error > current_target_sm.err_pos)
+	    exit_flag = FALSE;
+	  break;
+
+	case POS_EXIT_Z:
+	  if (fabs(pos_error_vector[_Z_]) > current_target_sm.err_pos)
 	    exit_flag = FALSE;
 	  break;
 	  
@@ -1917,6 +1924,8 @@ read_state_machine(char *fname) {
 	    sm_temp.function_call = ADD_CURRENT_TO_STATISTICS;
 	  else if (strcmp(saux,"grasp_perturbation")==0) {
 	    sm_temp.function_call = GRASP_PERTURBATION;
+	  else if (strcmp(saux,"force_lissajou")==0)
+	    sm_temp.function_call = FORCE_LISSAJOU;
 	  }
 	  else
 	    sm_temp.function_call = NO_FUNC;
@@ -2139,8 +2148,10 @@ read_state_machine(char *fname) {
 	++i;
 	c = find_keyword_in_string(string,state_group_names[i]);
 	if (c == NULL) {
-	  for (j=1; j<=N_CART*2; ++j)
+	  for (j=1; j<=N_CART*2; ++j) {
 	    sm_temp.max_wrench[j] = 1000;
+	    printf("%d: %f\n",j,sm_temp.max_wrench[j]);
+	  }
 	  sm_temp.ft_exception_action = CONT;
 	} else {
 	  n_read = sscanf(c,"%s %lf %lf %lf %lf %lf %lf",saux,
@@ -2204,6 +2215,8 @@ read_state_machine(char *fname) {
 
 	  if (strcmp(saux,"pos")==0)
 	    sm_temp.exit_condition = POS_EXIT;
+	  else if (strcmp(saux,"pos_z")==0)
+	    sm_temp.exit_condition = POS_EXIT_Z;
 	  else if (strcmp(saux,"orient")==0)
 	    sm_temp.exit_condition = ORIENT_EXIT;
 	  else if (strcmp(saux,"pos_orient")==0)
@@ -2315,11 +2328,7 @@ save_statistics_matrix(void)
 {
   int i,j;
   FILE *fp;
-<<<<<<< HEAD
-  char fname[300];
-=======
   char fname[400];
->>>>>>> 0a7f4e24d60b0e6da0edda61abbc712dfc6de760
   time_t rawtime;
   struct tm *tptr;
   char   string[200]="";
@@ -2628,10 +2637,10 @@ min_jerk_next_step_quat_new (SL_quat q, SL_quat q_target,
   for (i=1; i<=N_CART; ++i)
     aux += q_rel[_Q0_+i]*current_target_sm.orient_rel_axis[i];
 
-    if (aux < 0 && fabs(aux) > 0.001)
+  if (aux < 0 && fabs(aux) > 0.001)
     for (i=1; i<=N_QUAT; ++i)
       q_rel[i] *= -1;
-
+  
   quatLog(q_rel,dist);
 
   // fill in angular derivatives to quaternions
@@ -2855,6 +2864,7 @@ assignCurrentSMTarget(StateMachineTarget smt,
   // max wrench
   if (smc->manipulation_frame == REF_FRAME) { // gains are in reference frame
     MY_MATRIX(T,1,N_CART,1,N_CART);
+    MY_MATRIX(W,1,N_CART,1,N_CART);    
     
     // rotate gain matrix appropriately
     mat_mult(R,smc->cart_gain_x_scale_matrix,T);
@@ -2875,16 +2885,37 @@ assignCurrentSMTarget(StateMachineTarget smt,
     print_mat("a-scale",smc->cart_gain_a_scale_matrix);
     print_mat("ad-scale",smc->cart_gain_ad_scale_matrix);
     */
-
+    
     // rotate force/torque values
     mat_vec_mult_size(R,N_CART,N_CART,smt.force_des,N_CART,smc->force_des);
     mat_vec_mult_size(R,N_CART,N_CART,smt.moment_des,N_CART,smc->moment_des);
-    mat_vec_mult_size(R,N_CART,N_CART,smt.max_wrench,N_CART,smc->max_wrench);
-    mat_vec_mult_size(R,N_CART,N_CART,&(smt.max_wrench[_Z_]),N_CART,&(smc->max_wrench[_Z_]));
-    for (i=1; i<=2*N_CART; ++i)
-      smc->max_wrench[i] = fabs(smc->max_wrench[i]);
 
-  } 
+    // the max wrench needs to converted like gains, and we just use the diagonal
+    // of this matrix as max_wrench afterards
+    mat_zero(W);
+    for (i=1; i<=N_CART; ++i) {
+      W[i][i] = smt.max_wrench[i];
+    }
+    mat_mult(R,W,T);
+    mat_mult_normal_transpose(T,R,W);
+    for (i=1; i<=N_CART; ++i) {
+      smc->max_wrench[i] = fabs(W[i][i]);
+    }
+    
+    mat_zero(W);
+    for (i=1; i<=N_CART; ++i) {
+      W[i][i] = smt.max_wrench[N_CART+i];
+    }
+    mat_mult(R,W,T);
+    mat_mult_normal_transpose(T,R,W);
+    for (i=1; i<=N_CART; ++i) {
+      smc->max_wrench[N_CART+i] = fabs(W[i][i]);
+    }
+    
+  }
+
+  //for (i=1; i<=2*N_CART; ++i)
+  //  printf("%d %f\n",i,smc->max_wrench[i]);
   
 }
 
