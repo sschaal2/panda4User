@@ -3328,13 +3328,14 @@ functionCall(int id, int initial_call, int *success)
       int    B_axis = current_target_sm.function_args[5];
       int    C_axis = current_target_sm.function_args[6];
       double freq = current_target_sm.function_args[7];
-      double delta = PI/2.0;
+      double delta = PI/2.0*0;
       double ratio = current_target_sm.function_args[8];
+      double addition = 0.8;
 
       // generate the nominal lissajous pattern in canonical coordinates
       transient_multiplier += (1.-transient_multiplier)*0.0002;
 
-      x = A*sin(2.*PI*freq*count*time_step + delta) * transient_multiplier;
+      x = A*(addition*sin(2.*PI*freq*count*time_step + delta)+(1.-addition)*sin(2.*PI*freq/2.13*count*time_step)) * transient_multiplier;
       y = B*sin(2.*PI*freq*ratio*count*time_step) * transient_multiplier;
       t = C*sin(2.*PI*freq*(ratio*2.83)*count*time_step) * transient_multiplier;
 
