@@ -357,6 +357,12 @@ HAND_cdes_zd
 sm_pos_error
 sm_orient_error
 sm_state_id
+f_search_x
+f_search_y
+f_search_z
+t_search_x
+t_search_y
+t_search_z
 HAND_fi_x
 HAND_fi_y
 HAND_fi_z

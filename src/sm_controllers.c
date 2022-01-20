@@ -63,7 +63,8 @@ init_sm_controllers( void );
 int
 cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
 			   SL_OJstate *rest, iVector status,
-			   double  gain_integral,
+			   double **gain_x_integral,
+			   double **gain_a_integral,				       
 			   double **gain_x_scale,
 			   double **gain_xd_scale,
 			   double **gain_a_scale,
@@ -72,7 +73,8 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
 int
 cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
 			   SL_OJstate *rest, iVector status,
-			   double  gain_integral,
+			   double **gain_x_integral,
+			   double **gain_a_integral,				       
 			   double **gain_x_scale,
 			   double **gain_xd_scale,
 			   double **gain_a_scale,
@@ -176,7 +178,8 @@ Paramters:  (i/o = input/output)
                                by the Cartesian controller)
      \param[in]      rest    : the optimization posture
      \param[in]      status  : which rows to use from the Jacobian
-     \param[in]      gain_integral: integral gain: set to zero if not used
+     \param[in]      gain_x_integral: integral gain matrix position: set to zero if not used
+     \param[in]      gain_a_integral: integral gain matrix orientation: set to zero if not used
      \param[in]      gain_x_scale : scales the default pos gains up-or-down (1=no scale)
      \param[in]      gain_xd_scale: scales the default vel gains up-or-down (1=no scale)
      \param[in]      gain_a_scale : scales the default orient gains up-or-down (1=no scale)
@@ -188,7 +191,8 @@ Paramters:  (i/o = input/output)
 int
 cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
 			   SL_OJstate *rest, iVector status,
-			   double  gain_integral,
+			   double **gain_x_integral,
+			   double **gain_a_integral,			   
 			   double **gain_x_scale,
 			   double **gain_xd_scale,
 			   double **gain_a_scale,
@@ -227,9 +231,27 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
     
   }
 
-  // if no intergral controller, zero intergrator state
-  if (gain_integral == 0)
-    bzero((char *)&cref_integral,sizeof(cref_integral));
+  // if no intergral controller, zero intergrator state: this needs to be checked per
+  // row in the gain matrix, e.g., for M*err, the row gains matters as
+  // integral gains, and if these gains are all zero, no integral state is needed
+  for (i=1; i<=N_CART; ++i) {
+
+    // position integral gain
+    aux = 0.0;
+    for (j=1; j<=N_CART; ++j) {
+      aux += fabs(gain_x_integral[i][j]);
+    }
+    if (aux == 0)
+      cref_integral[i] = 0.0;
+
+    // orientation integral gain
+    aux = 0.0;
+    for (j=1; j<=N_CART; ++j) {
+      aux += fabs(gain_a_integral[i][j]);
+    }
+    if (aux == 0)
+      cref_integral[i+N_CART] = 0.0;
+  }
 
   // compute orientation error term for quaterion feedback control
   quatRelative(cart_orient[HAND].q,cdes_orient[HAND].q,q_rel);
@@ -250,7 +272,9 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
     if (status[j]) {
       ++count;
 
-      cref_integral[count] += gain_integral * (cdes[HAND].x[j]  - cart_state[HAND].x[j]);
+      for (i=1; i<=N_CART; ++i)
+	cref_integral[count] += gain_x_integral[j][i] * (cdes[HAND].x[i]  - cart_state[HAND].x[i]);
+      
       if (fabs(cref_integral[count]) > MAX_INTEGRAL_FORCE)
 	cref_integral[count] = sign(cref_integral[count])*MAX_INTEGRAL_FORCE;
 
@@ -267,7 +291,9 @@ cartesianImpedanceSimpleJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *st
     if (status[N_CART + j]) {
       ++count;
 
-      cref_integral[count] +=  0.1 * log_q_mult * corient_error[j] * gain_integral;
+      for (i=1; i<=N_CART; ++i)
+	cref_integral[count] += gain_a_integral[j][i] * 0.1 * log_q_mult * corient_error[i];
+
       if (fabs(cref_integral[count]) > MAX_INTEGRAL_MOMENT)
 	cref_integral[count] = sign(cref_integral[count])*MAX_INTEGRAL_MOMENT;
 
@@ -349,7 +375,8 @@ Paramters:  (i/o = input/output)
                                by the Cartesian controller)
      \param[in]      rest    : the optimization posture
      \param[in]      status  : which rows to use from the Jacobian
-     \param[in]      gain_integral: integral gain: set to zero if not used
+     \param[in]      gain_x_integral: integral gain matrix position: set to zero if not used
+     \param[in]      gain_a_integral: integral gain matrix orientation: set to zero if not used
      \param[in]      gain_x_scale : scales the default pos gains up-or-down (1=no scale)
      \param[in]      gain_xd_scale: scales the default vel gains up-or-down (1=no scale)
      \param[in]      gain_a_scale : scales the default orient gains up-or-down (1=no scale)
@@ -361,7 +388,8 @@ Paramters:  (i/o = input/output)
 int
 cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *state,
 			  SL_OJstate *rest, iVector status,
-			  double  gain_integral,
+			  double **gain_x_integral,
+			  double **gain_a_integral,			  
 			  double **gain_x_scale,
 			  double **gain_xd_scale,
 			  double **gain_a_scale,
@@ -376,6 +404,7 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
   double         q_rel[N_QUAT+1];
   double         q_rel_angle;
   double         log_q_mult;
+  double         aux;
 
   int            i,j,n,m;
   int            nr = 0;
@@ -384,7 +413,8 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
   static Vector  dJdtthd;
   static int     firsttime = TRUE;
   static Vector  e, en;
-  
+
+  extern int     debug_flag;
 
   /* initialization of static variables */
   if (firsttime) {
@@ -402,9 +432,27 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
     
   }
 
-  // if no intergral controller, zero intergrator state
-  if (gain_integral == 0)
-    bzero((char *)&cref_integral,sizeof(cref_integral));
+  // if no intergral controller, zero intergrator state: this needs to be checked per
+  // row in the gain matrix, e.g., for M*err, the row gains matters as
+  // integral gains, and if these gains are all zero, no integral state is needed
+  for (i=1; i<=N_CART; ++i) {
+
+    // position integral gain
+    aux = 0.0;
+    for (j=1; j<=N_CART; ++j) {
+      aux += fabs(gain_x_integral[i][j]);
+    }
+    if (aux == 0)
+      cref_integral[i] = 0.0;
+
+    // orientation integral gain
+    aux = 0.0;
+    for (j=1; j<=N_CART; ++j) {
+      aux += fabs(gain_a_integral[i][j]);
+    }
+    if (aux == 0)
+      cref_integral[i+N_CART] = 0.0;
+  }
 
   // compute orientation error term for quaterion feedback control
   quatRelative(cart_orient[HAND].q,cdes_orient[HAND].q,q_rel);
@@ -423,7 +471,9 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
     if (status[j]) {
       ++count;
 
-      cref_integral[count] += gain_integral * (cdes[HAND].x[j]  - cart_state[HAND].x[j]);
+      for (i=1; i<=N_CART; ++i)
+	cref_integral[count] += gain_x_integral[j][i] * (cdes[HAND].x[i]  - cart_state[HAND].x[i]);
+      
       if (fabs(cref_integral[count]) > MAX_INTEGRAL_FORCE)
 	cref_integral[count] = sign(cref_integral[count])*MAX_INTEGRAL_FORCE;
 
@@ -441,7 +491,9 @@ cartesianImpedanceModelJt(SL_Cstate *cdes, SL_quat *cdes_orient, SL_DJstate *sta
     if (status[N_CART + j]) {
       ++count;
 
-      cref_integral[count] +=  0.1 * log_q_mult * corient_error[j] * gain_integral;
+      for (i=1; i<=N_CART; ++i)
+	cref_integral[count] += gain_a_integral[j][i] * 0.1 * log_q_mult * corient_error[i];
+
       if (fabs(cref_integral[count]) > MAX_INTEGRAL_MOMENT)
 	cref_integral[count] = sign(cref_integral[count])*MAX_INTEGRAL_MOMENT;
 

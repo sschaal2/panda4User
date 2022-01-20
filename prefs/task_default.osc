@@ -23,14 +23,14 @@ J5_u		3
 J6_u		3
 J7_u		3
 
-
+/*
 C_FX		4
 C_FY		4
 C_FZ		4
 S_FX		4
 S_FY		4
 S_FZ		4
-
+*/
 /*
 C_MX		4
 C_MY		4
@@ -47,11 +47,10 @@ C_MX		4
 C_MY		4
 C_MZ		4
 */
-/*
+
 S_FX		4
 S_FY		4
 S_FZ		4
 S_MX		4
 S_MY		4
 S_MZ		4
-*/

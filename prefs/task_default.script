@@ -224,3 +224,11 @@ HAND_cdes_q0dd
 HAND_cdes_q1dd
 HAND_cdes_q2dd
 HAND_cdes_q3dd
+
+f_search_x
+f_search_y
+f_search_z
+
+t_search_x
+t_search_y
+t_search_z
