@@ -69,12 +69,6 @@ enum RelativeOption
    REL,
   };
 
-enum CoordinateFrame
-  {
-   WORLD_FRAME = 0,
-   REFERENCE_FRAME
-  };
-
 enum ExitOption
   {
    NO_EXIT = 0,
@@ -94,6 +88,7 @@ enum ManipulationFrame
   {
     ABS_FRAME=0,
     REF_FRAME,
+    REF_FRAME_1,    
     BASE_REF_FRAME    
   };
 		 
@@ -172,6 +167,8 @@ double reference_state_pose_x[N_CART+1];
 double reference_state_pose_q[N_QUAT+1];
 double reference_state_pose_x_base[N_CART+1];
 double reference_state_pose_q_base[N_QUAT+1];
+double reference_state_pose_x_1[N_CART+1];
+double reference_state_pose_q_1[N_QUAT+1];
 double reference_state_pose_delta_x_table[MAX_STATES_SM+1][N_CART+1];
 double reference_state_pose_delta_q_table[MAX_STATES_SM+1][N_QUAT+1];
 int    current_state_pose_delta = 0;
@@ -179,6 +176,7 @@ extern int        global_sample_id;
 double grasp_perturbation_x[N_CART+1];
 double grasp_perturbation_q[N_QUAT+1];
 static int apply_grasp_perturbation = FALSE;
+static int reference_pose_1 = FALSE;
 
 int    debug_flag = FALSE;
 
@@ -826,6 +824,13 @@ run_sm_task(void)
 	assignCurrentSMTarget(targets_sm[current_state_sm],
 			      reference_state_pose_x_base,
 			      reference_state_pose_q_base,
+			      ctarget,
+			      ctarget_orient,
+			      &current_target_sm);
+      } else if (targets_sm[current_state_sm].manipulation_frame == REF_FRAME_1) {
+	assignCurrentSMTarget(targets_sm[current_state_sm],
+			      reference_state_pose_x_1,
+			      reference_state_pose_q_1,
 			      ctarget,
 			      ctarget_orient,
 			      &current_target_sm);
@@ -1705,6 +1710,20 @@ read_state_machine(char *fname) {
   rewind(in);
 
 
+  // look for a reference pose_x_1
+  if (find_keyword(in,"reference_state_pose_x_1")) {
+    printf("Found reference pose_x_1\n");
+    reference_pose_1 = TRUE;
+    rc=fscanf(in,"%lf %lf %lf", &reference_state_pose_x_1[_X_],
+               &reference_state_pose_x_1[_Y_],&reference_state_pose_x_1[_Z_]);
+    print_vec_size("x_1",reference_state_pose_x_1,3);
+  } else {
+    reference_pose_1 = FALSE;
+  }
+
+  rewind(in);
+
+
    // look for a reference pose_q
   if (find_keyword(in,"reference_state_pose_q")) {
     printf("Found reference pose_q\n");
@@ -1720,6 +1739,20 @@ read_state_machine(char *fname) {
 
   for (i=1; i<=N_QUAT; ++i)
     reference_state_pose_q[i] = reference_state_pose_q_base[i];
+
+  rewind(in);
+
+   // look for a reference pose_q_1
+  if (find_keyword(in,"reference_state_pose_q_1")) {
+    printf("Found reference pose_q_1\n");
+    rc=fscanf(in,"%lf %lf %lf %lf", &reference_state_pose_q_1[_Q0_],&reference_state_pose_q_1[_Q1_],
+	      &reference_state_pose_q_1[_Q2_],&reference_state_pose_q_1[_Q3_]);
+    // either reference_pose_1 is already true, or it will not be allowed as both pos and orient need to be present
+  } else {
+    reference_pose_1 = FALSE;    
+  }
+
+  quatNorm(reference_state_pose_q_1);
 
   rewind(in);
 
@@ -1898,7 +1931,14 @@ read_state_machine(char *fname) {
 	  }
 	  if (strcmp(saux,"ref")==0)
 	    sm_temp.manipulation_frame = REF_FRAME;
-	  else if (strcmp(saux,"bref")==0)
+	  else if (strcmp(saux,"ref1")==0) {
+	    if (!reference_pose_1) {
+	      printf("Reference pose 1 was referenced, but never found in state machine\n");
+	      continue;
+	    } else {
+	      sm_temp.manipulation_frame = REF_FRAME_1;
+	    }
+	  } else if (strcmp(saux,"bref")==0)
 	    sm_temp.manipulation_frame = BASE_REF_FRAME;
 	  else
 	    sm_temp.manipulation_frame = ABS_FRAME;	    	  
@@ -2802,7 +2842,9 @@ assignCurrentSMTarget(StateMachineTarget smt,
   // to get started, simply copy the target to the current target, and this what needs
   // to be fixed.
   *smc = smt;
-  if (smt.manipulation_frame == BASE_REF_FRAME)
+
+  // the correct reference frame was passed, such that locally in this function REF_FRAME is OK
+  if (smt.manipulation_frame != ABS_FRAME)
     smc->manipulation_frame = REF_FRAME;
 
   // the rotation matrix relative to the reference frame
