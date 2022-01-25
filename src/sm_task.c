@@ -73,6 +73,7 @@ enum ExitOption
   {
    NO_EXIT = 0,
    POS_EXIT,
+   POS_EXIT_EARLY,   
    POS_EXIT_Z,
    ORIENT_EXIT,
    POS_ORIENT_EXIT,
@@ -794,7 +795,7 @@ run_sm_task(void)
       if ((run_table && current_state_pose_delta < n_states_pose_delta) || !run_table) {
 	// this simple adjustment allows continuing with the normal sequence below
 	current_state_sm = current_target_sm.next_state_id-1;
-	scd();
+	//	scd();
       }
 
     }
@@ -1000,7 +1001,6 @@ run_sm_task(void)
 
       // reset the spline target to the current desired state
       for (i=1; i<=N_CART; ++i) {
-	ctarget[HAND].x[i] = cdes[HAND].x[i];
 	cdes[HAND].xd[i]  = 0.0;
 	cdes[HAND].xdd[i] = 0.0;
 	cdes_orient[HAND].ad[i]  = 0.0;
@@ -1017,14 +1017,14 @@ run_sm_task(void)
       case CONT: // not action needed for continue action
 	break;
 
-      case CONT_FROM_HERE: // reset current spline target to current desired
+      case CONT_FROM_HERE: // reset current spline target to current state (not desired)
 
 	// reset the spline target to the current desired state
 	for (i=1; i<=N_CART; ++i) 
 	  ctarget[HAND].x[i] = cart_state[HAND].x[i];
 	
 	for (i=1; i<=N_QUAT; ++i)
-	  ctarget_orient[HAND].q[i] = cdes_orient[HAND].q[i];
+	  ctarget_orient[HAND].q[i] = cart_orient[HAND].q[i];
 
 	break;
 
@@ -1132,10 +1132,27 @@ run_sm_task(void)
     n_mean += 1;
     
 
-    // check whether there is an exit condtion which overules progressing 
-    // to the next state
-    
-    if (time_to_go < 0 && current_target_sm.exit_condition && !ft_exception_flag) {
+    // check whether there is an exit condtion which overule progressing to the next state
+    // or allow an early exit
+
+    if (time_to_go > 0 && current_target_sm.exit_condition && !ft_exception_flag) {
+      int    exit_flag = FALSE;
+
+      switch(current_target_sm.exit_condition) {
+
+      case POS_EXIT_EARLY:
+	if (pos_error <= current_target_sm.err_pos) {
+	  printf("exit early\n");
+	  exit_flag = TRUE;
+	}
+	break;
+
+      }
+
+      if (exit_flag)
+	time_to_go = 0.0;
+
+    } else if (time_to_go < 0 && current_target_sm.exit_condition && !ft_exception_flag) {
       int    exit_flag = TRUE;
       
       switch(current_target_sm.exit_condition)
@@ -1180,7 +1197,7 @@ run_sm_task(void)
     
 
     // at this point we know that we will exit this state of the state machine    
-    if (time_to_go < 0) {
+    if (time_to_go <= 0) {
       time_to_go = 0;
 
       no_gripper_motion = FALSE;
@@ -1716,7 +1733,6 @@ read_state_machine(char *fname) {
     reference_pose_1 = TRUE;
     rc=fscanf(in,"%lf %lf %lf", &reference_state_pose_x_1[_X_],
                &reference_state_pose_x_1[_Y_],&reference_state_pose_x_1[_Z_]);
-    print_vec_size("x_1",reference_state_pose_x_1,3);
   } else {
     reference_pose_1 = FALSE;
   }
@@ -2317,6 +2333,8 @@ read_state_machine(char *fname) {
 
 	  if (strcmp(saux,"pos")==0)
 	    sm_temp.exit_condition = POS_EXIT;
+	  else if (strcmp(saux,"pos_early")==0)
+	    sm_temp.exit_condition = POS_EXIT_EARLY;
 	  else if (strcmp(saux,"pos_z")==0)
 	    sm_temp.exit_condition = POS_EXIT_Z;
 	  else if (strcmp(saux,"orient")==0)
@@ -2894,8 +2912,8 @@ assignCurrentSMTarget(StateMachineTarget smt,
       quatMult(cto[HAND].q,smc->pose_q,cto[HAND].q);
       //print_vec_size("after",cto[HAND].q,4);
     } else if (smc->pose_q_is_relative == ABS && smc->manipulation_frame == REF_FRAME) {	
-      //print_vec_size("before",cto[HAND].q,4);
-      //print_vec_size("ref_state_pose",ref_q,4);
+      print_vec_size("before",cto[HAND].q,4);
+      print_vec_size("ref_state_pose",ref_q,4);
       mat_vec_mult_size(R_ref_t_world,N_CART,N_CART,&(smt.pose_q[_Q0_]),N_CART,&(smc->pose_q[_Q0_]));
       if (apply_grasp_perturbation) {
 	quatMult(ref_q,grasp_perturbation_q,ref_q_adj);	
@@ -2904,7 +2922,7 @@ assignCurrentSMTarget(StateMachineTarget smt,
 	  ref_q_adj[i] = ref_q[i];
       }
       quatMult(ref_q_adj,smc->pose_q,cto[HAND].q);
-      //print_vec_size("after",cto[HAND].q,4);
+      print_vec_size("after",cto[HAND].q,4);
     } else if (smc->pose_q_is_relative == REL && smc->manipulation_frame == REF_FRAME) {	
       //print_vec_size("before",cto[HAND].q,4);
       //print_vec_size("desired change",smt.pose_q,4);
@@ -3372,10 +3390,13 @@ functionCall(int id, int initial_call, int *success)
       double freq = current_target_sm.function_args[7];
       double delta = PI/2.0*0;
       double ratio = current_target_sm.function_args[8];
+      double transient_duration = current_target_sm.function_args[9];      
       double addition = 0.8;
 
       // generate the nominal lissajous pattern in canonical coordinates
-      transient_multiplier += (1.-transient_multiplier)*0.0002;
+      transient_multiplier  = count*time_step/transient_duration;
+      if (transient_multiplier > 1)
+	transient_multiplier = 1;
 
       x = A*(addition*sin(2.*PI*freq*count*time_step + delta)+(1.-addition)*sin(2.*PI*freq/2.13*count*time_step)) * transient_multiplier;
       y = B*sin(2.*PI*freq*ratio*count*time_step) * transient_multiplier;

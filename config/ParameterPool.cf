@@ -45,7 +45,8 @@ osc_time_window_vars		5.0
 osc_vars_task_file		task_default.osc
 osc_vars_motor_file		motor_default.osc
 osc_vars_vision_file		vision_default.osc
-osc_window_geometry		800x900+30%-10
+osc_window_geometry		800x900+33%+20
+//osc_window_geometry		800x900+850+20
 
 // base setting
 

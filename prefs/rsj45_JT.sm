@@ -41,13 +41,12 @@
 // such that the connector needs to push beyond this surface, for 0.018m
 
 reference_state_pose_x	0.4305 -0.105 0.187     // center of PCB
-reference_state_pose_q	0.0 -0.7071 0.7071 0.0  // vertical down aligned with Z
+reference_state_pose_q	0 0 1 0   // vertical down aligned with Z
 
-reference_state_pose_x_1	0.400 0.116 0.172       // center of nest
-reference_state_pose_q_1	0.0 -0.7071 0.7071 0.0  // vertical down aligned with Z
+reference_state_pose_x_1	0.467 0.116 0.172       // center of nest
+reference_state_pose_q_1	0 0 1 0             // vertical down aligned with Z
 
 // the table of reference state perturbations//
 
 // include the core state machine
-//#include "prefs/transformer_JT_core.sm"
-#include "prefs/transformer_JT_core_nest.sm"
+#include "prefs/rsj45_JT_core_nest.sm"
