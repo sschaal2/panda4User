@@ -1,0 +1,82 @@
+{
+name               move_above_object
+func_call 	   gripper 4 0.045 0.1 0.1 0.0
+manipulation_frame ref
+duration      	   1
+pose_x        	   abs -0.05271 0.03137 -.035
+pose_q        	   1 abs  1 0 0 0 
+cart_gain_integral 1.2
+max_wrench    	   cont 10 10 10 5 5 5
+exit_condition	   pos_early 0 0.002 0 0 0
+}
+{
+name               move_to_grasp_object
+manipulation_frame ref
+duration      	   0.5
+pose_x        	   rel 0 0 0.03
+pose_q        	   1 rel  1 0 0 0 
+cart_gain_integral 1.2
+max_wrench    	   last 10 10 10 5 5 5
+exit_condition	   pos_orient 10 0.001 0.01 0 0
+}
+{
+name               close_fingers
+func_call 	   gripper 4 0.0 0.1 0.1 0.1
+manipulation_frame ref
+duration      	   1
+pose_x        	   rel 0 0 0 
+pose_q        	   1 rel 1 0 0 0
+cart_gain_integral 1.2
+max_wrench   	   last 20 20 20 8 8 8
+exit_condition	   func_success 10 0 0 0 0
+}
+{
+name               move_above_object_2
+manipulation_frame ref
+duration      	   1
+pose_x        	   rel 0 0 -0.03
+pose_q        	   1 rel  1 0 0 0 
+cart_gain_integral 1.2
+max_wrench    	   cont 10 10 10 5 5 5
+//exit_condition	   pos_early 0 0.005 0 0 0
+}
+{
+name               move_above_nest_3
+manipulation_frame ref1
+duration      	   1
+pose_x        	   abs -0.035 0.036 -0.035
+pose_q        	   1 abs  1 0 0 0 
+cart_gain_integral 1.2
+max_wrench    	   cont 10 10 10 5 5 5
+//exit_condition	   pos_early 0 0.005 0 0 0
+}
+{
+name               move_down_to_nest
+manipulation_frame ref1
+duration      	   1
+pose_x        	   rel 0 0 0.03
+pose_q        	   1 rel  1 0 0 0 
+cart_gain_integral 1.2
+max_wrench    	   last 10 10 10 5 5 5
+exit_condition	   pos_orient 10 0.0015 0.01 0 0
+}
+{
+name               open_fingers
+func_call 	   gripper 4 0.05 0.1 0.1 0.0
+manipulation_frame ref1
+duration      	   1
+pose_x        	   rel 0 0 0 
+pose_q        	   1 rel 1 0 0 0
+cart_gain_integral 1.2
+max_wrench   	   last 20 20 20 8 8 8
+exit_condition	   func_success 10 0 0 0 0
+}
+{
+name               move_up
+manipulation_frame ref1
+duration      	   0.5
+pose_x        	   rel 0 0 -.03
+pose_q        	   1 rel  1 0 0 0 
+max_wrench   	   last 20 20 20 8 8 8
+cart_gain_integral 1.2
+}

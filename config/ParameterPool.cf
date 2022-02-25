@@ -65,3 +65,7 @@ panda_ip			192.170.10.4
 // goto task speed
 
 goto_speed			.5
+
+// state machine task
+
+sm_task_name			rsj45_JT.sm

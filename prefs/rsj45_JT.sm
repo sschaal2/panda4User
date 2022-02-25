@@ -37,16 +37,47 @@
 
 */
 
-// the reference state: this is the slot pose, with x,y,z denoting the top surface of slot
-// such that the connector needs to push beyond this surface, for 0.018m
+// the reference state: this is the center of the PCB and top surface, 
+// such that the insertion needs to push beyond this surface
 
-reference_state_pose_x	0.4305 -0.105 0.187     // center of PCB
-reference_state_pose_q	0 0 1 0   // vertical down aligned with Z
+reference_state_pose_x	0.4305 -0.105 0.187     // center/top surface of PCB
+reference_state_pose_q	0 0 1 0                 // vertical down aligned with Z, fingers aligned with X
 
-reference_state_pose_x_1	0.467 0.116 0.172       // center of nest
-reference_state_pose_q_1	0 0 1 0             // vertical down aligned with Z
+reference_state_pose_x_1	0.432 0.08 0.174    // center/top surface of nest board
+reference_state_pose_q_1	0 0 1 0             // vertical down aligned with Z, fingers aligned with X
+
+// endeffector modification: none -- just use the standard EOT dimensions and adjust grasp positions
+endeffector   0.05  0 0 0  0 0 0.342  0 0 2.356
+
+// default gains
+default_cart_gain_x_scale	3 3 3 3 3 3
+default_cart_gain_a_scale	4 4 4 4 4 4
+
+// default controller
+default_controller ModelImpedanceJt
 
 // the table of reference state perturbations//
 
 // include the core state machine
-#include "prefs/rsj45_JT_core_nest.sm"
+#include "prefs/rsj45_JT_grasp_insert.sm"
+#include "prefs/rsj45_JT_back_nest.sm"
+{
+name               redo_task
+name_next	   move_to_grasp
+manipulation_frame ref1
+duration      	   0.1
+pose_x        	   rel 0 0 0 
+pose_q        	   1 rel 1 0 0 0
+cart_gain_integral 1.2
+max_wrench   	   last 20 20 20 8 8 8
+}
+{
+name               move_up
+manipulation_frame ref1
+duration      	   2
+pose_x        	   rel 0 0 -.05
+pose_q        	   1 rel  1 0 0 0 
+cart_gain_x_scale  1 1 1 1 1 1
+cart_gain_a_scale  1 1 1 1 1 1
+}
+

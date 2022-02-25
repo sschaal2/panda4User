@@ -59,8 +59,8 @@ default_controller ModelImpedanceJt
 // the table of reference state perturbations//
 
 // include the core state machine
-#include "prefs/transformer_JT_grasp_insert.sm"
-#include "prefs/transformer_JT_back_nest.sm"
+#include "prefs/usb_socket_JT_grasp_insert.sm"
+#include "prefs/usb_socket_JT_back_nest.sm"
 {
 name               redo_task
 name_next	   move_to_grasp
@@ -80,3 +80,4 @@ pose_q        	   1 rel  1 0 0 0
 cart_gain_x_scale  1 1 1 1 1 1
 cart_gain_a_scale  1 1 1 1 1 1
 }
+
