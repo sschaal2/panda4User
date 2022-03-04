@@ -17,7 +17,7 @@ pose_x        	   rel 0 0 0.025
 pose_q        	   1 rel  1 0 0 0 
 cart_gain_integral 1.2
 max_wrench    	   last 10 10 10 5 5 5
-exit_condition	   pos_orient 10 0.001 0.01 0 0
+exit_condition	   pos_orient 10 0.0015 0.02 0 0
 }
 {
 name               close_fingers

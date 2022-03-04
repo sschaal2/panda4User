@@ -68,4 +68,4 @@ goto_speed			.5
 
 // state machine task
 
-sm_task_name			rsj45_JT.sm
+sm_task_name			transformer_JT.sm

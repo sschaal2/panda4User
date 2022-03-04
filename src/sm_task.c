@@ -194,6 +194,18 @@ static int    current_controller = SIMPLE_IMPEDANCE_JT;
 static int    default_controller = SIMPLE_IMPEDANCE_JT;
 static int    function_call_success;
 
+// lissajous pattern structure
+typedef struct LissajousParms {
+  double freq_base;
+  double amplitude_slow;
+  double amplitude_fast;
+  double amplitude_rot;
+  double freq_ratio;
+  double freq_ratio_rot;
+  double convex_beta;
+  double convex_freq_ratio;
+} LissajousParms;
+
 /* Cartesian orientation representation with a rotation around an axis */
 typedef struct { 
   double phi;          /* rotation angle */
@@ -306,6 +318,8 @@ static void   assignCurrentSMTarget(StateMachineTarget smt,
 				    SL_quat   *cto,
 				    StateMachineTarget *smc);
 static int    functionCall(int id, int initial_call, int *success) ;
+static void   lissajous(LissajousParms *lissparm, double current_time,
+			double *pos, double *vel, double *acc);
 
 
 
@@ -3453,16 +3467,20 @@ functionCall(int id, int initial_call, int *success)
       double delta = PI/2.0*0;
       double ratio = current_target_sm.function_args[8];
       double transient_duration = current_target_sm.function_args[9];      
-      double addition = 0.8;
+      double addition = 0.7732;
 
       // generate the nominal lissajous pattern in canonical coordinates
       transient_multiplier  = count*time_step/transient_duration;
       if (transient_multiplier > 1)
 	transient_multiplier = 1;
-
+      /*
       x = A*(addition*sin(2.*PI*freq*count*time_step + delta)+(1.-addition)*sin(2.*PI*freq/2.13*count*time_step)) * transient_multiplier;
       y = B*sin(2.*PI*freq*ratio*count*time_step) * transient_multiplier;
       t = C*sin(2.*PI*freq*(ratio*2.83)*count*time_step) * transient_multiplier;
+      */
+      x = A*(addition*sin(2.*PI*freq*count*time_step + delta)+(1.-addition)*sin(2.*PI*freq*0.2733*count*time_step)) * transient_multiplier;
+      y = B*sin(2.*PI*freq*ratio*count*time_step) * transient_multiplier;
+      t = C*sin(2.*PI*freq*(2.13)*count*time_step) * transient_multiplier;
 
       // assign canonical pattern to desired axes
       f_search_vec[A_axis] = x;
@@ -3485,4 +3503,134 @@ functionCall(int id, int initial_call, int *success)
   }
 
   return TRUE;
+}
+
+/*!*****************************************************************************
+ *******************************************************************************
+\note  lissajous
+\date  March 2022
+   
+\remarks 
+
+ implementation of a lissajous pattern for pattern search
+ 
+
+ *******************************************************************************
+ Function Parameters: [in]=input,[out]=output
+
+
+ \param[in]          l            : structure with lissajous parameters
+ \param[in]          current_time : the current time at which to evaluate
+ \param[out]         pos          : 3D vector with positions
+ \param[out]         vel          : 3D vector with velocities
+ \param[out]         acc          : 3D vector with velocities
+
+ ******************************************************************************/
+static void
+lissajous(LissajousParms *l, double current_time,
+	  double *pos, double *vel, double *acc)
+{
+  double t;
+  double w;
+
+  // easier notation
+  t=current_time;
+  w=2.*PI*l->freq_base;
+
+  pos[_X_] = l->amplitude_slow * (l->convex_beta * sin(w*t) +
+				  (1.-l->convex_beta) * sin(w*t * l->convex_freq_ratio));
+  pos[_Y_] = l->amplitude_fast * sin(w*t * l->freq_ratio);
+  pos[_Z_] = l->amplitude_rot * sin(w*t * l->freq_ratio_rot);
+						     
+  vel[_X_] = l->amplitude_slow * (l->convex_beta * cos(w*t)*w +
+				  (1.-l->convex_beta) * cos(w*t * l->convex_freq_ratio)*w*l->convex_freq_ratio);
+  vel[_Y_] = l->amplitude_fast * cos(w*t * l->freq_ratio)*w*l->freq_ratio;
+  vel[_Z_] = l->amplitude_rot * cos(w*t * l->freq_ratio_rot)*w*l->freq_ratio_rot;
+
+  acc[_X_] = l->amplitude_slow * (-l->convex_beta * sin(w*t)*sqr(w) -
+				  (1.-l->convex_beta) * sin(w*t * l->convex_freq_ratio)*sqr(w*l->convex_freq_ratio));
+  acc[_Y_] = -l->amplitude_fast * sin(w*t * l->freq_ratio)*sqr(w*l->freq_ratio);
+  acc[_Z_] = -l->amplitude_rot * sin(w*t * l->freq_ratio_rot)*sqr(w*l->freq_ratio_rot);
+  
+  
+}
+
+/*!*****************************************************************************
+ *******************************************************************************
+\note  lissajousSearch
+\date  March 2022
+   
+\remarks 
+
+ optimizes hyperparameters of lissajous according to a max-entropy criterion
+ with cutoff threshold
+ 
+
+ *******************************************************************************
+ Function Parameters: [in]=input,[out]=output
+
+
+ \param[in/out]          l        : structure with lissajous parameters
+ \param[in]              thres    : threshold of abs. 1st derivative of pattern
+ \param[in]              duration : duration of search
+
+ the optimal hyperparameters are returned in the l parameter structure
+
+ ******************************************************************************/
+static void
+lissajousSearch(LissajousParms *l, double thres, double duration)
+{
+  double t;
+  int    i,j,n,m,r,o;
+  int    res=50; // search resolution
+  // experience-based intervals for search
+  double freq_ratio_low          = 1.0;
+  double freq_ratio_high         = 2.0;  
+  double convex_beta_low         = 0.5;
+  double convex_beta_high        = 1.0;  
+  double freq_ratio_rot_low      = 2.0;
+  double freq_ratio_rot_high     = 4.0;  
+  double convex_freq_ratio_low   = 0.1;
+  double convex_freq_ratio_high  = 0.5;
+
+  double pos[N_CART+1];
+  double vel[N_CART+1];
+  double acc[N_CART+1];
+
+  double ct;
+  double trans;
+  double dt = 0.01;
+  int    count;
+
+  count = round(duration/dt);
+
+  for (i=0; i<= res; ++i) {
+    for (j=0; j<= res; ++j) {
+      for (n=0; n<= res; ++n) {
+	for (m=0; m<= res; ++m) {
+
+	  l->freq_ratio = (freq_ratio_high-freq_ratio_low)/((double) res) * i + freq_ratio_low + 0.011;
+	  l->convex_beta = (convex_beta_high-convex_beta_low)/((double) res) * j + convex_beta_low + 0.0017;
+	  l->freq_ratio_rot = (freq_ratio_rot_high-freq_ratio_rot_low)/((double) res) * n + freq_ratio_rot_low + 0.03;
+	  l->convex_freq_ratio = (convex_freq_ratio_high-convex_freq_ratio_low)/((double) res) * m + convex_freq_ratio_low + 0.0037;
+
+	  for (r=0; r<=count; ++r) {
+	    ct = ((double) r) * dt;
+	    trans = ct / (duration/3.0);
+	    if (trans > 1)
+	      trans = 1;
+	    lissajous(l, ct, pos, vel, acc);
+	    for (o=1; o<=N_CART; ++o) {
+	      pos[o] *= trans;
+	      vel[o] *= trans;
+	      acc[o] *= trans;	      
+	    }
+	  }
+
+	}
+      }
+    }
+  }
+  
+  
 }
