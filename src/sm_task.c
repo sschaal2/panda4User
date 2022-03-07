@@ -320,6 +320,7 @@ static void   assignCurrentSMTarget(StateMachineTarget smt,
 static int    functionCall(int id, int initial_call, int *success) ;
 static void   lissajous(LissajousParms *lissparm, double current_time,
 			double *pos, double *vel, double *acc);
+static void   lissajousSearch(LissajousParms *l, double thres, double duration);
 
 
 
@@ -3469,6 +3470,13 @@ functionCall(int id, int initial_call, int *success)
       double transient_duration = current_target_sm.function_args[9];      
       double addition = 0.7732;
 
+      LissajousParms l;
+      l.freq_base = freq;
+      l.amplitude_slow = A;
+      l.amplitude_fast = B;
+      l.amplitude_rot  = C;
+      lissajousSearch(&l,13.0, 10.0);
+
       // generate the nominal lissajous pattern in canonical coordinates
       transient_multiplier  = count*time_step/transient_duration;
       if (transient_multiplier > 1)
@@ -3541,12 +3549,12 @@ lissajous(LissajousParms *l, double current_time,
 				  (1.-l->convex_beta) * sin(w*t * l->convex_freq_ratio));
   pos[_Y_] = l->amplitude_fast * sin(w*t * l->freq_ratio);
   pos[_Z_] = l->amplitude_rot * sin(w*t * l->freq_ratio_rot);
-						     
+  
   vel[_X_] = l->amplitude_slow * (l->convex_beta * cos(w*t)*w +
 				  (1.-l->convex_beta) * cos(w*t * l->convex_freq_ratio)*w*l->convex_freq_ratio);
   vel[_Y_] = l->amplitude_fast * cos(w*t * l->freq_ratio)*w*l->freq_ratio;
   vel[_Z_] = l->amplitude_rot * cos(w*t * l->freq_ratio_rot)*w*l->freq_ratio_rot;
-
+  
   acc[_X_] = l->amplitude_slow * (-l->convex_beta * sin(w*t)*sqr(w) -
 				  (1.-l->convex_beta) * sin(w*t * l->convex_freq_ratio)*sqr(w*l->convex_freq_ratio));
   acc[_Y_] = -l->amplitude_fast * sin(w*t * l->freq_ratio)*sqr(w*l->freq_ratio);
@@ -3577,12 +3585,13 @@ lissajous(LissajousParms *l, double current_time,
  the optimal hyperparameters are returned in the l parameter structure
 
  ******************************************************************************/
+#define HIST_RES 20 // needs to be even number
 static void
 lissajousSearch(LissajousParms *l, double thres, double duration)
 {
   double t;
-  int    i,j,n,m,r,o;
-  int    res=50; // search resolution
+  int    i,j,n,m,r,o,p,q;
+  int    res=20; // search resolution
   // experience-based intervals for search
   double freq_ratio_low          = 1.0;
   double freq_ratio_high         = 2.0;  
@@ -3601,6 +3610,28 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
   double trans;
   double dt = 0.01;
   int    count;
+  int    ind_x,ind_y,ind_z;
+  double max_vel,abs_vel;
+  double max_max_vel = 0;
+  double entropy;
+  double max_entropy = 0;
+  LissajousParms lbest;
+  FILE   *fp;
+
+  char  fname[100];
+  
+  int histogram[HIST_RES+1][HIST_RES+1][HIST_RES+1];
+
+  //create a unique identifier of this pattern
+  sprintf(fname,"prefs/lissajous-%3.2f-%3.2f-%3.2f-%3.2f-%3.2f-%3.2f",l->freq_base,l->amplitude_slow,l->amplitude_fast,l->amplitude_rot,duration,thres);
+
+  //try to open the file
+  if ((fp=fopen(fname,"r")) != NULL) {
+    if (fread(l,sizeof(LissajousParms),1,fp) != 1)
+      printf("ERROR that should not happen in read\n");
+    fclose(fp);
+    return;
+  }
 
   count = round(duration/dt);
 
@@ -3614,22 +3645,81 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
 	  l->freq_ratio_rot = (freq_ratio_rot_high-freq_ratio_rot_low)/((double) res) * n + freq_ratio_rot_low + 0.03;
 	  l->convex_freq_ratio = (convex_freq_ratio_high-convex_freq_ratio_low)/((double) res) * m + convex_freq_ratio_low + 0.0037;
 
+	  max_vel = 0;
+
+	  bzero(histogram,sizeof(histogram));
+	  
 	  for (r=0; r<=count; ++r) {
+	    
 	    ct = ((double) r) * dt;
-	    trans = ct / (duration/3.0);
-	    if (trans > 1)
-	      trans = 1;
 	    lissajous(l, ct, pos, vel, acc);
-	    for (o=1; o<=N_CART; ++o) {
-	      pos[o] *= trans;
-	      vel[o] *= trans;
-	      acc[o] *= trans;	      
+
+	    // transient multiplier
+	    trans = ct / (duration/3.0);
+	    if (trans > 1) {
+	      trans = 1;
+	    } else {
+	      for (o=1; o<=N_CART; ++o) {
+		pos[o] *= trans;
+		vel[o] *= trans;
+		acc[o] *= trans;	      
+	      }
 	    }
+
+	    // max vel
+	    abs_vel = sqrt(sqr(vel[_X_])+sqr(vel[_Y_]));
+	    if (abs_vel > max_vel)
+	      max_vel = abs_vel;
+
+	    // add to histogram
+	    ind_x = round(pos[_X_]/(l->amplitude_slow/((double)HIST_RES/2.0)))+HIST_RES/2;
+	    ind_y = round(pos[_Y_]/(l->amplitude_fast/((double)HIST_RES/2.0)))+HIST_RES/2;
+	    ind_z = round(pos[_Z_]/(l->amplitude_rot/((double)HIST_RES/2.0)))+HIST_RES/2;
+
+	    if (ind_x < 0 || ind_x > HIST_RES)
+	      printf("%d x is wrong\n",ind_x);
+	    if (ind_y < 0 || ind_y > HIST_RES)
+	      printf("%d y is wrong\n",ind_x);
+	    if (ind_z < 0 || ind_z > HIST_RES)
+	      printf("%d z is wrong\n",ind_x);
+
+	    ++histogram[ind_x][ind_y][ind_z];
+
+	  }
+
+	  entropy = 0;
+	  if (max_vel <= thres) {
+	    // compute entropy of pattern
+	    for (o=0; o<=HIST_RES; ++o) {
+	      for (p=0; p<=HIST_RES; ++p) {
+		for (q=0; q<=HIST_RES; ++q) {
+		  //printf("%d %d %d    %f\n",o,p,q,histogram[o][p][q]/((double)count+1));
+		  entropy += -((double)histogram[o][p][q])/((double)count+1) * log(((double)histogram[o][p][q])/((double)count+1) + 1.e-6);
+		}
+	      }
+	    }
+	  }
+
+	  if (entropy >= max_entropy) {
+	    max_entropy = entropy;
+	    max_max_vel = max_vel;
+	    lbest = *l;
 	  }
 
 	}
       }
     }
+  }
+
+  *l = lbest;
+  printf("%f %f %f %f  (e=%f v=%f)\n",lbest.freq_ratio,lbest.freq_ratio_rot,lbest.convex_beta,lbest.convex_freq_ratio,max_entropy,max_max_vel);
+
+  //store in file
+  if ((fp=fopen(fname,"w")) != NULL) {
+    if (fwrite(l,sizeof(LissajousParms),1,fp) != 1)
+      printf("ERROR that should not happen in write\n");
+    fclose(fp);
+    return;
   }
   
   
