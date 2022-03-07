@@ -37,10 +37,22 @@
 
 */
 
-// just a test sequence
+// the reference state: this is the slot pose, with x,y,z denoting the top surface of slot
+// such that the connector needs to push beyond this surface, for 0.023m
 
-// endeffector modification: QSFP connect length + flage+finger+gripper QFSP=0.06m + RobotiqFinger=0.025
-endeffector   0  0 0 0  0 0 0.2974  0 0 2.356
+reference_state_pose_x	0.572 0.0 0.158         // roughly the middle of board
+reference_state_pose_q	0.0 -0.7071 0.7071 0.0  // vertical down aligned with Z
+
+// the table of reference state perturbations//
+//reference_state_pose_delta_table prefs/all_powerplug_slots.txt
+//reference_state_pose_delta_table prefs/half_range_delta_pose.txt
+//reference_state_pose_delta_table prefs/full_range_delta_pose.txt
+
+// the core state machine for powerplug insertion
+
+// endeffector modification: flange+finger_off+finger_length 
+endeffector   0.1  0 0 0  0 0 0.332  0 0 2.356     // Robotiq gripper with Axia80 
+
 
 // default gains
 default_cart_gain_x_scale	1 1 1 1 1 1
@@ -48,28 +60,32 @@ default_cart_gain_a_scale	1 1 1 1 1 1
 
 // default controller
 default_controller ModelImpedanceJt
-//default_controller SimpleImpedanceJt
 
+// grasp the qfsp connector in first slot
 
 {
-name               test_state_1
-manipulation_frame abs
+name               move_above
+func_call 	   gripper 4 0.0 0.15 0.1 0.0
+manipulation_frame bref
 duration      	   2
-pose_x        	   abs 0.403 0.217 0.40
-pose_q        	   1 rel 1 0 0 0 2
-cart_gain_integral 0.0
-max_wrench    	   abort 10 10 10 5 5 5
+pose_x        	   abs 0.0 0.0 -0.05
+pose_q        	   1 abs 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0
+max_wrench    	   last 10 10 10 5 5 5
 }
 {
-name               close
-func_call 	   gripper 4 0.0 0.1 0.1 0.0
-manipulation_frame abs
-duration      	   1
-pose_x        	   rel 0.0 0.0 0.0
-pose_q        	   1 rel 1 0 0 0
-cart_gain_integral 0.0
-max_wrench    	   abort 10 10 10 5 5 5
-exit_condition     func_success 10 0 0 0 0
+name               get_close
+manipulation_frame bref
+duration      	   2
+pose_x        	   abs 0.0 0.00 -0.01
+pose_q        	   1 abs 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+max_wrench   	   last 10 10 10 5 5 5
+cart_gain_integral 0.5
+exit_condition	   pos_orient 10 0.0025 0.02 0 0
 }
 {
 name               zero_force_torque_offsets
@@ -80,20 +96,18 @@ pose_x        	   rel 0 0 0
 pose_q        	   1 rel  1 0 0 0 
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
-cart_gain_integral 0.0
 max_wrench    	   cont 10 10 10 5 5 5
-exit_condition	   fun_success 10 0 0 0 0
 }
 {
 name               get_in_contact
 manipulation_frame ref
-duration      	   30
+duration      	   1
 pose_x        	   rel 0.0 0.0 0.01 
 pose_q        	   1 rel  1 0 0 0
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
-//force_desired      0.9 0 0 -5
-//moment_desired     0 0 0 0
-max_wrench    	   cont 5 10 15 5 10 15
+force_desired      0.0 0 0 0
+moment_desired     0 0 0 0
+max_wrench    	   cont 10 10 2 5 5 5
 }

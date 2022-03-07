@@ -18,10 +18,7 @@ Remarks:
 #include "string.h"
 
 // openGL includes
-#include "GL/glut.h"
-#include "GL/freeglut_std.h"
-#include "GL/freeglut_ext.h"
-#include "GL/glu.h"
+#include "GL/freeglut.h"
 #include "SL_openGL.h"
 #include "SL_userGraphics.h"
 #include "utility_macros.h"

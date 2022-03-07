@@ -37,63 +37,17 @@
 
 */
 
-// just a test sequence
+// the reference state: this is the slot pose, with x,y,z denoting the top surface of slot
+// such that the connector needs to push beyond this surface, for 0.018m
 
-// endeffector modification: QSFP connect length + flage+finger+gripper QFSP=0.06m + RobotiqFinger=0.025
-endeffector   0  0 0 0  0 0 0.2974  0 0 2.356
+reference_state_pose_x	0.4305 -0.105 0.187     // center of PCB
+reference_state_pose_q	0.0 -0.7071 0.7071 0.0  // vertical down aligned with Z
 
-// default gains
-default_cart_gain_x_scale	1 1 1 1 1 1
-default_cart_gain_a_scale	1 1 1 1 1 1
+reference_state_pose_x_1	0.400 0.116 0.172       // center of nest
+reference_state_pose_q_1	0.0 -0.7071 0.7071 0.0  // vertical down aligned with Z
 
-// default controller
-default_controller ModelImpedanceJt
-//default_controller SimpleImpedanceJt
+// the table of reference state perturbations//
 
-
-{
-name               test_state_1
-manipulation_frame abs
-duration      	   2
-pose_x        	   abs 0.403 0.217 0.40
-pose_q        	   1 rel 1 0 0 0 2
-cart_gain_integral 0.0
-max_wrench    	   abort 10 10 10 5 5 5
-}
-{
-name               close
-func_call 	   gripper 4 0.0 0.1 0.1 0.0
-manipulation_frame abs
-duration      	   1
-pose_x        	   rel 0.0 0.0 0.0
-pose_q        	   1 rel 1 0 0 0
-cart_gain_integral 0.0
-max_wrench    	   abort 10 10 10 5 5 5
-exit_condition     func_success 10 0 0 0 0
-}
-{
-name               zero_force_torque_offsets
-manipulation_frame abs
-func_call	   zero_ft
-duration      	   0.5
-pose_x        	   rel 0 0 0
-pose_q        	   1 rel  1 0 0 0 
-cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
-cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
-cart_gain_integral 0.0
-max_wrench    	   cont 10 10 10 5 5 5
-exit_condition	   fun_success 10 0 0 0 0
-}
-{
-name               get_in_contact
-manipulation_frame ref
-duration      	   30
-pose_x        	   rel 0.0 0.0 0.01 
-pose_q        	   1 rel  1 0 0 0
-cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
-cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
-cart_gain_integral 0.5
-//force_desired      0.9 0 0 -5
-//moment_desired     0 0 0 0
-max_wrench    	   cont 5 10 15 5 10 15
-}
+// include the core state machine
+//#include "prefs/transformer_JT_core.sm"
+#include "prefs/transformer_JT_core_nest.sm"

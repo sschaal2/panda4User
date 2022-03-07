@@ -1,7 +1,9 @@
 // the core state machine for powerplug insertion
 
 // endeffector modification: powerplug+flange+finger_off+finger_length PowerPlug=0.0023 (stick out)
-endeffector   0.1  0 0 0  0 0 0.2564  0 0 2.356
+//endeffector   0.1  0 0 0  0 0 0.2564  0 0 2.356  // Franka hand with robotiq fingers
+endeffector   0.1  0 0 0  0 0 0.355  0 0 2.356     // Robotiq gripper with Axia80 
+
 
 // default gains
 default_cart_gain_x_scale	1 1 1 1 1 1
@@ -27,12 +29,11 @@ max_wrench    	   last 10 10 10 5 5 5
 }
 {
 name               prepare_grasp
+func_call 	   gripper 4 0.03 0.15 0.1 0.0
 manipulation_frame bref
 duration      	   2
 pose_x        	   abs 0.0 0.00 0.017
 pose_q        	   1 abs 1 0 0 0
-gripper_start 	   abs 0.03 0
-gripper_end   	   abs 0.0  100
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
@@ -40,16 +41,27 @@ max_wrench   	   last 10 10 10 5 5 5
 exit_condition	   pos_orient 10 0.0025 0.02 0 0
 }
 {
+name               grasp_powerplug
+func_call 	   gripper 4 0.0 0.1 0.1 200.0
+manipulation_frame bref
+duration      	   1
+pose_x        	   rel 0 0 0 
+pose_q        	   1 rel 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench   	   last 20 20 20 8 8 8
+exit_condition	   fun_success 10 0 0 0 0
+}
+{
 name               extract_powerplug
 manipulation_frame bref
-duration      	   3
-pose_x        	   abs 0.0 0.0 -0.10
+duration      	   2
+pose_x        	   abs 0.0 0.0 -0.05
 pose_q        	   1 abs 1 0 0 0
 cart_gain_x_scale  1.4 1.4 1.4 1.4 1.4 1.4
 cart_gain_a_scale  1.4 1.4 1.4 1.4 1.4 1.4
-gripper_start 	   abs 0.0  100
-gripper_end   	   abs 0.0  100
-max_wrench    	   cont 20 20 50 5 5 5 
+max_wrench    	   cont 20 20 50 10 10 10
 }
 
 
@@ -60,9 +72,7 @@ manipulation_frame ref
 func_call	   next_table_delta
 duration      	   2
 pose_x        	   abs -0.0 0.0 -0.01
-pose_q        	   1 rel  0.9423 -0.1219 -0.2634 0.1678
-gripper_start 	   abs 0.0  100
-gripper_end   	   abs 0.0  100
+pose_q        	   1 rel  0.9423 -0.1219 -0.2634 0.1678 -2
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
@@ -76,8 +86,6 @@ func_call	   zero_ft
 duration      	   0.5
 pose_x        	   rel 0 0 0
 pose_q        	   1 rel  1 0 0 0 
-gripper_start 	   abs 0.0  100
-gripper_end   	   abs 0.0  100
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
@@ -86,11 +94,9 @@ max_wrench    	   cont 10 10 10 5 5 5
 {
 name               get_in_contact
 manipulation_frame ref
-duration      	   2
+duration      	   1
 pose_x        	   rel 0.0 0.0 0.01 
 pose_q        	   1 rel  1 0 0 0
-gripper_start 	   abs 0.0  100
-gripper_end   	   abs 0.0  100
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_integral 0.5
@@ -102,17 +108,14 @@ max_wrench    	   cont 10 10 15 5 5 5
 name		   reorient_in_slot
 manipulation_frame ref
 duration      	   2
-//pose_x        	   abs 0.0 0.0 0.0
 pose_x        	   rel -0.0 0.0 0.0
-pose_q        	   1 abs 1 0 0 0
-gripper_start 	   abs 0.0  100
-gripper_end   	   abs 0.0  100
-cart_gain_x_scale  1.0 1.0 1.0 1.0 1.0 1.0
-cart_gain_a_scale  1.0 1.0 1.0 1.0 1.0 1.0
+pose_q        	   1 abs 1 0 0 0 2
+cart_gain_x_scale  2. 2. 1.2 2. 2. 1.2
+cart_gain_a_scale  2.2 2.2 2.2 2. 2. 2.
 cart_gain_integral 0.0
-force_desired      0.9 -5 -2 -5
+force_desired      0.5 -5 -2 -8
 moment_desired     0 0 0 0
-max_wrench    	   last 15 15 15 5 5 5
+max_wrench    	   last 20 20 20 10 10 10
 }
 {
 name               push_down_powerplug
@@ -120,11 +123,9 @@ manipulation_frame ref
 duration      	   1.5
 pose_x       	   abs 0 0 .02 
 pose_q        	   1 rel 1 0 0 0
-gripper_start 	   abs 0.0  100
-gripper_end   	   abs 0.0  100
-cart_gain_x_scale  1.4 1.4 1.4 1.4 1.4 1.4
-force_desired      0.8 0 0 -100
-moment_desired     -0.8 -1 -1 0
+cart_gain_x_scale  1.4 1.4 2.2 1.4 1.4 2.2
+force_desired      0.5 0 0 -70
+moment_desired     -0.0 -1 -1 0
 max_wrench    	   last 30 30 90 10 10 10
 exit_condition	   pos 5 0.01 0.0 0 0
 }
@@ -134,12 +135,11 @@ manipulation_frame ref
 duration      	   1
 pose_x        	   abs 0 0 0.018
 pose_q        	   1 rel 1 0 0 0
-gripper_start 	   abs 0.0  100
-gripper_end   	   abs 0.025 0
 max_wrench    	   cont 30 30 100 10 10 10
 }
 {
 name               move_above_socket
+func_call 	   gripper 4 0.03 0.15 0.1 0.0
 name_next          prepare_grasp
 manipulation_frame ref
 duration      	   2
@@ -149,8 +149,6 @@ pose_q        	   1 abs 1 0 0 0
 //gripper_end      abs 0.0  100
 cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
 cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
-gripper_start 	   abs 0.025 0
-gripper_end   	   abs 0.025 0
 max_wrench    	   cont 15 15 15 5 5 5
 }
 {

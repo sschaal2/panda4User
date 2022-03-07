@@ -1,0 +1,212 @@
+// the core state machine for powerplug insertion
+
+// endeffector modification: rsj45+flange+finger_off+finger_length Transformer Plug=0.005 (stick out)
+endeffector   0.1  0 0 0  0 0 0.342  0 0 2.351
+
+// default gains
+default_cart_gain_x_scale	1 1 1 1 1 1
+default_cart_gain_a_scale	1 1 1 1 1 1
+
+// default controller
+default_controller ModelImpedanceJt
+
+// grasp the connector
+{
+name               move_above_nest
+func_call 	   gripper 4 0.045 0.1 0.1 0.0
+manipulation_frame ref1
+duration      	   1
+pose_x        	   abs 0 0 -.035
+pose_q        	   1 abs  1 0 0 0 1
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench    	   cont 10 10 10 5 5 5
+//exit_condition	   pos_early 0 0.005 0 0 0
+}
+{
+name               move_to_grasp
+manipulation_frame ref1
+duration      	   0.5
+pose_x        	   abs 0 0 0.0
+pose_q        	   1 rel  1 0 0 0 
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench    	   cont 10 10 10 5 5 5
+exit_condition	   pos_orient 10 0.001 0.015 0 0
+}
+{
+name               grasp
+func_call 	   gripper 4 0.0 0.1 0.1 100.0
+manipulation_frame ref1
+duration      	   0.1
+pose_x        	   rel 0 0 0 
+pose_q        	   1 rel 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench   	   last 20 20 20 8 8 8
+exit_condition	   fun_success 10 0 0 0 0
+}
+{
+name               move_above_nest_2
+manipulation_frame ref1
+duration      	   0.5
+pose_x        	   rel 0 0 -0.08
+pose_q        	   1 rel  1 0 0 0 
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench    	   cont 10 10 10 5 5 5
+exit_condition	   pos_early 0 0.005 0 0 0
+}
+{
+name               move_above_object
+manipulation_frame ref
+duration      	   1
+pose_x        	   abs -0.05271 0.03137 -.015
+pose_q        	   1 rel  1 0 0 0 
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench    	   cont 10 10 10 5 5 5
+exit_condition	   pos_orient 10 0.0015 0.02 0 0
+}
+{
+name               tare_ft
+manipulation_frame bref
+func_call	   zero_ft
+duration      	   1
+pose_x        	   rel 0 0 0
+pose_q        	   1 rel  1 0 0 0 
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench    	   cont 10 10 10 5 5 5
+exit_condition	   func_success 10 0 0 0 0
+}
+{
+name               move_to_contact
+manipulation_frame ref
+duration      	   1
+pose_x        	   rel 0 0 0.02
+pose_q        	   1 rel  1 0 0 0 
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+force_desired      0 0 0 0
+max_wrench    	   cont_from_here 10 10 0.5  5 5 5
+}
+{
+name               pattern_search
+func_call	   force_lissajous 9 4 4 2 1 2 3 0.15 1.278 2.0
+manipulation_frame ref
+duration      	   1
+pose_x        	   rel 0 0 0.002
+pose_q        	   1 rel  1 0 0 0 
+cart_gain_x_scale  2.2 2.2 1.2 2.2 2.2 2.2
+cart_gain_a_scale  1.2 1.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5 0.5 0.0 0.0 0.0 0.0
+force_desired      0.75 0 0 -1
+moment_desired     0.75 0 0 0
+max_wrench    	   cont 10 10 20  5 5 5
+exit_condition	   pos_z 20 .001 0 0 0
+}
+{
+name               open_fingers
+func_call 	   gripper 4 0.04 0.1 0.1 0.0
+manipulation_frame ref
+duration      	   1
+pose_x        	   rel 0 0 0 
+pose_q        	   1 rel 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench   	   last 20 20 20 8 8 8
+exit_condition	   func_success 10 0 0 0 0
+}
+{
+name               idle
+manipulation_frame ref
+duration      	   1
+pose_x        	   rel 0 0 0 
+pose_q        	   1 rel 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench   	   last 20 20 20 8 8 8
+}
+{
+name               close_fingers
+func_call 	   gripper 4 0.0 0.1 0.1 100.0
+manipulation_frame ref
+duration      	   1
+pose_x        	   rel 0 0 0 
+pose_q        	   1 rel 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench   	   last 20 20 20 8 8 8
+exit_condition	   func_success 10 0 0 0 0
+}
+{
+name               move_above_object_2
+manipulation_frame ref
+duration      	   1
+pose_x        	   rel 0 0 -0.03
+pose_q        	   1 rel  1 0 0 0 
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench    	   cont 10 10 10 5 5 5
+exit_condition	   pos_early 0 0.005 0 0 0
+}
+{
+name               move_above_nest_3
+manipulation_frame ref1
+duration      	   1
+pose_x        	   abs 0 0 -.035
+pose_q        	   1 abs  1 0 0 0 
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.0
+max_wrench    	   cont 10 10 10 5 5 5
+exit_condition	   pos_early 0 0.005 0 0 0
+}
+{
+name               move_down_to_nest
+manipulation_frame ref1
+duration      	   1
+pose_x        	   rel 0 0 0.03
+pose_q        	   1 rel  1 0 0 0 
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench    	   last 10 10 10 5 5 5
+exit_condition	   pos_orient 10 0.0015 0.01 0 0
+}
+{
+name               open_fingers
+name_next	   move_to_grasp
+func_call 	   gripper 4 0.05 0.1 0.1 0.0
+manipulation_frame ref
+duration      	   1
+pose_x        	   rel 0 0 0 
+pose_q        	   1 rel 1 0 0 0
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_integral 0.5
+max_wrench   	   last 20 20 20 8 8 8
+exit_condition	   func_success 10 0 0 0 0
+}
+{
+name               move_up
+manipulation_frame ref
+duration      	   2
+pose_x        	   rel 0 0 -.05
+pose_q        	   1 rel  1 0 0 0 
+cart_gain_x_scale  2.2 2.2 2.2 2.2 2.2 2.2
+cart_gain_a_scale  2.2 2.2 2.2 2.2 2.2 2.2
+}
+
