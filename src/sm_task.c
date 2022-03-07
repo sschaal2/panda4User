@@ -194,6 +194,18 @@ static int    current_controller = SIMPLE_IMPEDANCE_JT;
 static int    default_controller = SIMPLE_IMPEDANCE_JT;
 static int    function_call_success;
 
+// lissajous pattern structure
+typedef struct LissajousParms {
+  double freq_base;
+  double amplitude_slow;
+  double amplitude_fast;
+  double amplitude_rot;
+  double freq_ratio;
+  double freq_ratio_rot;
+  double convex_beta;
+  double convex_freq_ratio;
+} LissajousParms;
+
 /* Cartesian orientation representation with a rotation around an axis */
 typedef struct { 
   double phi;          /* rotation angle */
@@ -228,6 +240,8 @@ static Matrix     R_ref_t_world;
 static SL_Cstate  ball_state;
 
 static double u_delta_switch[N_DOFS+1];
+static int    count_since_last_u_delta_switch;
+static double transient_duration = 0.2; //200ms transients
 
 static int    state_machine_state = INIT_SM_TARGET;
 
@@ -304,6 +318,9 @@ static void   assignCurrentSMTarget(StateMachineTarget smt,
 				    SL_quat   *cto,
 				    StateMachineTarget *smc);
 static int    functionCall(int id, int initial_call, int *success) ;
+static void   lissajous(LissajousParms *lissparm, double current_time,
+			double *pos, double *vel, double *acc);
+static void   lissajousSearch(LissajousParms *l, double thres, double duration);
 
 
 
@@ -530,6 +547,8 @@ init_sm_task(void)
   static int firsttime = TRUE;
   static int pert = 0;
   float  data[N_CART+N_QUAT+1+1];
+
+  
   
   
   if (firsttime) {
@@ -554,6 +573,9 @@ init_sm_task(void)
     // rotation to take vector in local refererenc frame to world frame
     R_ref_t_world = my_matrix(1,N_CART,1,N_CART);
 
+    // try to overwrite sm task name from parameter pool
+    read_parameter_pool_string(config_files[PARAMETERPOOL],"sm_task_name",fname);
+
     firsttime = FALSE;
     
   }
@@ -562,6 +584,7 @@ init_sm_task(void)
   init_sm_controllers();
 
   // zero the delta command from controller switches
+  count_since_last_u_delta_switch = 0;
   for (i=1; i<=N_DOFS; ++i)
     u_delta_switch[i] = 0.0;
 
@@ -772,6 +795,7 @@ run_sm_task(void)
   int    no_gripper_motion = TRUE;
   char   msg[1000];
   int    update_u_delta_switch = FALSE;
+  double transient_multiplier = 1;
   int    ft_exception_flag = FALSE;
   char   string[200];
   float  b[N_CART*3+1];
@@ -1007,8 +1031,10 @@ run_sm_task(void)
 	cdes_orient[HAND].add[i]  = 0.0;	
       }
 
-      for (i=1; i<=N_QUAT; ++i)
-	ctarget_orient[HAND].q[i] = cdes_orient[HAND].q[i];
+      for (i=1; i<=N_QUAT; ++i) {
+	ctarget_orient[HAND].qd[i] = 0.0;
+	ctarget_orient[HAND].qdd[i] = 0.0;	
+      }
 
       time_to_go = 0;
 
@@ -1021,10 +1047,15 @@ run_sm_task(void)
 
 	// reset the spline target to the current desired state
 	for (i=1; i<=N_CART; ++i) 
-	  ctarget[HAND].x[i] = cart_state[HAND].x[i];
+	  if (fabs(misc_sensor[S_FX-1+i]) > current_target_sm.max_wrench[i]) {
+	      ctarget[HAND].x[i] = cart_state[HAND].x[i];
+	    } else {
+	      ctarget[HAND].x[i] = cdes[HAND].x[i];
+	    }
 	
 	for (i=1; i<=N_QUAT; ++i)
-	  ctarget_orient[HAND].q[i] = cart_orient[HAND].q[i];
+	  //	  ctarget_orient[HAND].q[i] = cart_orient[HAND].q[i];
+	  ctarget_orient[HAND].q[i] = cdes_orient[HAND].q[i];	
 
 	break;
 
@@ -1254,12 +1285,17 @@ run_sm_task(void)
   // switch controllers
 
   // smooth controller switsches
-  for (i=1; i<=N_DOFS; ++i) {
+  if (update_u_delta_switch) {
 
-    // smooth out controller switches: Step 1: remember last uff
-    if (update_u_delta_switch) {
+    for (i=1; i<=N_DOFS; ++i) {
+      // smooth out controller switches: Step 1: remember last uff
+      // Note: given the operational space controllers use no desired joint space
+      // trajectories, uff is the only active command to the robot (the PID in joint
+      // space is zero)
       u_delta_switch[i] = joint_des_state[i].uff;
     }
+    count_since_last_u_delta_switch = 0;
+    
   }
 
   switch (current_controller) {
@@ -1352,6 +1388,12 @@ run_sm_task(void)
   }
 
 
+  // transient factor for u_delta_switch
+  ++count_since_last_u_delta_switch;
+  transient_multiplier = (double)count_since_last_u_delta_switch*time_step/transient_duration;
+  if (transient_multiplier > 1)
+    transient_multiplier = 1;
+  
   for (i=1; i<=N_DOFS; ++i) {
 
     // smooth out controller switches: Step 2: check the difference in uff
@@ -1359,10 +1401,9 @@ run_sm_task(void)
       u_delta_switch[i] -= joint_des_state[i].uff;
     }
 
-    joint_des_state[i].uff   += u_delta_switch[i]; // transient to avoid jumps from controller switch
-    u_delta_switch[i] *= 0.995;
-  }
+    joint_des_state[i].uff   += u_delta_switch[i]*(1.-transient_multiplier); // transient to avoid jumps from controller switch
 
+  }
 
   // visualize the cartesian desired as a ball
   for (i=1; i<=N_CART; ++i)
@@ -1800,7 +1841,7 @@ read_state_machine(char *fname) {
 	      &default_cart_gain_a_scale[5],
 	      &default_cart_gain_a_scale[6]);
   } else {
-    printf("WARNING: use a gain defaults\n");
+    printf("WARNING: use gain defaults\n");
     for (i=1; i<=N_CART*2; ++i)
       default_cart_gain_a_scale[i] = 1.0;
   }
@@ -2266,7 +2307,7 @@ read_state_machine(char *fname) {
 	if (c == NULL) {
 	  for (j=1; j<=N_CART*2; ++j) {
 	    sm_temp.max_wrench[j] = 1000;
-	    printf("%d: %f\n",j,sm_temp.max_wrench[j]);
+	    // printf("%d: %f\n",j,sm_temp.max_wrench[j]);
 	  }
 	  sm_temp.ft_exception_action = CONT;
 	} else {
@@ -2761,9 +2802,19 @@ min_jerk_next_step_quat_new (SL_quat q, SL_quat q_target,
   for (i=1; i<=N_CART; ++i)
     aux += q_rel[_Q0_+i]*current_target_sm.orient_rel_axis[i];
 
-  if (aux < 0 && fabs(aux) > 0.001)
+
+  if (aux < 0 && fabs(aux) > 0.001) {
+    //    printf("Change q_rel direction\n");
+    //    print_vec_size("q_rel",q_rel,N_QUAT);
+    //    print_vec_size("rel_axis",current_target_sm.orient_rel_axis,N_CART);
+    
     for (i=1; i<=N_QUAT; ++i)
       q_rel[i] *= -1;
+
+    // quatLog(q_rel,dist);
+    // print_vec_size("dist",dist,N_CART);
+    //freeze();
+  }
   
   quatLog(q_rel,dist);
 
@@ -2912,8 +2963,8 @@ assignCurrentSMTarget(StateMachineTarget smt,
       quatMult(cto[HAND].q,smc->pose_q,cto[HAND].q);
       //print_vec_size("after",cto[HAND].q,4);
     } else if (smc->pose_q_is_relative == ABS && smc->manipulation_frame == REF_FRAME) {	
-      print_vec_size("before",cto[HAND].q,4);
-      print_vec_size("ref_state_pose",ref_q,4);
+      //print_vec_size("before",cto[HAND].q,4);
+      //print_vec_size("ref_state_pose",ref_q,4);
       mat_vec_mult_size(R_ref_t_world,N_CART,N_CART,&(smt.pose_q[_Q0_]),N_CART,&(smc->pose_q[_Q0_]));
       if (apply_grasp_perturbation) {
 	quatMult(ref_q,grasp_perturbation_q,ref_q_adj);	
@@ -2922,7 +2973,7 @@ assignCurrentSMTarget(StateMachineTarget smt,
 	  ref_q_adj[i] = ref_q[i];
       }
       quatMult(ref_q_adj,smc->pose_q,cto[HAND].q);
-      print_vec_size("after",cto[HAND].q,4);
+      //print_vec_size("after",cto[HAND].q,4);
     } else if (smc->pose_q_is_relative == REL && smc->manipulation_frame == REF_FRAME) {	
       //print_vec_size("before",cto[HAND].q,4);
       //print_vec_size("desired change",smt.pose_q,4);
@@ -2939,20 +2990,40 @@ assignCurrentSMTarget(StateMachineTarget smt,
     // assign the initial relative rotation axis to the target
     double q_rel[N_QUAT+1];
     double ip = vec_mult_inner_size(cdes_orient[HAND].q, cto[HAND].q, N_QUAT);
+    //print_vec_size("cto",cto[HAND].q,4);
+    //print_vec_size("cdes_orient",cdes_orient[HAND].q,4);    
     quatRelative(cdes_orient[HAND].q, cto[HAND].q, q_rel);
+    //print_vec_size("q_rel",q_rel,4);        
 
-    if (ip < 0) // by default we choose the shortest path in orientation space
-      vec_mult_scalar_size(q_rel,N_QUAT,-1.0,q_rel);
+    // quatRelative should create the shortest relative rotation to the target automatically
+    if (ip < 0 && 0) { // by default we choose the shortest path in orientation space
+      vec_mult_scalar_size(q_rel,N_QUAT,-1.0,q_rel); // q_rel has the proper rotation vector in elements 2-4
+      //printf("changed sign of quaternion\n");
+    }
     
-    if (smc->nearest_rot_axis != 0) {  // the user specified a nearest rotation axis
+    if (smc->nearest_rot_axis != 0) {  // the user specified a nearest rotation axis (global coordinates) which overwrites q_rel
+      printf("nearest rot axis was specified\n");
       for (i=1; i<=N_QUAT; ++i)
 	q_rel[i] = 0;
       q_rel[ abs(smc->nearest_rot_axis)+1 ] = sign(smc->nearest_rot_axis);
     }
 
-    // adust for orientatin of the reference frame
+    /* LEFTOVER: no idea why this code was needed in the past
+    // adust for orientation of the reference frame
     //print_vec_size("q",q_rel,N_QUAT);    
     mat_vec_mult_size(R_ref_t_world,N_CART,N_CART,&(q_rel[_Q0_]),N_CART,smc->orient_rel_axis);
+    */
+
+    double sum = 0;
+    for (i=1; i<=N_CART; ++i) {
+      smc->orient_rel_axis[i] = q_rel[_Q0_+i];
+      sum += sqr(smc->orient_rel_axis[i]);
+    }
+    sum = sqrt(sum);
+    if (sum > 1.e-10) {
+      for (i=1; i<=N_CART; ++i)
+	smc->orient_rel_axis[i] /= sum;
+    }
 
     ip = vec_mult_inner_size(smc->orient_rel_axis,smc->orient_rel_axis,N_CART);
     if (fabs(ip) < 0.01) // numerical round off issues
@@ -3089,6 +3160,7 @@ functionCall(int id, int initial_call, int *success)
   static int count =0;
   static double transient_multiplier = 0;
   char   msg[1000];
+  static int gripper_count;
 
   // counts how often this function was called after the last initial_call=TRUE
   if (initial_call)
@@ -3190,10 +3262,15 @@ functionCall(int id, int initial_call, int *success)
 				des_gripper_width_tolerance);		
       }
       *success = FALSE;
+      gripper_count = 0;
     } else {
-      // 10 safety tick before allowing success -- some communication delay may exist
+      // some safety tick before allowing success -- some communication delay may exist
       if (count > 100 && misc_sensor[G_MOTION] == 0.0) {
-	*success = TRUE;
+	if (--gripper_count > 0) {
+	  *success = FALSE;
+	} else {
+	  *success = TRUE;
+	}
       } else
 	*success = FALSE;
     }
@@ -3391,16 +3468,27 @@ functionCall(int id, int initial_call, int *success)
       double delta = PI/2.0*0;
       double ratio = current_target_sm.function_args[8];
       double transient_duration = current_target_sm.function_args[9];      
-      double addition = 0.8;
+      double addition = 0.7732;
+
+      LissajousParms l;
+      l.freq_base = freq;
+      l.amplitude_slow = A;
+      l.amplitude_fast = B;
+      l.amplitude_rot  = C;
+      lissajousSearch(&l,13.0, 10.0);
 
       // generate the nominal lissajous pattern in canonical coordinates
       transient_multiplier  = count*time_step/transient_duration;
       if (transient_multiplier > 1)
 	transient_multiplier = 1;
-
+      /*
       x = A*(addition*sin(2.*PI*freq*count*time_step + delta)+(1.-addition)*sin(2.*PI*freq/2.13*count*time_step)) * transient_multiplier;
       y = B*sin(2.*PI*freq*ratio*count*time_step) * transient_multiplier;
       t = C*sin(2.*PI*freq*(ratio*2.83)*count*time_step) * transient_multiplier;
+      */
+      x = A*(addition*sin(2.*PI*freq*count*time_step + delta)+(1.-addition)*sin(2.*PI*freq*0.2733*count*time_step)) * transient_multiplier;
+      y = B*sin(2.*PI*freq*ratio*count*time_step) * transient_multiplier;
+      t = C*sin(2.*PI*freq*(2.13)*count*time_step) * transient_multiplier;
 
       // assign canonical pattern to desired axes
       f_search_vec[A_axis] = x;
@@ -3423,4 +3511,216 @@ functionCall(int id, int initial_call, int *success)
   }
 
   return TRUE;
+}
+
+/*!*****************************************************************************
+ *******************************************************************************
+\note  lissajous
+\date  March 2022
+   
+\remarks 
+
+ implementation of a lissajous pattern for pattern search
+ 
+
+ *******************************************************************************
+ Function Parameters: [in]=input,[out]=output
+
+
+ \param[in]          l            : structure with lissajous parameters
+ \param[in]          current_time : the current time at which to evaluate
+ \param[out]         pos          : 3D vector with positions
+ \param[out]         vel          : 3D vector with velocities
+ \param[out]         acc          : 3D vector with velocities
+
+ ******************************************************************************/
+static void
+lissajous(LissajousParms *l, double current_time,
+	  double *pos, double *vel, double *acc)
+{
+  double t;
+  double w;
+
+  // easier notation
+  t=current_time;
+  w=2.*PI*l->freq_base;
+
+  pos[_X_] = l->amplitude_slow * (l->convex_beta * sin(w*t) +
+				  (1.-l->convex_beta) * sin(w*t * l->convex_freq_ratio));
+  pos[_Y_] = l->amplitude_fast * sin(w*t * l->freq_ratio);
+  pos[_Z_] = l->amplitude_rot * sin(w*t * l->freq_ratio_rot);
+  
+  vel[_X_] = l->amplitude_slow * (l->convex_beta * cos(w*t)*w +
+				  (1.-l->convex_beta) * cos(w*t * l->convex_freq_ratio)*w*l->convex_freq_ratio);
+  vel[_Y_] = l->amplitude_fast * cos(w*t * l->freq_ratio)*w*l->freq_ratio;
+  vel[_Z_] = l->amplitude_rot * cos(w*t * l->freq_ratio_rot)*w*l->freq_ratio_rot;
+  
+  acc[_X_] = l->amplitude_slow * (-l->convex_beta * sin(w*t)*sqr(w) -
+				  (1.-l->convex_beta) * sin(w*t * l->convex_freq_ratio)*sqr(w*l->convex_freq_ratio));
+  acc[_Y_] = -l->amplitude_fast * sin(w*t * l->freq_ratio)*sqr(w*l->freq_ratio);
+  acc[_Z_] = -l->amplitude_rot * sin(w*t * l->freq_ratio_rot)*sqr(w*l->freq_ratio_rot);
+  
+  
+}
+
+/*!*****************************************************************************
+ *******************************************************************************
+\note  lissajousSearch
+\date  March 2022
+   
+\remarks 
+
+ optimizes hyperparameters of lissajous according to a max-entropy criterion
+ with cutoff threshold
+ 
+
+ *******************************************************************************
+ Function Parameters: [in]=input,[out]=output
+
+
+ \param[in/out]          l        : structure with lissajous parameters
+ \param[in]              thres    : threshold of abs. 1st derivative of pattern
+ \param[in]              duration : duration of search
+
+ the optimal hyperparameters are returned in the l parameter structure
+
+ ******************************************************************************/
+#define HIST_RES 20 // needs to be even number
+static void
+lissajousSearch(LissajousParms *l, double thres, double duration)
+{
+  double t;
+  int    i,j,n,m,r,o,p,q;
+  int    res=20; // search resolution
+  // experience-based intervals for search
+  double freq_ratio_low          = 1.0;
+  double freq_ratio_high         = 2.0;  
+  double convex_beta_low         = 0.5;
+  double convex_beta_high        = 1.0;  
+  double freq_ratio_rot_low      = 2.0;
+  double freq_ratio_rot_high     = 4.0;  
+  double convex_freq_ratio_low   = 0.1;
+  double convex_freq_ratio_high  = 0.5;
+
+  double pos[N_CART+1];
+  double vel[N_CART+1];
+  double acc[N_CART+1];
+
+  double ct;
+  double trans;
+  double dt = 0.01;
+  int    count;
+  int    ind_x,ind_y,ind_z;
+  double max_vel,abs_vel;
+  double max_max_vel = 0;
+  double entropy;
+  double max_entropy = 0;
+  LissajousParms lbest;
+  FILE   *fp;
+
+  char  fname[100];
+  
+  int histogram[HIST_RES+1][HIST_RES+1][HIST_RES+1];
+
+  //create a unique identifier of this pattern
+  sprintf(fname,"prefs/lissajous-%3.2f-%3.2f-%3.2f-%3.2f-%3.2f-%3.2f",l->freq_base,l->amplitude_slow,l->amplitude_fast,l->amplitude_rot,duration,thres);
+
+  //try to open the file
+  if ((fp=fopen(fname,"r")) != NULL) {
+    if (fread(l,sizeof(LissajousParms),1,fp) != 1)
+      printf("ERROR that should not happen in read\n");
+    fclose(fp);
+    return;
+  }
+
+  count = round(duration/dt);
+
+  for (i=0; i<= res; ++i) {
+    for (j=0; j<= res; ++j) {
+      for (n=0; n<= res; ++n) {
+	for (m=0; m<= res; ++m) {
+
+	  l->freq_ratio = (freq_ratio_high-freq_ratio_low)/((double) res) * i + freq_ratio_low + 0.011;
+	  l->convex_beta = (convex_beta_high-convex_beta_low)/((double) res) * j + convex_beta_low + 0.0017;
+	  l->freq_ratio_rot = (freq_ratio_rot_high-freq_ratio_rot_low)/((double) res) * n + freq_ratio_rot_low + 0.03;
+	  l->convex_freq_ratio = (convex_freq_ratio_high-convex_freq_ratio_low)/((double) res) * m + convex_freq_ratio_low + 0.0037;
+
+	  max_vel = 0;
+
+	  bzero(histogram,sizeof(histogram));
+	  
+	  for (r=0; r<=count; ++r) {
+	    
+	    ct = ((double) r) * dt;
+	    lissajous(l, ct, pos, vel, acc);
+
+	    // transient multiplier
+	    trans = ct / (duration/3.0);
+	    if (trans > 1) {
+	      trans = 1;
+	    } else {
+	      for (o=1; o<=N_CART; ++o) {
+		pos[o] *= trans;
+		vel[o] *= trans;
+		acc[o] *= trans;	      
+	      }
+	    }
+
+	    // max vel
+	    abs_vel = sqrt(sqr(vel[_X_])+sqr(vel[_Y_]));
+	    if (abs_vel > max_vel)
+	      max_vel = abs_vel;
+
+	    // add to histogram
+	    ind_x = round(pos[_X_]/(l->amplitude_slow/((double)HIST_RES/2.0)))+HIST_RES/2;
+	    ind_y = round(pos[_Y_]/(l->amplitude_fast/((double)HIST_RES/2.0)))+HIST_RES/2;
+	    ind_z = round(pos[_Z_]/(l->amplitude_rot/((double)HIST_RES/2.0)))+HIST_RES/2;
+
+	    if (ind_x < 0 || ind_x > HIST_RES)
+	      printf("%d x is wrong\n",ind_x);
+	    if (ind_y < 0 || ind_y > HIST_RES)
+	      printf("%d y is wrong\n",ind_x);
+	    if (ind_z < 0 || ind_z > HIST_RES)
+	      printf("%d z is wrong\n",ind_x);
+
+	    ++histogram[ind_x][ind_y][ind_z];
+
+	  }
+
+	  entropy = 0;
+	  if (max_vel <= thres) {
+	    // compute entropy of pattern
+	    for (o=0; o<=HIST_RES; ++o) {
+	      for (p=0; p<=HIST_RES; ++p) {
+		for (q=0; q<=HIST_RES; ++q) {
+		  //printf("%d %d %d    %f\n",o,p,q,histogram[o][p][q]/((double)count+1));
+		  entropy += -((double)histogram[o][p][q])/((double)count+1) * log(((double)histogram[o][p][q])/((double)count+1) + 1.e-6);
+		}
+	      }
+	    }
+	  }
+
+	  if (entropy >= max_entropy) {
+	    max_entropy = entropy;
+	    max_max_vel = max_vel;
+	    lbest = *l;
+	  }
+
+	}
+      }
+    }
+  }
+
+  *l = lbest;
+  printf("%f %f %f %f  (e=%f v=%f)\n",lbest.freq_ratio,lbest.freq_ratio_rot,lbest.convex_beta,lbest.convex_freq_ratio,max_entropy,max_max_vel);
+
+  //store in file
+  if ((fp=fopen(fname,"w")) != NULL) {
+    if (fwrite(l,sizeof(LissajousParms),1,fp) != 1)
+      printf("ERROR that should not happen in write\n");
+    fclose(fp);
+    return;
+  }
+  
+  
 }
