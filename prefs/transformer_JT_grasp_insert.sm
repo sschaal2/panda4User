@@ -80,7 +80,8 @@ exit_condition	   pos_early 10 0.002 0 0 0
 {
 name               pattern_search
 //func_call	   force_lissajous 9 5 5 2 1 2 3 0.3 1.278 3.0
-func_call	   force_lissajous 9 5 5 2 1 2 3 0.3 1.5903 3.0
+//func_call	   force_lissajous 9 5 5 2 2 1 3 0.3 1.5903 3.0
+func_call	   force_lissajous 10 5 5 2 2 1 3 0.3 13.0 3.0 10
 manipulation_frame ref
 duration      	   1
 pose_x        	   rel 0 0 0.003

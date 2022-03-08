@@ -2077,7 +2077,8 @@ read_state_machine(char *fname) {
 	    sm_temp.lp.amplitude_slow = sm_temp.function_args[1];
 	    sm_temp.lp.amplitude_fast = sm_temp.function_args[2];
 	    sm_temp.lp.amplitude_rot  = sm_temp.function_args[3];
-	    lissajousSearch(&(sm_temp.lp),13.0, 10.0);
+	    // args[8] is cutoff velocity, args[10] the search duration
+	    lissajousSearch(&(sm_temp.lp),sm_temp.function_args[8],sm_temp.function_args[10]);
 	    
 	  } else
 	    sm_temp.function_call = NO_FUNC;
@@ -3466,36 +3467,30 @@ functionCall(int id, int initial_call, int *success)
 
     } else {
       double x,y,t;
-      double A = current_target_sm.function_args[1];
-      double B = current_target_sm.function_args[2];
-      double C = current_target_sm.function_args[3];
       int    A_axis = current_target_sm.function_args[4];
       int    B_axis = current_target_sm.function_args[5];
       int    C_axis = current_target_sm.function_args[6];
-      double freq = current_target_sm.function_args[7];
-      double delta = PI/2.0*0;
-      double ratio = current_target_sm.function_args[8];
       double transient_duration = current_target_sm.function_args[9];      
-      double addition = 0.7732;
-      double pos[N_CART+1];
-      double vel[N_CART+1];
-      double acc[N_CART+1];      
+      double lpos[N_CART+1];
+      double lvel[N_CART+1];
+      double lacc[N_CART+1];      
 
       // generate the nominal lissajous pattern in canonical coordinates
       transient_multiplier  = count*time_step/transient_duration;
       if (transient_multiplier > 1)
 	transient_multiplier = 1;
 
-      lissajous(&current_target_sm.lp, ((double)count*time_step),pos, vel, acc);
-      x = pos[_X_]*transient_multiplier;
-      y = pos[_Y_]*transient_multiplier;
-      t = pos[_Z_]*transient_multiplier;      
+      lissajous(&current_target_sm.lp, ((double)count*time_step),lpos, lvel, lacc);
+      x = lpos[_X_]*transient_multiplier;
+      y = lpos[_Y_]*transient_multiplier;
+      t = lpos[_Z_]*transient_multiplier;      
       
       /*
       x = A*(addition*sin(2.*PI*freq*count*time_step + delta)+(1.-addition)*sin(2.*PI*freq/2.13*count*time_step)) * transient_multiplier;
       y = B*sin(2.*PI*freq*ratio*count*time_step) * transient_multiplier;
       t = C*sin(2.*PI*freq*(ratio*2.83)*count*time_step) * transient_multiplier;
       */
+
       /*
       x = A*(addition*sin(2.*PI*freq*count*time_step + delta)+(1.-addition)*sin(2.*PI*freq*0.2733*count*time_step)) * transient_multiplier;
       y = B*sin(2.*PI*freq*ratio*count*time_step) * transient_multiplier;
@@ -3635,7 +3630,10 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
   
   int histogram[HIST_RES+1][HIST_RES+1][HIST_RES+1];
 
+  double moment_arm= 0.015;
+
   printf("Optimizing Lissajous pattern ...");
+  fflush(stdout);
 
   //create a unique identifier of this pattern
   sprintf(fname,"prefs/lissajous-%3.2f-%3.2f-%3.2f-%3.2f-%3.2f-%3.2f",l->freq_base,l->amplitude_slow,l->amplitude_fast,l->amplitude_rot,duration,thres);
@@ -3656,6 +3654,7 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
       for (n=0; n<= res; ++n) {
 	for (m=0; m<= res; ++m) {
 
+	  // add some small prime number like additions to coefficients to avoid periodicity
 	  l->freq_ratio = (freq_ratio_high-freq_ratio_low)/((double) res) * i + freq_ratio_low + 0.011;
 	  l->convex_beta = (convex_beta_high-convex_beta_low)/((double) res) * j + convex_beta_low + 0.0017;
 	  l->freq_ratio_rot = (freq_ratio_rot_high-freq_ratio_rot_low)/((double) res) * n + freq_ratio_rot_low + 0.03;
@@ -3683,7 +3682,7 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
 	    }
 
 	    // max vel
-	    abs_vel = sqrt(sqr(vel[_X_])+sqr(vel[_Y_]));
+	    abs_vel = sqrt(sqr(vel[_X_]+vel[_Z_]*moment_arm)+sqr(vel[_Y_]));
 	    if (abs_vel > max_vel)
 	      max_vel = abs_vel;
 
@@ -3705,19 +3704,6 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
 	      ind_z = 1;
 	    if (ind_z > HIST_RES)
 	      ind_z = HIST_RES;
-
-	    /*
-	    ind_x = round(pos[_X_]/(l->amplitude_slow/((double)HIST_RES/2.0)))+HIST_RES/2;
-	    ind_y = round(pos[_Y_]/(l->amplitude_fast/((double)HIST_RES/2.0)))+HIST_RES/2;
-	    ind_z = round(pos[_Z_]/(l->amplitude_rot/((double)HIST_RES/2.0)))+HIST_RES/2;
-	    */
-	    
-	    if (ind_x < 1 || ind_x > HIST_RES)
-	      printf("%d x is wrong\n",ind_x);
-	    if (ind_y < 1 || ind_y > HIST_RES)
-	      printf("%d y is wrong\n",ind_x);
-	    if (ind_z < 1 || ind_z > HIST_RES)
-	      printf("%d z is wrong\n",ind_x);
 
 	    ++histogram[ind_x][ind_y][ind_z];
 
