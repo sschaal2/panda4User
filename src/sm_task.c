@@ -105,7 +105,18 @@ enum FunctionCalls
     ADD_CURRENT_TO_STATISTICS,
     FORCE_LISSAJOUS,
   };
-		 
+
+// lissajous pattern structure
+typedef struct LissajousParms {
+  double freq_base;
+  double amplitude_slow;
+  double amplitude_fast;
+  double amplitude_rot;
+  double freq_ratio;
+  double freq_ratio_rot;
+  double convex_beta;
+  double convex_freq_ratio;
+} LissajousParms;
 
 #define MAX_FUNCTION_ARGS 10
 typedef struct StateMachineTarget {
@@ -116,6 +127,7 @@ typedef struct StateMachineTarget {
   int    function_call;
   int    n_function_args;
   double function_args[MAX_FUNCTION_ARGS+1];
+  LissajousParms lp;
   double movement_duration;
   int    pose_x_is_relative;
   double pose_x[N_CART+1];
@@ -193,18 +205,6 @@ static double speed_mult = 1.0;
 static int    current_controller = SIMPLE_IMPEDANCE_JT;
 static int    default_controller = SIMPLE_IMPEDANCE_JT;
 static int    function_call_success;
-
-// lissajous pattern structure
-typedef struct LissajousParms {
-  double freq_base;
-  double amplitude_slow;
-  double amplitude_fast;
-  double amplitude_rot;
-  double freq_ratio;
-  double freq_ratio_rot;
-  double convex_beta;
-  double convex_freq_ratio;
-} LissajousParms;
 
 /* Cartesian orientation representation with a rotation around an axis */
 typedef struct { 
@@ -2069,9 +2069,17 @@ read_state_machine(char *fname) {
 	    sm_temp.function_call = ADD_CURRENT_TO_STATISTICS;
 	  else if (strcmp(saux,"grasp_perturbation")==0) 
 	    sm_temp.function_call = GRASP_PERTURBATION;
-	  else if (strcmp(saux,"force_lissajous")==0)
+	  else if (strcmp(saux,"force_lissajous")==0) {
 	    sm_temp.function_call = FORCE_LISSAJOUS;
-	  else
+
+	    // create optimal search pattern
+	    sm_temp.lp.freq_base      = sm_temp.function_args[7];
+	    sm_temp.lp.amplitude_slow = sm_temp.function_args[1];
+	    sm_temp.lp.amplitude_fast = sm_temp.function_args[2];
+	    sm_temp.lp.amplitude_rot  = sm_temp.function_args[3];
+	    lissajousSearch(&(sm_temp.lp),13.0, 10.0);
+	    
+	  } else
 	    sm_temp.function_call = NO_FUNC;
 	}
     
@@ -3469,26 +3477,30 @@ functionCall(int id, int initial_call, int *success)
       double ratio = current_target_sm.function_args[8];
       double transient_duration = current_target_sm.function_args[9];      
       double addition = 0.7732;
-
-      LissajousParms l;
-      l.freq_base = freq;
-      l.amplitude_slow = A;
-      l.amplitude_fast = B;
-      l.amplitude_rot  = C;
-      lissajousSearch(&l,13.0, 10.0);
+      double pos[N_CART+1];
+      double vel[N_CART+1];
+      double acc[N_CART+1];      
 
       // generate the nominal lissajous pattern in canonical coordinates
       transient_multiplier  = count*time_step/transient_duration;
       if (transient_multiplier > 1)
 	transient_multiplier = 1;
+
+      lissajous(&current_target_sm.lp, ((double)count*time_step),pos, vel, acc);
+      x = pos[_X_]*transient_multiplier;
+      y = pos[_Y_]*transient_multiplier;
+      t = pos[_Z_]*transient_multiplier;      
+      
       /*
       x = A*(addition*sin(2.*PI*freq*count*time_step + delta)+(1.-addition)*sin(2.*PI*freq/2.13*count*time_step)) * transient_multiplier;
       y = B*sin(2.*PI*freq*ratio*count*time_step) * transient_multiplier;
       t = C*sin(2.*PI*freq*(ratio*2.83)*count*time_step) * transient_multiplier;
       */
+      /*
       x = A*(addition*sin(2.*PI*freq*count*time_step + delta)+(1.-addition)*sin(2.*PI*freq*0.2733*count*time_step)) * transient_multiplier;
       y = B*sin(2.*PI*freq*ratio*count*time_step) * transient_multiplier;
       t = C*sin(2.*PI*freq*(2.13)*count*time_step) * transient_multiplier;
+      */
 
       // assign canonical pattern to desired axes
       f_search_vec[A_axis] = x;
@@ -3592,6 +3604,7 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
   double t;
   int    i,j,n,m,r,o,p,q;
   int    res=20; // search resolution
+
   // experience-based intervals for search
   double freq_ratio_low          = 1.0;
   double freq_ratio_high         = 2.0;  
@@ -3622,6 +3635,8 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
   
   int histogram[HIST_RES+1][HIST_RES+1][HIST_RES+1];
 
+  printf("Optimizing Lissajous pattern ...");
+
   //create a unique identifier of this pattern
   sprintf(fname,"prefs/lissajous-%3.2f-%3.2f-%3.2f-%3.2f-%3.2f-%3.2f",l->freq_base,l->amplitude_slow,l->amplitude_fast,l->amplitude_rot,duration,thres);
 
@@ -3630,6 +3645,7 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
     if (fread(l,sizeof(LissajousParms),1,fp) != 1)
       printf("ERROR that should not happen in read\n");
     fclose(fp);
+    printf("done\n");
     return;
   }
 
@@ -3672,15 +3688,35 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
 	      max_vel = abs_vel;
 
 	    // add to histogram
+	    ind_x = (pos[_X_] + l->amplitude_slow)/(2.*l->amplitude_slow/(double)HIST_RES);
+	    if (ind_x < 1)
+	      ind_x = 1;
+	    if (ind_x > HIST_RES)
+	      ind_x = HIST_RES;
+	    
+	    ind_y = (pos[_Y_] + l->amplitude_fast)/(2.*l->amplitude_fast/(double)HIST_RES);
+	    if (ind_y < 1)
+	      ind_y = 1;
+	    if (ind_y > HIST_RES)
+	      ind_y = HIST_RES;
+	    
+	    ind_z = (pos[_Z_] + l->amplitude_rot)/(2.*l->amplitude_rot/(double)HIST_RES);
+	    if (ind_z < 1)
+	      ind_z = 1;
+	    if (ind_z > HIST_RES)
+	      ind_z = HIST_RES;
+
+	    /*
 	    ind_x = round(pos[_X_]/(l->amplitude_slow/((double)HIST_RES/2.0)))+HIST_RES/2;
 	    ind_y = round(pos[_Y_]/(l->amplitude_fast/((double)HIST_RES/2.0)))+HIST_RES/2;
 	    ind_z = round(pos[_Z_]/(l->amplitude_rot/((double)HIST_RES/2.0)))+HIST_RES/2;
-
-	    if (ind_x < 0 || ind_x > HIST_RES)
+	    */
+	    
+	    if (ind_x < 1 || ind_x > HIST_RES)
 	      printf("%d x is wrong\n",ind_x);
-	    if (ind_y < 0 || ind_y > HIST_RES)
+	    if (ind_y < 1 || ind_y > HIST_RES)
 	      printf("%d y is wrong\n",ind_x);
-	    if (ind_z < 0 || ind_z > HIST_RES)
+	    if (ind_z < 1 || ind_z > HIST_RES)
 	      printf("%d z is wrong\n",ind_x);
 
 	    ++histogram[ind_x][ind_y][ind_z];
@@ -3690,9 +3726,9 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
 	  entropy = 0;
 	  if (max_vel <= thres) {
 	    // compute entropy of pattern
-	    for (o=0; o<=HIST_RES; ++o) {
-	      for (p=0; p<=HIST_RES; ++p) {
-		for (q=0; q<=HIST_RES; ++q) {
+	    for (o=1; o<=HIST_RES; ++o) {
+	      for (p=1; p<=HIST_RES; ++p) {
+		for (q=1; q<=HIST_RES; ++q) {
 		  //printf("%d %d %d    %f\n",o,p,q,histogram[o][p][q]/((double)count+1));
 		  entropy += -((double)histogram[o][p][q])/((double)count+1) * log(((double)histogram[o][p][q])/((double)count+1) + 1.e-6);
 		}
@@ -3719,6 +3755,7 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
     if (fwrite(l,sizeof(LissajousParms),1,fp) != 1)
       printf("ERROR that should not happen in write\n");
     fclose(fp);
+    printf("done\n");    
     return;
   }
   
