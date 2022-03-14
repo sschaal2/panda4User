@@ -104,6 +104,7 @@ enum FunctionCalls
     RESET_TO_BASE_POSE,
     ADD_CURRENT_TO_STATISTICS,
     FORCE_LISSAJOUS,
+    POSITION_LISSAJOUS,    
   };
 
 // lissajous pattern structure
@@ -116,6 +117,7 @@ typedef struct LissajousParms {
   double freq_ratio_rot;
   double convex_beta;
   double convex_freq_ratio;
+  double transient_duration;
 } LissajousParms;
 
 #define MAX_FUNCTION_ARGS 10
@@ -235,6 +237,8 @@ static int        found_recurrance = FALSE;
 static int        run_table = FALSE;
 static double     f_search_vec[N_CART+1];
 static double     t_search_vec[N_CART+1];
+static SL_Cstate  pos_search_vec;
+static SL_quat    orient_search_vec;
 static Matrix     R_ref_t_world;
 
 static SL_Cstate  ball_state;
@@ -799,6 +803,9 @@ run_sm_task(void)
   int    ft_exception_flag = FALSE;
   char   string[200];
   float  b[N_CART*3+1];
+  SL_Cstate cdes_local[N_ENDEFFS+1];
+  SL_quat   cdes_orient_local[N_ENDEFFS+1];
+  
   
   switch (state_machine_state) {
 
@@ -1298,11 +1305,29 @@ run_sm_task(void)
     
   }
 
+  // work with local variables to allow pattern search
+  memcpy(cdes_local,cdes,sizeof(cdes));
+  memcpy(cdes_orient_local,cdes_orient,sizeof(cdes_orient));  
+  
+  if (current_target_sm.function_call == POSITION_LISSAJOUS) {
+    for (i=1; i<=N_CART; ++i) {
+      cdes_local[HAND].x[i] += pos_search_vec.x[i];
+      cdes_local[HAND].xd[i] += pos_search_vec.xd[i];
+      cdes_local[HAND].xdd[i] += pos_search_vec.xdd[i];            
+    }
+
+    quatMult(cdes_orient_local[HAND].q, orient_search_vec.q, cdes_orient_local[HAND].q);
+    vec_add_size(cdes_orient_local[HAND].ad,orient_search_vec.ad,N_CART,cdes_orient_local[HAND].ad);
+    vec_add_size(cdes_orient_local[HAND].add,orient_search_vec.add,N_CART,cdes_orient_local[HAND].add);
+    quatDerivatives(&(cdes_orient_local[HAND]));
+    
+  }
+
   switch (current_controller) {
 
   case SIMPLE_IMPEDANCE_JT:
 
-    cartesianImpedanceSimpleJt(cdes, cdes_orient, joint_des_state, joint_opt_state, stats,
+    cartesianImpedanceSimpleJt(cdes_local, cdes_orient_local, joint_des_state, joint_opt_state, stats,
 			       current_target_sm.cart_gain_x_integral_matrix,
 			       current_target_sm.cart_gain_a_integral_matrix,			       			       
 			       current_target_sm.cart_gain_x_scale_matrix,
@@ -1314,7 +1339,7 @@ run_sm_task(void)
     
   case MODEL_IMPEDANCE_JT:
 
-    cartesianImpedanceModelJt(cdes, cdes_orient, joint_des_state, joint_opt_state, stats,
+    cartesianImpedanceModelJt(cdes_local, cdes_orient_local, joint_des_state, joint_opt_state, stats,
 			      current_target_sm.cart_gain_x_integral_matrix,
 			      current_target_sm.cart_gain_a_integral_matrix,			       			       
 			      current_target_sm.cart_gain_x_scale_matrix,
@@ -1407,7 +1432,7 @@ run_sm_task(void)
 
   // visualize the cartesian desired as a ball
   for (i=1; i<=N_CART; ++i)
-    pos[i] = cdes[HAND].x[i];
+    pos[i] = cdes_local[HAND].x[i];
   pos[_Z_+1] = 0.005;
   sendUserGraphics("ballSize",&(pos[_X_]), (N_CART+1)*sizeof(float));
   /*
@@ -2073,12 +2098,25 @@ read_state_machine(char *fname) {
 	    sm_temp.function_call = FORCE_LISSAJOUS;
 
 	    // create optimal search pattern
-	    sm_temp.lp.freq_base      = sm_temp.function_args[7];
-	    sm_temp.lp.amplitude_slow = sm_temp.function_args[1];
-	    sm_temp.lp.amplitude_fast = sm_temp.function_args[2];
-	    sm_temp.lp.amplitude_rot  = sm_temp.function_args[3];
-	    // args[8] is cutoff velocity, args[10] the search duration
-	    lissajousSearch(&(sm_temp.lp),sm_temp.function_args[8],10);
+	    sm_temp.lp.freq_base          = sm_temp.function_args[7];
+	    sm_temp.lp.amplitude_slow     = sm_temp.function_args[1];
+	    sm_temp.lp.amplitude_fast     = sm_temp.function_args[2];
+	    sm_temp.lp.amplitude_rot      = sm_temp.function_args[3];
+	    sm_temp.lp.transient_duration = sm_temp.function_args[9];
+	    // args[8] is cutoff velocity, args[10] the search duration, args[9] is the transient duration
+	    lissajousSearch(&(sm_temp.lp),sm_temp.function_args[8],sm_temp.function_args[10]);
+	    
+	  } else if (strcmp(saux,"position_lissajous")==0) {
+	    sm_temp.function_call = POSITION_LISSAJOUS;
+
+	    // create optimal search pattern
+	    sm_temp.lp.freq_base          = sm_temp.function_args[7];
+	    sm_temp.lp.amplitude_slow     = sm_temp.function_args[1];
+	    sm_temp.lp.amplitude_fast     = sm_temp.function_args[2];
+	    sm_temp.lp.amplitude_rot      = sm_temp.function_args[3];
+	    sm_temp.lp.transient_duration = sm_temp.function_args[9];	    
+	    // args[8] is cutoff velocity, args[10] the search duration, args[9] is the transient duration
+	    lissajousSearch(&(sm_temp.lp),sm_temp.function_args[8],sm_temp.function_args[10]);
 	    
 	  } else
 	    sm_temp.function_call = NO_FUNC;
@@ -3178,7 +3216,10 @@ functionCall(int id, int initial_call, int *success)
     ++count;
 
   vec_zero_size(f_search_vec,N_CART);
-  vec_zero_size(t_search_vec,N_CART);  
+  vec_zero_size(t_search_vec,N_CART);
+  bzero(&pos_search_vec,sizeof(pos_search_vec));
+  bzero(&orient_search_vec,sizeof(orient_search_vec));
+  orient_search_vec.q[_Q0_] = 1.0;
 
   switch (id) {
     
@@ -3466,46 +3507,78 @@ functionCall(int id, int initial_call, int *success)
       *success = FALSE;
 
     } else {
-      double x,y,t;
       int    A_axis = current_target_sm.function_args[4];
       int    B_axis = current_target_sm.function_args[5];
       int    C_axis = current_target_sm.function_args[6];
-      double transient_duration = current_target_sm.function_args[9];      
       double lpos[N_CART+1];
       double lvel[N_CART+1];
       double lacc[N_CART+1];      
 
       // generate the nominal lissajous pattern in canonical coordinates
-      transient_multiplier  = count*time_step/transient_duration;
-      if (transient_multiplier > 1)
-	transient_multiplier = 1;
-
       lissajous(&current_target_sm.lp, ((double)count*time_step),lpos, lvel, lacc);
-      x = lpos[_X_]*transient_multiplier;
-      y = lpos[_Y_]*transient_multiplier;
-      t = lpos[_Z_]*transient_multiplier;      
       
-      /*
-      x = A*(addition*sin(2.*PI*freq*count*time_step + delta)+(1.-addition)*sin(2.*PI*freq/2.13*count*time_step)) * transient_multiplier;
-      y = B*sin(2.*PI*freq*ratio*count*time_step) * transient_multiplier;
-      t = C*sin(2.*PI*freq*(ratio*2.83)*count*time_step) * transient_multiplier;
-      */
-
-      /*
-      x = A*(addition*sin(2.*PI*freq*count*time_step + delta)+(1.-addition)*sin(2.*PI*freq*0.2733*count*time_step)) * transient_multiplier;
-      y = B*sin(2.*PI*freq*ratio*count*time_step) * transient_multiplier;
-      t = C*sin(2.*PI*freq*(2.13)*count*time_step) * transient_multiplier;
-      */
-
       // assign canonical pattern to desired axes
-      f_search_vec[A_axis] = x;
-      f_search_vec[B_axis] = y;
+      f_search_vec[A_axis] = lpos[_X_];
+      f_search_vec[B_axis] = lpos[_Y_];
 
-      t_search_vec[C_axis] = t;
+      t_search_vec[C_axis] = lpos[_Z_];
 
       // rotate the vector into reference frame
       mat_vec_mult_size(R_ref_t_world,N_CART,N_CART,f_search_vec,N_CART,f_search_vec);
       mat_vec_mult_size(R_ref_t_world,N_CART,N_CART,t_search_vec,N_CART,t_search_vec);
+
+      // always return success
+      *success = TRUE;      
+
+    }
+    break;
+
+    // superimpose a lissajous position/orientation perturbation
+  case POSITION_LISSAJOUS:
+
+    if  (initial_call) {
+
+      transient_multiplier = 0;
+      
+      *success = FALSE;
+
+    } else {
+      int    A_axis = current_target_sm.function_args[4];
+      int    B_axis = current_target_sm.function_args[5];
+      int    C_axis = current_target_sm.function_args[6];
+      double lpos[N_CART+1];
+      double lvel[N_CART+1];
+      double lacc[N_CART+1];      
+
+      // generate the nominal lissajous pattern in canonical coordinates
+      lissajous(&current_target_sm.lp, ((double)count*time_step),lpos, lvel, lacc);
+
+      // assign canonical pattern to desired axes
+      pos_search_vec.x[A_axis]     = lpos[_X_];
+      pos_search_vec.x[B_axis]     = lpos[_Y_];
+      pos_search_vec.xd[A_axis]    = lvel[_X_];
+      pos_search_vec.xd[B_axis]    = lvel[_Y_];
+      pos_search_vec.xdd[A_axis]   = lacc[_X_];
+      pos_search_vec.xdd[B_axis]   = lacc[_Y_];
+
+      orient_search_vec.q[_Q0_] = cos(lpos[_Z_]/2.0);
+      orient_search_vec.q[_Q0_ + C_axis] = sin(lpos[_Z_]/2.0);
+      orient_search_vec.ad[C_axis]  = lvel[_Z_];
+      orient_search_vec.add[C_axis] = lacc[_Z_];      
+      
+      // rotate the vector into reference frame
+      mat_vec_mult_size(R_ref_t_world,N_CART,N_CART,pos_search_vec.x,N_CART,pos_search_vec.x);
+      mat_vec_mult_size(R_ref_t_world,N_CART,N_CART,pos_search_vec.xd,N_CART,pos_search_vec.xd);
+      mat_vec_mult_size(R_ref_t_world,N_CART,N_CART,pos_search_vec.xdd,N_CART,pos_search_vec.xdd);
+
+      mat_vec_mult_size(R_ref_t_world,N_CART,N_CART,&(orient_search_vec.q[_Q0_]),N_CART,&(orient_search_vec.q[_Q0_]));
+      mat_vec_mult_size(R_ref_t_world,N_CART,N_CART,orient_search_vec.ad,N_CART,orient_search_vec.ad);
+      mat_vec_mult_size(R_ref_t_world,N_CART,N_CART,orient_search_vec.add,N_CART,orient_search_vec.add);
+
+      quatNorm(orient_search_vec.q);
+
+      // add quaternion derivatives
+      quatDerivatives(&orient_search_vec);
 
       // always return success
       *success = TRUE;      
@@ -3547,25 +3620,30 @@ lissajous(LissajousParms *l, double current_time,
 {
   double t;
   double w;
-
+  double trans;
+  
   // easier notation
   t=current_time;
   w=2.*PI*l->freq_base;
+  trans = t / l->transient_duration;
+  if (trans > 1) {
+    trans = 1;
+  }
 
-  pos[_X_] = l->amplitude_slow * (l->convex_beta * sin(w*t) +
+  pos[_X_] = trans*l->amplitude_slow * (l->convex_beta * sin(w*t) +
 				  (1.-l->convex_beta) * sin(w*t * l->convex_freq_ratio));
-  pos[_Y_] = l->amplitude_fast * sin(w*t * l->freq_ratio);
-  pos[_Z_] = l->amplitude_rot * sin(w*t * l->freq_ratio_rot);
+  pos[_Y_] = trans*l->amplitude_fast * sin(w*t * l->freq_ratio);
+  pos[_Z_] = trans*l->amplitude_rot * sin(w*t * l->freq_ratio_rot);
   
-  vel[_X_] = l->amplitude_slow * (l->convex_beta * cos(w*t)*w +
+  vel[_X_] = trans*l->amplitude_slow * (l->convex_beta * cos(w*t)*w +
 				  (1.-l->convex_beta) * cos(w*t * l->convex_freq_ratio)*w*l->convex_freq_ratio);
-  vel[_Y_] = l->amplitude_fast * cos(w*t * l->freq_ratio)*w*l->freq_ratio;
-  vel[_Z_] = l->amplitude_rot * cos(w*t * l->freq_ratio_rot)*w*l->freq_ratio_rot;
+  vel[_Y_] = trans*l->amplitude_fast * cos(w*t * l->freq_ratio)*w*l->freq_ratio;
+  vel[_Z_] = trans*l->amplitude_rot * cos(w*t * l->freq_ratio_rot)*w*l->freq_ratio_rot;
   
-  acc[_X_] = l->amplitude_slow * (-l->convex_beta * sin(w*t)*sqr(w) -
+  acc[_X_] = trans*l->amplitude_slow * (-l->convex_beta * sin(w*t)*sqr(w) -
 				  (1.-l->convex_beta) * sin(w*t * l->convex_freq_ratio)*sqr(w*l->convex_freq_ratio));
-  acc[_Y_] = -l->amplitude_fast * sin(w*t * l->freq_ratio)*sqr(w*l->freq_ratio);
-  acc[_Z_] = -l->amplitude_rot * sin(w*t * l->freq_ratio_rot)*sqr(w*l->freq_ratio_rot);
+  acc[_Y_] = -trans*l->amplitude_fast * sin(w*t * l->freq_ratio)*sqr(w*l->freq_ratio);
+  acc[_Z_] = -trans*l->amplitude_rot * sin(w*t * l->freq_ratio_rot)*sqr(w*l->freq_ratio_rot);
   
   
 }
@@ -3585,9 +3663,9 @@ lissajous(LissajousParms *l, double current_time,
  Function Parameters: [in]=input,[out]=output
 
 
- \param[in/out]          l        : structure with lissajous parameters
- \param[in]              thres    : threshold of abs. 1st derivative of pattern
- \param[in]              duration : duration of search
+ \param[in/out]          l              : structure with lissajous parameters
+ \param[in]              thres          : threshold of abs. 1st derivative of pattern
+ \param[in]              duration       : duration of search
 
  the optimal hyperparameters are returned in the l parameter structure
 
@@ -3615,7 +3693,6 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
   double acc[N_CART+1];
 
   double ct;
-  double trans;
   double dt = 0.01;
   int    count;
   int    ind_x,ind_y,ind_z;
@@ -3624,6 +3701,7 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
   double entropy;
   double max_entropy = 0;
   LissajousParms lbest;
+  double trans;
   FILE   *fp;
 
   char  fname[100];
@@ -3636,7 +3714,8 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
   fflush(stdout);
 
   //create a unique identifier of this pattern
-  sprintf(fname,"prefs/lissajous-%3.2f-%3.2f-%3.2f-%3.2f-%3.2f-%3.2f",l->freq_base,l->amplitude_slow,l->amplitude_fast,l->amplitude_rot,duration,thres);
+  sprintf(fname,"prefs/lissajous-%4.3f-%4.3f-%4.3f-%4.3f-%4.3f-%4.3f-%4.3f",
+	  l->freq_base,l->amplitude_slow,l->amplitude_fast,l->amplitude_rot,duration,thres,l->transient_duration);
 
   //try to open the file
   if ((fp=fopen(fname,"r")) != NULL) {
@@ -3670,7 +3749,7 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
 	    lissajous(l, ct, pos, vel, acc);
 
 	    // transient multiplier
-	    trans = ct / (duration/3.0);
+	    trans = ct / l->transient_duration;
 	    if (trans > 1) {
 	      trans = 1;
 	    } else {
