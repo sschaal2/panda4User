@@ -2078,7 +2078,7 @@ read_state_machine(char *fname) {
 	    sm_temp.lp.amplitude_fast = sm_temp.function_args[2];
 	    sm_temp.lp.amplitude_rot  = sm_temp.function_args[3];
 	    // args[8] is cutoff velocity, args[10] the search duration
-	    lissajousSearch(&(sm_temp.lp),sm_temp.function_args[8],sm_temp.function_args[10]);
+	    lissajousSearch(&(sm_temp.lp),sm_temp.function_args[8],10);
 	    
 	  } else
 	    sm_temp.function_call = NO_FUNC;

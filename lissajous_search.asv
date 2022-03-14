@@ -33,8 +33,8 @@ for freq_ratio=1.:1/res:2
                 h = h/length(H);
                 
                 e=-sum(sum(sum(h.*log(h+1.e-6))));
-                Xd=diffnc(X(:,1:2),0.01);
-                
+                XX = [X(:,1)+X(:,3)*moment_arm X(:,2)];
+                Xd=diffnc(XX(:,1:2),0.01);
                 max_vel = sqrt(max(sum(Xd.^2,2)));
                 count = count+1;
                 R(count,:)=[freq_ratio+0.011,freq_ratio_rot+0.03,convex_beta+0.0017,convex_freq_ratio+0.0037,e,max_vel];

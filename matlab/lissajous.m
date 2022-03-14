@@ -6,6 +6,7 @@ function [X]=lissajous( freq_base, ...
     freq_ratio_rot, ...
     convex_beta, ...
     convex_freq_ratio,...
+    duration,...
     draw)
 %
 % freq_base: base frequency (i.e., freq of slow sine wave)
@@ -20,14 +21,12 @@ function [X]=lissajous( freq_base, ...
 
 % timing
 dt       = 0.01; % in seconds
-duration = 20; % in seconds
-
 delta = 0; % phase offset
 
 % the transient is a linear ramp to increase the amplitdes from zero to
 % full
 trans=0;
-trans_duration = 1/3*duration;
+trans_duration = 3; % 1/3*duration;
 
 omega = 2*pi*freq_base;
 
