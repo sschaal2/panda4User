@@ -1,9 +1,9 @@
 R=[];
 
-freq_base=0.2;
-amplitude_slow=5;
-amplitude_fast=5;
-amplitude_rot=1;
+freq_base=0.3;
+amplitude_slow=0.02;
+amplitude_fast=0.02;
+amplitude_rot=0.02;
 
 count = 0;
 res=20;
@@ -51,7 +51,7 @@ for freq_ratio=1.:1/res:2
         end
     end
 end
-thres = 130;
+thres = 0.01;
 T=R(:,5) + 0.0*(1-R(:,6)/max(R(:,6)));
 exclude = find(R(:,6)>thres);
 T(exclude)=0;
