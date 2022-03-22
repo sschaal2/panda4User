@@ -1,6 +1,6 @@
 task_default_script                 task_default.script
 task_default_sampling_frequency_Hz  1000
-task_default_sampling_time_sec      10
+task_default_sampling_time_sec      20
 
 motor_default_script                 motor_default.script
 motor_default_sampling_frequency_Hz  1000
