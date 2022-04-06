@@ -57,6 +57,15 @@ default_cart_gain_a_scale	4 4 4 4 4 4
 default_controller ModelImpedanceJt
 
 // the table of reference state perturbations//
+{
+name               start_state
+manipulation_frame ref
+duration      	   0.1
+pose_x        	   rel 0 0 0
+pose_q        	   1 rel  1 0 0 0 
+cart_gain_x_scale  1 1 1 1 1 1
+cart_gain_a_scale  1 1 1 1 1 1
+}
 
 // include the core state machine
 #include "prefs/usb_socket_JT_grasp_insert.sm"
@@ -71,6 +80,7 @@ default_controller ModelImpedanceJt
 #include "prefs/usb_socket_JT_back_nest.sm"
 {
 name               move_up
+name_next	   start_state
 manipulation_frame ref
 duration      	   2
 pose_x        	   rel 0 0 -.1
