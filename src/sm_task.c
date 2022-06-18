@@ -896,7 +896,7 @@ run_sm_task(void)
       
     } else {
       
-      sprintf(msg,"All done!\n");
+      sprintf(msg,"All done! (task ran %f seconds)\n",task_servo_time - start_time);
       logMsg(msg,0,0,0,0,0,0);
       freeze();
       return TRUE;
@@ -1486,7 +1486,7 @@ change_sm_task(void)
   char   string[100];
   double aux;
 
-
+  printf("task time = %f\n",task_servo_time - start_time);
   get_double("Force gain",gain_force,&aux);
   if (aux >= 0 && aux <= 3) {
     gain_force = aux;
@@ -3726,15 +3726,21 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
   double trans;
   FILE   *fp;
 
+  double prim[] = {0,0.11,0.0017,0.03, 0.0037};
+
   char  fname[100];
   
   int histogram[HIST_RES+1][HIST_RES+1][HIST_RES+1];
 
   double moment_arm= 0.015;
 
-  printf("Optimizing Lissajous pattern ...");
+  printf("Optimizing Lissajous pattern ...\n");
   fflush(stdout);
 
+  for (i=1; i<=4; ++i) {
+    prim[i] = 0;
+  }
+  
   //create a unique identifier of this pattern
   sprintf(fname,"prefs/lissajous-%4.3f-%4.3f-%4.3f-%4.3f-%4.3f-%4.3f-%4.3f",
 	  l->freq_base,l->amplitude_slow,l->amplitude_fast,l->amplitude_rot,duration,thres,l->transient_duration);
@@ -3756,10 +3762,10 @@ lissajousSearch(LissajousParms *l, double thres, double duration)
 	for (m=0; m<= res; ++m) {
 
 	  // add some small prime number like additions to coefficients to avoid periodicity
-	  l->freq_ratio = (freq_ratio_high-freq_ratio_low)/((double) res) * i + freq_ratio_low + 0.011;
-	  l->convex_beta = (convex_beta_high-convex_beta_low)/((double) res) * j + convex_beta_low + 0.0017;
-	  l->freq_ratio_rot = (freq_ratio_rot_high-freq_ratio_rot_low)/((double) res) * n + freq_ratio_rot_low + 0.03;
-	  l->convex_freq_ratio = (convex_freq_ratio_high-convex_freq_ratio_low)/((double) res) * m + convex_freq_ratio_low + 0.0037;
+	  l->freq_ratio = (freq_ratio_high-freq_ratio_low)/((double) res) * i + freq_ratio_low + prim[1];
+	  l->convex_beta = (convex_beta_high-convex_beta_low)/((double) res) * j + convex_beta_low + prim[2];
+	  l->freq_ratio_rot = (freq_ratio_rot_high-freq_ratio_rot_low)/((double) res) * n + freq_ratio_rot_low + prim[3];
+	  l->convex_freq_ratio = (convex_freq_ratio_high-convex_freq_ratio_low)/((double) res) * m + convex_freq_ratio_low + prim[4];
 
 	  max_vel = 0;
 
