@@ -104,7 +104,8 @@ enum FunctionCalls
     RESET_TO_BASE_POSE,
     ADD_CURRENT_TO_STATISTICS,
     FORCE_LISSAJOUS,
-    POSITION_LISSAJOUS,    
+    POSITION_LISSAJOUS,
+    SCD
   };
 
 // lissajous pattern structure
@@ -518,6 +519,16 @@ add_sm_task( void )
   sprintf(string,"t_search_z");
   addVarToCollect((char *)&(t_search_vec[_Z_]),string,"-", DOUBLE,FALSE);
     
+  sprintf(string,"x_search_x");
+  addVarToCollect((char *)&(pos_search_vec.x[_X_]),string,"-", DOUBLE,FALSE);
+  sprintf(string,"x_search_y");
+  addVarToCollect((char *)&(pos_search_vec.x[_Y_]),string,"-", DOUBLE,FALSE);
+  sprintf(string,"x_search_z");
+  addVarToCollect((char *)&(pos_search_vec.x[_Z_]),string,"-", DOUBLE,FALSE);
+
+  sprintf(string,"q_search_Q0");
+  addVarToCollect((char *)&(orient_search_vec.q[_Q0_]),string,"-", DOUBLE,FALSE);
+
   updateDataCollectScript();
     
   
@@ -2094,6 +2105,8 @@ read_state_machine(char *fname) {
 	    sm_temp.function_call = ADD_CURRENT_TO_STATISTICS;
 	  else if (strcmp(saux,"grasp_perturbation")==0) 
 	    sm_temp.function_call = GRASP_PERTURBATION;
+	  else if (strcmp(saux,"start_collect_data")==0) 
+	    sm_temp.function_call = SCD;
 	  else if (strcmp(saux,"force_lissajous")==0) {
 	    sm_temp.function_call = FORCE_LISSAJOUS;
 
@@ -3336,6 +3349,15 @@ functionCall(int id, int initial_call, int *success)
 	++global_sample_id;
       } else
 	*success = FALSE;
+    }
+    break;
+    
+  case SCD:
+    if  (initial_call) {
+      scd();
+      *success = TRUE;      
+    } else {
+      *success = TRUE;
     }
     break;
     

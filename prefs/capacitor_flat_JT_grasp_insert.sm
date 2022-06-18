@@ -73,19 +73,29 @@ pose_q        	   1 rel  1 0 0 0
 cart_gain_x_scale  3 3 1 3 3 1
 cart_gain_integral 1.2
 force_desired      0 0 0 0
-max_wrench    	   cont_from_here 10 10 0.5  5 5 5
+max_wrench    	   cont_from_here 10 10 0.25  5 5 5
 exit_condition	   pos_early 10 0.002 0 0 0
 }
 {
+name               settling
+manipulation_frame ref
+duration      	   0.25
+pose_x        	   rel 0 0 0.0
+pose_q        	   1 rel  1 0 0 0
+cart_gain_x_scale  3 3 1 3 3 1
+cart_gain_integral 1.2
+}
+{
 name               pattern_search
-func_call	   force_lissajous 10 5 5 1.5 2 1 3 0.2 13 3.0 10
+//func_call	   force_lissajous 10 5 5 1.5 2 1 3 0.2 13 3.0 10
+func_call	   position_lissajous 10 0.002 0.002 0.02 2 1 3 0.3 0.005 3.0 10
 manipulation_frame ref
 duration      	   1
 pose_x        	   rel 0 0 0.002
 pose_q        	   1 rel  1 0 0 0 
 cart_gain_x_scale  3 3 1 3 3 1
 cart_gain_a_scale  1 1 3 1 1 3
-cart_gain_integral 1.2 1.2 0.0 0. 0. 0.0
+cart_gain_integral 1.2 1.2 0.0 1.2 1.2 0.0
 force_desired      0.75 0 0 -1
 moment_desired     0.75 0 0 0
 max_wrench    	   last 10 10 20  5 5 5
