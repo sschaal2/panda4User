@@ -44,7 +44,6 @@ osc_periods_ad			2
 osc_time_window_vars		5.0
 osc_vars_task_file		task_default.osc
 osc_vars_motor_file		motor_default.osc
-osc_vars_vision_file		vision_default.osc
 osc_window_geometry		800x900+33%+20
 //osc_window_geometry		800x900+850+20
 
@@ -66,6 +65,3 @@ panda_ip			192.170.10.4
 
 goto_speed			.5
 
-// state machine task
-
-sm_task_name			transformer_JT.sm

@@ -1,8 +1,32 @@
-// filter cutoff - viscous - coulomb- spring
-J1 3 1 0 0
-J2 3 1 0 0
-J3 3 1 0 0
-J4 3 1 0 0
-J5 3 1 0 0
-J6 3 1 0 0
-J7 3 1 0 0
+// Filter cutoff - viscous - coulomb- spring
+A1_J1 3 1 0 0
+A1_J2 3 1 0 0
+A1_J3 3 1 0 0
+A1_J4 3 1 0 0
+A1_J5 3 1 0 0
+A1_J6 3 1 0 0
+A1_J7 3 1 0 0
+
+A2_J1 3 1 0 0
+A2_J2 3 1 0 0
+A2_J3 3 1 0 0
+A2_J4 3 1 0 0
+A2_J5 3 1 0 0
+A2_J6 3 1 0 0
+A2_J7 3 1 0 0
+
+A3_J1 3 1 0 0
+A3_J2 3 1 0 0
+A3_J3 3 1 0 0
+A3_J4 3 1 0 0
+A3_J5 3 1 0 0
+A3_J6 3 1 0 0
+A3_J7 3 1 0 0
+
+A4_J1 3 1 0 0
+A4_J2 3 1 0 0
+A4_J3 3 1 0 0
+A4_J4 3 1 0 0
+A4_J5 3 1 0 0
+A4_J6 3 1 0 0
+A4_J7 3 1 0 0

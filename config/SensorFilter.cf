@@ -6,38 +6,114 @@
 
 /* format: keyword, cutoff th, cutoff thd, cutoff thdd, cutoff load  */
 
-  J1   10 10 5 100
-  J2   10 10 5 100
-  J3   10 10 5 100
-  J4   10 10 5 100
-  J5   10 10 5 100
-  J6   10 10 5 100
-  J7   10 10 5 100
+  A1_J1   10 10 5 100
+  A1_J2   10 10 5 100
+  A1_J3   10 10 5 100
+  A1_J4   10 10 5 100
+  A1_J5   10 10 5 100
+  A1_J6   10 10 5 100
+  A1_J7   10 10 5 100
 
-  S_FX 100
-  S_FY 100
-  S_FZ 100
+  A1_S_FX 100
+  A1_S_FY 100
+  A1_S_FZ 100
 
-  S_MX 100
-  S_MY 100
-  S_MZ 100
+  A1_S_MX 100
+  A1_S_MY 100
+  A1_S_MZ 100
 
-  C_FX 5
-  C_FY 5
-  C_FZ 5
+  A1_C_FX 5
+  A1_C_FY 5
+  A1_C_FZ 5
 
-  C_MX 5
-  C_MY 5
-  C_MZ 5
+  A1_C_MX 5
+  A1_C_MY 5
+  A1_C_MZ 5
 
-  S_FX 100
-  S_FY 100
-  S_FZ 100
+  A1_G_WIDTH 100
+  A1_G_MOTION 100
 
-  S_MX 100
-  S_MY 100
-  S_MZ 100
 
-  G_WIDTH 100
-  G_MOTION 100
+  A2_J1   10 10 5 100
+  A2_J2   10 10 5 100
+  A2_J3   10 10 5 100
+  A2_J4   10 10 5 100
+  A2_J5   10 10 5 100
+  A2_J6   10 10 5 100
+  A2_J7   10 10 5 100
+
+  A2_S_FX 100
+  A2_S_FY 100
+  A2_S_FZ 100
+
+  A2_S_MX 100
+  A2_S_MY 100
+  A2_S_MZ 100
+
+  A2_C_FX 5
+  A2_C_FY 5
+  A2_C_FZ 5
+
+  A2_C_MX 5
+  A2_C_MY 5
+  A2_C_MZ 5
+
+  A2_G_WIDTH 100
+  A2_G_MOTION 100
+
+
+  A3_J1   10 10 5 100
+  A3_J2   10 10 5 100
+  A3_J3   10 10 5 100
+  A3_J4   10 10 5 100
+  A3_J5   10 10 5 100
+  A3_J6   10 10 5 100
+  A3_J7   10 10 5 100
+
+  A3_S_FX 100
+  A3_S_FY 100
+  A3_S_FZ 100
+
+  A3_S_MX 100
+  A3_S_MY 100
+  A3_S_MZ 100
+
+  A3_C_FX 5
+  A3_C_FY 5
+  A3_C_FZ 5
+
+  A3_C_MX 5
+  A3_C_MY 5
+  A3_C_MZ 5
+
+  A3_G_WIDTH 100
+  A3_G_MOTION 100
+
+
+  A4_J1   10 10 5 100
+  A4_J2   10 10 5 100
+  A4_J3   10 10 5 100
+  A4_J4   10 10 5 100
+  A4_J5   10 10 5 100
+  A4_J6   10 10 5 100
+  A4_J7   10 10 5 100
+
+  A4_S_FX 100
+  A4_S_FY 100
+  A4_S_FZ 100
+
+  A4_S_MX 100
+  A4_S_MY 100
+  A4_S_MZ 100
+
+  A4_C_FX 5
+  A4_C_FY 5
+  A4_C_FZ 5
+
+  A4_C_MX 5
+  A4_C_MY 5
+  A4_C_MZ 5
+
+  A4_G_WIDTH 100
+  A4_G_MOTION 100
   

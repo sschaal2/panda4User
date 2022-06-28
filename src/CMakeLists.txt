@@ -31,7 +31,7 @@ set(CMAKE_BUILD_TYPE RelWithDebInfo) # Optimization with debugging info
 #set(CMAKE_BUILD_TYPE Debug)         # Debug
 
 # the robot name
-set(NAME "panda")
+set(NAME "panda4")
 
 # local defines
 include_directories(BEFORE $ENV{LAB_ROOT}/${NAME}/include)
@@ -47,12 +47,6 @@ set(SRCS_XTASK
 	sample_task.c
 	gravcomp_task.c 
 	sample_task_cpp.cpp
-	sm_task.c
-	sm_controllers.c	
-	test_task.c
-	impedance_test_task.c
-	cilantro_track_task.cpp
-	data_collection_lib.cpp
 	)
 
 set(SRCS_XOPENGL

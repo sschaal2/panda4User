@@ -20,40 +20,149 @@
 
 */
 
-BASE		J2_LINK		1	5	half	orth
-J2_LINK 	J3_LINK		1	5	orth	orth
-J3_LINK		J4_LINK		1	5	orth	orth
-J4_LINK		J5_LINK		1	5	orth	orth
-J5_LINK		J7_LINK		1	5	orth	orth
-J7_LINK		FLANGE		1	2	orth	half
+A1_J1_LINK 	A1_J3_LINK		1	5	half	orth
+A1_J3_LINK	A1_J4_LINK		1	5	orth	orth
+A1_J4_LINK	A1_J5_LINK		1	5	orth	orth
+A1_J5_LINK	A1_J7_LINK		1	5	orth	orth
+A1_J7_LINK	A1_FLANGE		1	2	orth	half
+
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01   0.0000   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01   0.0000   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01   0.0000   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01   0.0000   0.0000 0.0000  -1.0000
+
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0100   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0100   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0100   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0100   0.0000 0.0000  -1.0000
+
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0200   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0200   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0200   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0200   0.0000 0.0000  -1.0000
+
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0400   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0400   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0400   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0400   0.0000 0.0000  -1.0000
+
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0600   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0600   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0600   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0600   0.0000 0.0000  -1.0000
+
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.015  -0.0600   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.015  -0.0600   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.015  -0.0600   0.0000 0.0000  -1.0000
+A1_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.015  -0.0600   0.0000 0.0000  -1.0000
 
 
-FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01   0.0000   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01   0.0000   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01   0.0000   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01   0.0000   0.0000 0.0000  -1.0000
+A2_J1_LINK 	A2_J3_LINK		1	5	half	orth
+A2_J3_LINK	A2_J4_LINK		1	5	orth	orth
+A2_J4_LINK	A2_J5_LINK		1	5	orth	orth
+A2_J5_LINK	A2_J7_LINK		1	5	orth	orth
+A2_J7_LINK	A2_FLANGE		1	2	orth	half
 
-FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0100   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0100   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0100   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0100   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01   0.0000   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01   0.0000   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01   0.0000   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01   0.0000   0.0000 0.0000  -1.0000
 
-FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0200   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0200   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0200   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0200   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0100   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0100   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0100   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0100   0.0000 0.0000  -1.0000
 
-FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0400   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0400   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0400   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0400   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0200   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0200   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0200   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0200   0.0000 0.0000  -1.0000
 
-FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0600   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0600   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0600   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0600   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0400   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0400   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0400   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0400   0.0000 0.0000  -1.0000
 
-FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.015  -0.0600   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.015  -0.0600   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.015  -0.0600   0.0000 0.0000  -1.0000
-FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.015  -0.0600   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0600   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0600   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0600   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0600   0.0000 0.0000  -1.0000
+
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.015  -0.0600   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.015  -0.0600   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.015  -0.0600   0.0000 0.0000  -1.0000
+A2_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.015  -0.0600   0.0000 0.0000  -1.0000
+
+A3_J1_LINK 	A3_J3_LINK		1	5	half	orth
+A3_J3_LINK	A3_J4_LINK		1	5	orth	orth
+A3_J4_LINK	A3_J5_LINK		1	5	orth	orth
+A3_J5_LINK	A3_J7_LINK		1	5	orth	orth
+A3_J7_LINK	A3_FLANGE		1	2	orth	half
+
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01   0.0000   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01   0.0000   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01   0.0000   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01   0.0000   0.0000 0.0000  -1.0000
+
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0100   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0100   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0100   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0100   0.0000 0.0000  -1.0000
+
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0200   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0200   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0200   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0200   0.0000 0.0000  -1.0000
+
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0400   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0400   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0400   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0400   0.0000 0.0000  -1.0000
+
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0600   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0600   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0600   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0600   0.0000 0.0000  -1.0000
+
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.015  -0.0600   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.015  -0.0600   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.015  -0.0600   0.0000 0.0000  -1.0000
+A3_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.015  -0.0600   0.0000 0.0000  -1.0000
+
+A4_J1_LINK 	A4_J3_LINK		1	5	half	orth
+A4_J3_LINK	A4_J4_LINK		1	5	orth	orth
+A4_J4_LINK	A4_J5_LINK		1	5	orth	orth
+A4_J5_LINK	A4_J7_LINK		1	5	orth	orth
+A4_J7_LINK	A4_FLANGE		1	2	orth	half
+
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01   0.0000   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01   0.0000   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01   0.0000   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01   0.0000   0.0000 0.0000  -1.0000
+
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0100   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0100   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0100   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0100   0.0000 0.0000  -1.0000
+
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0200   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0200   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0200   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0200   0.0000 0.0000  -1.0000
+
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0400   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0400   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0400   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0400   0.0000 0.0000  -1.0000
+
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.01  -0.0600   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.01  -0.0600   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.01  -0.0600   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.01  -0.0600   0.0000 0.0000  -1.0000
+
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005    0.015  -0.0600   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005   -0.015  -0.0600   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used -0.005    0.015  -0.0600   0.0000 0.0000  -1.0000
+A4_FLANGE          POINT_CONTACT   1   1  half  not_used  0.005   -0.015  -0.0600   0.0000 0.0000  -1.0000
+
+
