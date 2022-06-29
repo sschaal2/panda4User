@@ -23,7 +23,7 @@ include($ENV{LAB_ROOT}/config/cmake/LAB.cmake)
 
 #############################################################################
 # user defined cmake components
-project(pandaUser)
+project(panda4User)
 
 # set global compile type
 set(CMAKE_BUILD_TYPE RelWithDebInfo) # Optimization with debugging info
@@ -38,7 +38,7 @@ include_directories(BEFORE $ENV{LAB_ROOT}/${NAME}/include)
 include_directories(BEFORE $ENV{LAB_ROOT}/${NAME}/math)
 include_directories(BEFORE ../include)
 include_directories(BEFORE ../src)
-include_directories(BEFORE /usr/include/jsoncpp)
+# include_directories(BEFORE /usr/include/jsoncpp)
 
 # ------------------------------------------------------------------------
 
@@ -74,7 +74,7 @@ set(RBINARIES
 install(PROGRAMS ${BINARIES} DESTINATION ${CMAKE_BINARY_DIR})
 
 add_executable(xtask ${SRCS_XTASK})
-target_link_libraries(xtask SLtask SLcommon ${NAME}_task ${NAME} utility ${LAB_STD_LIBS} zmq jsoncpp)
+target_link_libraries(xtask SLtask SLcommon ${NAME}_task ${NAME} utility ${LAB_STD_LIBS})
 
 add_executable(xopengl ${SRCS_XOPENGL})
 target_link_libraries(xopengl SLopenGL SLcommon ${NAME}_openGL ${NAME} utility ${LAB_STD_LIBS})
