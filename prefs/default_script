@@ -14,7 +14,19 @@ sim_default_script                 sim_default.script
 sim_default_sampling_frequency_Hz  1000
 sim_default_sampling_time_sec      5
 
-panda_default_script                 panda_default.script
-panda_default_sampling_frequency_Hz  1000
-panda_default_sampling_time_sec      5
+panda_1_default_script                 panda_1_default.script
+panda_1-default_sampling_frequency_Hz  1000
+panda_1_default_sampling_time_sec      5
+
+panda_2_default_script                 panda_2_default.script
+panda_2_default_sampling_frequency_Hz  1000
+panda_2_default_sampling_time_sec      5
+
+panda_3_default_script                 panda_3_default.script
+panda_3_default_sampling_frequency_Hz  1000
+panda_3_default_sampling_time_sec      5
+
+panda_4_default_script                 panda_4_default.script
+panda_4_default_sampling_frequency_Hz  1000
+panda_4_default_sampling_time_sec      5
 

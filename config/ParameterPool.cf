@@ -12,10 +12,13 @@
 // window geometry specifications
 
 simulation_servo_geometry	90x8-60+0
-panda_servo_geometry		90x8-60+0
-openGL_servo_geometry		90x8-60+160
-motor_servo_geometry		90x12-60+297
-task_servo_geometry		90x40-60+486
+panda_1_servo_geometry		90x8-60+30
+panda_2_servo_geometry		90x8-60+60
+panda_3_servo_geometry		90x8-60+90
+panda_4_servo_geometry		90x8-60+120
+openGL_servo_geometry		90x8-60+270
+motor_servo_geometry		90x12-60+415
+task_servo_geometry		90x40-60+615
 
 
 
@@ -67,5 +70,5 @@ panda_ip_4			192.170.13.4
 
 // goto task speed
 
-goto_speed			.5
+goto_speed			.25
 
