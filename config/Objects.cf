@@ -33,3 +33,158 @@ table 1 		/* name and ID of object type */
 10         		/* object parameters */
 1000 50 10 50 0.8 0.8	/* contact parameters */
 
+rod1 1 	   	  	/* name and ID of object type */
+0.8 0.8 0.8          	/* rgb */
+0.165 0.00.0125 	/* pos */
+0.0 0.0 1.5707 		/* orient */
+0.56 0.025 .025  	/* scale */
+1  			/* contact model */
+10         		/* object parameters */
+1000 50 10 50 0.8 0.8	/* contact parameters */
+
+rod2 1 	   	  	/* name and ID of object type */
+0.8 0.8 0.8          	/* rgb */
+-0.165 0.0 0.0125 	/* pos */
+0.0 0.0 1.5707 		/* orient */
+0.56 0.025 .025  	/* scale */
+1  			/* contact model */
+10         		/* object parameters */
+1000 50 10 50 0.8 0.8	/* contact parameters */
+
+rod3 1 	   	  	/* name and ID of object type */
+0.8 0.8 0.8          	/* rgb */
+-0.165 0.0 0.3175 	/* pos */
+0.0 0.0 1.5707 		/* orient */
+0.56 0.025 .025  	/* scale */
+1  			/* contact model */
+10         		/* object parameters */
+1000 50 10 50 0.8 0.8	/* contact parameters */
+
+rod4 1 	   	  	/* name and ID of object type */
+0.8 0.8 0.8          	/* rgb */
+0.165 0.0 0.3175 	/* pos */
+0.0 0.0 1.5707 		/* orient */
+0.56 0.025 .025  	/* scale */
+1  			/* contact model */
+10         		/* object parameters */
+1000 50 10 50 0.8 0.8	/* contact parameters */
+
+rod5 1 	   	  	/* name and ID of object type */
+0.8 0.8 0.8          	/* rgb */
+0.0 0.2675 0.0125 	/* pos */
+0.0 0.0 0.0        	/* orient */
+0.355 0.025 .025  	/* scale */
+1  			/* contact model */
+10         		/* object parameters */
+1000 50 10 50 0.8 0.8	/* contact parameters */
+
+rod6 1 	   	  	/* name and ID of object type */
+0.8 0.8 0.8          	/* rgb */
+0.0 -0.2675 0.0125 	/* pos */
+0.0 0.0 0.0     		/* orient */
+0.355 0.025 .025  	/* scale */
+1  			/* contact model */
+10         		/* object parameters */
+1000 50 10 50 0.8 0.8	/* contact parameters */
+
+rod7 1 	   	  	/* name and ID of object type */
+0.8 0.8 0.8          	/* rgb */
+0.0 0.2675 0.3175 	/* pos */
+0.0 0.0 0.0 		/* orient */
+0.355 0.025 .025  	/* scale */
+1  			/* contact model */
+10         		/* object parameters */
+1000 50 10 50 0.8 0.8	/* contact parameters */
+
+rod8 1 	   	  	/* name and ID of object type */
+0.8 0.8 0.8          	/* rgb */
+0.0 -0.2675 0.3175 	/* pos */
+0.0 0.0 0.0  		/* orient */
+0.355 0.025 .025  	/* scale */
+1  			/* contact model */
+10         		/* object parameters */
+1000 50 10 50 0.8 0.8	/* contact parameters */
+
+rod9 1 	   	  	/* name and ID of object type */
+0.8 0.8 0.8          	/* rgb */
+0.0 0.0 0.1588  	/* pos */
+0.0 0.0 0.0		/* orient */
+0.355 0.025 .025  	/* scale */
+1  			/* contact model */
+10         		/* object parameters */
+1000 50 10 50 0.8 0.8	/* contact parameters */
+
+rod10 1       	  	/* name and ID of object type */
+0.8 0.8 0.8          	/* rgb */
+0.165 0.0 0.1525	/* pos */
+0.0 1.5707 0.0  	/* orient */
+0.355 0.025 .025  	/* scale */
+1  			/* contact model */
+10         		/* object parameters */
+1000 50 10 50 0.8 0.8	/* contact parameters */
+
+rod11 1       	  	/* name and ID of object type */
+0.8 0.8 0.8          	/* rgb */
+-0.165 0.0 0.1525	/* pos */
+0.0 1.5707 0.0  	/* orient */
+0.355 0.025 .025  	/* scale */
+1  			/* contact model */
+10         		/* object parameters */
+1000 50 10 50 0.8 0.8	/* contact parameters */
+
+rod12 1       	  	/* name and ID of object type */
+0.8 0.8 0.8          	/* rgb */
+0.165 0.2675 0.1525	/* pos */
+0.0 1.5707 0.0  	/* orient */
+0.355 0.025 .025  	/* scale */
+1  			/* contact model */
+10         		/* object parameters */
+1000 50 10 50 0.8 0.8	/* contact parameters */
+
+rod13 1       	  	/* name and ID of object type */
+0.8 0.8 0.8          	/* rgb */
+-0.165 0.26765 0.1525	/* pos */
+0.0 1.5707 0.0  	/* orient */
+0.355 0.025 .025  	/* scale */
+1  			/* contact model */
+10         		/* object parameters */
+1000 50 10 50 0.8 0.8	/* contact parameters */
+
+rod14 1       	  	/* name and ID of object type */
+0.8 0.8 0.8          	/* rgb */
+0.165 -0.2675 0.1525	/* pos */
+0.0 1.5707 0.0  	/* orient */
+0.355 0.025 .025  	/* scale */
+1  			/* contact model */
+10         		/* object parameters */
+1000 50 10 50 0.8 0.8	/* contact parameters */
+
+rod15 1       	  	/* name and ID of object type */
+0.8 0.8 0.8          	/* rgb */
+-0.165 -0.26765 0.1525	/* pos */
+0.0 1.5707 0.0  	/* orient */
+0.355 0.025 .025  	/* scale */
+1  			/* contact model */
+10         		/* object parameters */
+1000 50 10 50 0.8 0.8	/* contact parameters */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
