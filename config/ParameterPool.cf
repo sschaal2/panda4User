@@ -52,7 +52,7 @@ osc_window_geometry		800x900+33%+20
 
 // base setting
 
-init_base_pos			0.0	0.0	0.0
+init_base_pos			0.0	0.0	0.015
 init_base_quat			1.0	0.0	0.0	0.0
 
 
